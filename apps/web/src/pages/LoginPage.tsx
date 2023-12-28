@@ -15,7 +15,7 @@ export const LoginPage = () => {
     <div className="grid lg:grid-cols-3 grid-rows-3 h-screen">
       <div className="lg:col-start-2 row-start-2">
         <CardHeader>
-          <CardTitle className="text-center">Crackosaur</CardTitle>
+          <CardTitle className="text-center">Crackosaurus</CardTitle>
           <CardDescription className="text-center">Enter your email and password below to login</CardDescription>
         </CardHeader>
         <CardContent>
