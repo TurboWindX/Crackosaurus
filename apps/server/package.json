@@ -1,0 +1,20 @@
+{
+  "name": "@repo/server",
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "nodemon --watch src src/index.ts",
+    "build": "tsc"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "fastify": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2"
+  }
+}

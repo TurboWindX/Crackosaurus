@@ -1,0 +1,10 @@
+{
+  "extends": "@repo/typescript-config/react-library.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+  },
+  "include": ["src", "turbo", "types"],
+  "exclude": ["node_modules", "dist"]
+}
