@@ -1,12 +1,31 @@
-import Fastify from "fastify";
-import cors from "@fastify/cors";
+import * as shared from './shared';
 
 import { api } from "./api";
 
-const fastify = Fastify();
+const fastify = shared.fastify;
+
+//Extend Session interface to include user
+declare module "fastify" {
+  interface Session {
+      username?: string;
+      authenticated?: boolean;
+      isAdmin?: boolean;
+  }
+}
+//Fastify session management
+fastify.register(shared.fastifyCookie);
+fastify.register(shared.fastifySession, {
+  cookieName: 'CrackID',
+  secret: 'One Alex is good but two is better if you ask me.',
+  cookie: { secure: false },
+});
+
 
 fastify.register(api, { prefix: "api" });
 
+
+//Disabled CORS for easy debugging for now
+/*
 fastify.register(cors, {
   origin: (origin, cb) => {
     const hostname = new URL(origin || "").hostname;
@@ -18,8 +37,10 @@ fastify.register(cors, {
     }
   }
 });
+*/
 
-fastify.listen({ host: "0.0.0.0", port: 8080 }, (err, address) => {
+//changed port to 8000 to debug with burp real quick
+fastify.listen({ host: "0.0.0.0", port: 8000 }, (err, address) => {
   if (err) {
     console.error(err);
     process.exit(1);
