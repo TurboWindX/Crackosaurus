@@ -1,7 +1,5 @@
-import {fastify} from './../shared';
+/*import {fastify} from './../shared';
 import bcrypt from 'bcrypt';
-
-const mysql = fastify.mysql;
 
 //Define values for auth user
 export interface AuthenticatedUser {
@@ -11,14 +9,10 @@ export interface AuthenticatedUser {
 }
 
 
-async function createUser(username: string, password: string, isAdmin: number){
-    return null;
-}
-
 //Takes in plaintext password and hash from db, compare them
 async function checkPassword(inputPassword: string, dbPassword: string) {
   try {
-    return await bcrypt.compare(inputPassword, dbPassword);
+    return bcrypt.compareSync(inputPassword, dbPassword);
   } catch (error) {
     console.error('Error comparing:', error);
     throw error; // Throw the error
@@ -29,7 +23,7 @@ async function checkPassword(inputPassword: string, dbPassword: string) {
 async function hashPassword(password: string): Promise<string> {
   const saltRounds = 8; //Lucky number, increase this for free self-ddos
   try {
-    return await bcrypt.hash(password, saltRounds);
+    return bcrypt.hashSync(password, saltRounds);
   } catch (error) {
     console.error('Error hashing:', error);
     throw error; // Throw the error
@@ -56,8 +50,12 @@ export async function checkCreds(username: string, password: string) {
               password: string;
               isadmin: number;//because DB is 0/1 and not true/false kekw
             }[];
-            const DBhashedPass = row[0]?.password;
-            const isAdmin = row[0]?.isadmin;
+            if(row[0] == undefined){
+              resolve(null);
+              return;
+            }
+            const DBhashedPass = row[0].password;
+            const isAdmin = row[0].isadmin;
 
             if (typeof DBhashedPass === 'string') {
               //Pass plaintext and hashed pass from DB
@@ -70,7 +68,6 @@ export async function checkCreds(username: string, password: string) {
                     resolve({ username, isAdmin });
                   }
                 }else{
-                  //for some voodoo reason, isAdmin isn't a number?
                   resolve(null);
                 }
               } else {
@@ -94,3 +91,26 @@ export async function checkCreds(username: string, password: string) {
     throw error; // Throw the error
   }
 }
+
+export async function createUser(username: string, password: string, isAdmin: number) {
+  try {
+    return new Promise<boolean>(async (resolve, reject) => {
+      const hashedPass = await hashPassword(password);
+      fastify.mysql.query(
+        'INSERT INTO users (username, password, isAdmin) VALUES (?,?,?)',
+        [username,hashedPass,isAdmin],
+        async function onResult(error, result) {
+          if (error) {
+            reject(false);
+            return;
+          }
+          resolve(true);
+        }
+      );
+    });
+  } catch (error) {
+    console.error('Database error:', error);
+    return Promise.reject(false);
+  }
+}
+*/

@@ -1,4 +1,7 @@
 import * as shared from './shared';
+import cors from "@fastify/cors";
+import prismaPlugin from './prisma'
+import { checkInit } from './api/prismauth';
 
 import { api } from "./api";
 
@@ -7,9 +10,10 @@ const fastify = shared.fastify;
 //Extend Session interface to include user
 declare module "fastify" {
   interface Session {
-      username?: string;
-      authenticated?: boolean;
-      isAdmin?: boolean;
+      uid: number;
+      username: string;
+      authenticated: boolean;
+      isAdmin: number;
   }
 }
 //Fastify session management
@@ -19,9 +23,13 @@ fastify.register(shared.fastifySession, {
   secret: 'One Alex is good but two is better if you ask me.',
   cookie: { secure: false },
 });
+fastify.register(prismaPlugin);
 
+//Check if database has initialized and create admin account if needed
+checkInit();
 
 fastify.register(api, { prefix: "api" });
+
 
 
 //Disabled CORS for easy debugging for now
@@ -36,8 +44,8 @@ fastify.register(cors, {
       cb(new Error("Not allowed"), false);
     }
   }
-});
-*/
+});*/
+
 
 //changed port to 8000 to debug with burp real quick
 fastify.listen({ host: "0.0.0.0", port: 8000 }, (err, address) => {
@@ -48,3 +56,5 @@ fastify.listen({ host: "0.0.0.0", port: 8000 }, (err, address) => {
 
   console.log(`Running at ${address}`);
 });
+
+
