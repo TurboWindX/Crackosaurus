@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { prisma} from '../shared';
 import { Hash,User, Project } from '@prisma/client'
 
-//take in projectID+userID and return hashes associated with it
+//take in projectID+userID and return hashes associated to the project if user is part of project or admin
 export async function getHashes(
   projectId: number,
   userId: number,
@@ -38,9 +38,9 @@ export async function getHashes(
   }
 }
 
-//either return the created hash entry or the cracked value of a hash if it's already in the database
-//This is "unsafe" but it is to save resources/money in the cloud
-//We could implement some kind of (ask for cracked value to the owner of X project) and a user of said project would have to agree to share the cracked value of the hash
+
+//takes in a userID+projectID, add a hash to the project if user is part of the project or admin.
+//If the hash is already in the database, it either returns the cracked value if is cracked or null if it is not cracked
 export const addHash = async (userID: number, projectID: number, hashValue: string, hashType: string, isAdmin: number): Promise<Hash | string | null> => {
   return new Promise<Hash | string | null>(async (resolve, reject) => {
     const allowedHashTypes = ['NTLM', 'bcrypt'];

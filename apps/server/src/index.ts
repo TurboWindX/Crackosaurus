@@ -1,7 +1,6 @@
 import * as shared from './shared';
 import cors from "@fastify/cors";
 import prismaPlugin from './prisma'
-import { checkInit } from './api/prismauth';
 
 import { api } from "./api";
 
@@ -14,6 +13,7 @@ declare module "fastify" {
       username: string;
       authenticated: boolean;
       isAdmin: number;
+      teams: Array<number>;
   }
 }
 //Fastify session management
@@ -25,8 +25,6 @@ fastify.register(shared.fastifySession, {
 });
 fastify.register(prismaPlugin);
 
-//Check if database has initialized and create admin account if needed
-checkInit();
 
 fastify.register(api, { prefix: "api" });
 

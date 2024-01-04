@@ -1,8 +1,16 @@
 import { FastifyPluginCallback, FastifyRequest } from "fastify";
-import {checkCreds, AuthenticatedUser, createUser, deleteUser } from './prismauth'; // Import the checkCreds function
+import {checkCreds, AuthenticatedUser, createUser, deleteUser, changePassword, CheckDBUsers } from './prismauth'; // Import the checkCreds function
 import { addHash, getHashes } from "./hashes";
 import { addUserToProject, createProject } from "./projects";
-//Define da login request
+
+
+interface InitRequest {
+  Body: {
+    username: string;
+    password: string;
+  };
+}
+
 interface LoginRequest {
   Body: {
     username: string;
@@ -51,6 +59,14 @@ interface GetHashesRequest{
   };
 }
 
+interface ChangePasswordRequest{
+  Body: {
+    userID: number;
+    oldPassword: string;
+    newPassword: string;
+  };
+}
+
 function setSession(request: FastifyRequest,AuthenticatedUser: AuthenticatedUser){
   request.session.uid = AuthenticatedUser.uid;
   request.session.authenticated = true;
@@ -59,7 +75,22 @@ function setSession(request: FastifyRequest,AuthenticatedUser: AuthenticatedUser
 }
 
 export const api: FastifyPluginCallback<{}> = (instance, opts, next) => {
-  //login route
+  instance.post<InitRequest>('/init', async (request, reply) => {
+    const { username, password } = request.body;
+    if(!CheckDBUsers){
+      const created = await createUser(username, password, 1);
+      console.log(created);
+      if(created === false){
+        reply.type('application/json');
+        reply.send('{"error":"An error has occured."}');
+      }
+      reply.type('application/json');
+      reply.send('{"response":"First admin user has been created."}');
+    }
+    reply.type('application/json');
+    reply.send('{"error":"App is already initiated."}');
+  });
+
   instance.post<LoginRequest>('/login', async (request, reply) => {
     const { username, password } = request.body;
     const authenticated = await checkCreds(username, password);
@@ -71,7 +102,6 @@ export const api: FastifyPluginCallback<{}> = (instance, opts, next) => {
       reply.redirect(401, '/login');
     }
   });
-
 //register (create new user) route
 instance.post<RegisterRequest>('/register', async (request, reply) => {
   const { username, password, isAdmin } = request.body;
@@ -90,8 +120,6 @@ instance.post<RegisterRequest>('/register', async (request, reply) => {
   
 });
 
-
-//delete user route
 instance.post<DeleteUserRequest>('/deleteuser', async (request, reply) => {
   const { username } = request.body;
   if(request.session.isAdmin){
@@ -101,11 +129,25 @@ instance.post<DeleteUserRequest>('/deleteuser', async (request, reply) => {
       reply.send('{"error":"An error has occured."}');
     }
     reply.type('application/json');
-    reply.send('{"reponse":"The user has been obliterated into oblivion."}');
+    reply.send('{"response":"The user has been obliterated into oblivion."}');
   }
   reply.type('application/json');
   reply.send('{"error":"You need to be admin."}');
-  
+});
+
+instance.post<ChangePasswordRequest>('/changepw', async (request, reply) => {
+  const { userID, oldPassword, newPassword } = request.body;
+  if(request.session.isAdmin){
+    const deleted = await changePassword(userID,oldPassword,newPassword,request.session.isAdmin);
+    if(deleted === false){
+      reply.type('application/json');
+      reply.send('{"error":"An error has occured."}');
+    }
+    reply.type('application/json');
+    reply.send('{"response":"Password has been changed."}');
+  }
+  reply.type('application/json');
+  reply.send('{"error":"You need to be authenticated."}');
 });
 
 instance.post<CreateProjectRequest>('/createproject', async (request, reply) => {
@@ -117,7 +159,7 @@ instance.post<CreateProjectRequest>('/createproject', async (request, reply) => 
       reply.send('{"error":"An error has occured."}');
     }
     reply.type('application/json');
-    reply.send('{"reponse":"The project has been created."}');
+    reply.send('{"response":"The project has been created."}');
   }
   reply.type('application/json');
   reply.send('{"error":"You need to be admin."}');
@@ -126,14 +168,14 @@ instance.post<CreateProjectRequest>('/createproject', async (request, reply) => 
 
 instance.post<AddUserToProjectRequest>('/addusertoproject', async (request, reply) => {
   const { projectID, userID } = request.body;
-  if(request.session.isAdmin){
+  if(request.session.authenticated){
     const projectCreated = await addUserToProject(request.session.uid, userID, projectID);
     if(projectCreated === false){
       reply.type('application/json');
       reply.send('{"error":"An error has occured."}');
     }
     reply.type('application/json');
-    reply.send('{"reponse":"The user has been added to the project."}');
+    reply.send('{"response":"The user has been added to the project."}');
   }
   reply.type('application/json');
   reply.send('{"error":"You need to be authenticated."}');
@@ -152,7 +194,7 @@ instance.post<AddHashRequest>('/addhash', async (request, reply) => {
       reply.send('{"error":"An error has occured."}');
     }
     reply.type('application/json');//not a simple string, not null, it's a Hash object
-    reply.send('{"reponse":"The hash has been added."}');
+    reply.send('{"response":"The hash has been added."}');
   }
   reply.type('application/json');
   reply.send('{"error":"You need to be authenticated."}');
@@ -172,9 +214,6 @@ instance.post<GetHashesRequest>('/gethashes', async (request, reply) => {
   reply.type('application/json');
   reply.send('{"error":"You need to be authenticated."}');
 });
-
-
-
 
 
   // Returns auth variables such as user ID, authentication status, and more later such as Teams maybe or whatever

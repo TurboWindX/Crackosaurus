@@ -31,16 +31,18 @@ async function checkPassword(inputPassword: string, dbPassword: string) {
 }  
     
 //check if DB has been init
-export async function checkInit(){
-    const admin = await prisma.user.findMany();
-    if(admin[0] === undefined){
+export async function CheckDBUsers(){
+    const db = await prisma.user.findMany();
+    if(db[0] === undefined){
         console.log("Empty User DB, creating admin account (admin:crack).");
-        createAdmin();
+        return false;
     }
     console.log("DB is already init.")
+    return true;
 }
 
 //create first admin user
+//sussy baka
 async function createAdmin() {
     const user = await prisma.user.create({
         data: {
@@ -54,7 +56,7 @@ async function createAdmin() {
 }
 
 //add user into db
-export function createUser(username: string, pass: string, isAdmin: number): Promise<boolean> {
+export function createUser(username: string, pass: string): Promise<boolean> {
   return new Promise<boolean>(async (resolve, reject) => {
     try {
       const hashPass = await hashPassword(pass);
@@ -121,4 +123,54 @@ export function deleteUser(username: string): Promise<boolean> {
   });
 }
 
-// TODO: CHANGE PASSWORD FUNCTION
+export async function changePassword(userId: number, oldPassword: string, newPassword: string, isAdmin: number): Promise<boolean> {
+  return new Promise<boolean>(async (resolve, reject) => {
+    try {
+      if (isAdmin === 1) {
+        // If isAdmin, no need to check old password
+        await prisma.user.update({
+          where: {
+            ID: userId,
+          },
+          data: {
+            password: await hashPassword(newPassword),
+          },
+        });
+      } else {
+        // Check old password for non-admin users
+        const user = await prisma.user.findUnique({
+          where: {
+            ID: userId,
+          },
+        });
+
+        if (!user) {
+          throw new Error('User not found.');
+        }
+
+        const isPasswordValid = await checkPassword(oldPassword, user.password);
+
+        if (!isPasswordValid) {
+          throw new Error('Old password is incorrect.');
+        }
+
+        // Update password for the user
+        await prisma.user.update({
+          where: {
+            ID: userId,
+          },
+          data: {
+            password: await hashPassword(newPassword),
+          },
+        });
+      }
+
+      resolve(true);
+    } catch (error) {
+      console.error('Error changing password:', error);
+      resolve(false);
+    } finally {
+      await prisma.$disconnect();
+    }
+  });
+}
