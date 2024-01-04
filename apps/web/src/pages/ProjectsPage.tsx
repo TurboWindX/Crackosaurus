@@ -14,6 +14,8 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@repo/shadcn/components/ui/pagination";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 export interface ProjectStatusBadgeProps {
   status: "complete" | "crack" | "open";
@@ -30,7 +32,37 @@ export const ProjectStatusBadge = ({ status }: ProjectStatusBadgeProps) => {
   }
 }
 
+export interface Project {
+  name: string;
+  collaborators: string[];
+  status: ProjectStatusBadgeProps["status"],
+  lastModified: number;
+};
+
+export const ProjectRow = ({ name, collaborators, status, lastModified }: Project) => {
+  const navigate = useNavigate();
+
+  return (
+    <TableRow className="cursor-pointer" onClick={() => navigate(`/projects/${name}`)}>
+      <TableCell className="font-medium">{name}</TableCell>
+      <TableCell className="hidden lg:!table-cell">
+        <div className="grid gap-2 grid-flow-col max-w-max">
+          {collaborators.map((collaborator) => <Badge variant="secondary">{collaborator}</Badge>)}
+        </div>
+      </TableCell>
+      <TableCell>
+        <ProjectStatusBadge status={status} />
+      </TableCell>
+      <TableCell className="hidden sm:!table-cell">
+        <RelativeTime epoch={lastModified} />
+      </TableCell>
+    </TableRow>
+  );
+};
+
 export const ProjectsPage = () => {
+  const [projects, setProjects] = useState<Project[]>([]);
+
   return <div>
     <Header />
     <div className="grid gap-4 p-4">
@@ -42,35 +74,17 @@ export const ProjectsPage = () => {
           <TableHeader>
             <TableRow>
               <TableHead>Project</TableHead>
-              <TableHead>Collaborators</TableHead>
+              <TableHead className="hidden lg:!table-cell">Collaborators</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Last Modified</TableHead>
+              <TableHead className="hidden sm:!table-cell">Last Modified</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            <TableRow>
-              <TableCell className="font-medium">PRJ001</TableCell>
-              <TableCell>
-                <div className="grid gap-2 grid-flow-col max-w-max">
-                  <Badge variant="secondary">Person</Badge>
-                  <Badge variant="secondary">Team</Badge>
-                </div>
-              </TableCell>
-              <TableCell>
-                <ProjectStatusBadge
-                  status="crack"
-                />
-              </TableCell>
-              <TableCell>
-                <RelativeTime
-                  epoch={Date.now() - Math.random() * 10000000}
-                />
-              </TableCell>
-            </TableRow>
+            {projects.map((project) => <ProjectRow {...project} />)}
           </TableBody>
         </Table>
       </Card>
-      <Pagination>
+      <Pagination className="!hidden">
         <PaginationContent>
           <PaginationItem>
             <PaginationPrevious href="#" />
