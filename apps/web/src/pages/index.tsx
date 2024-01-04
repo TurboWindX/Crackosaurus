@@ -4,6 +4,7 @@ import {
 
 import { HomePage } from "./HomePage.tsx";
 import { LoginPage } from "./LoginPage.tsx";
+import { ProjectsPage } from "./ProjectsPage.tsx";
 
 export const router = createBrowserRouter([
   {
@@ -13,5 +14,9 @@ export const router = createBrowserRouter([
   {
     path: "/login",
     element: <LoginPage />
+  },
+  {
+    path: "/projects",
+    element: <ProjectsPage />
   }
 ]);

@@ -8,10 +8,16 @@
     "./index.css": "./dist/index.css",
     "./components/*": "./src/components/*/*.tsx",
     "./components/theme-provider": "./src/components/theme-provider.tsx",
+    "./components/ui/badge": "./src/components/ui/badge.tsx",
     "./components/ui/button": "./src/components/ui/button.tsx",
     "./components/ui/card": "./src/components/ui/card.tsx",
     "./components/ui/input": "./src/components/ui/input.tsx",
     "./components/ui/menubar": "./src/components/ui/menubar.tsx",
+    "./components/ui/navigation-menu": "./src/components/ui/navigation-menu.tsx",
+    "./components/ui/pagination": "./src/components/ui/pagination.tsx",
+    "./components/ui/separator": "./src/components/ui/separator.tsx",
+    "./components/ui/sheet": "./src/components/ui/sheet.tsx",
+    "./components/ui/table": "./src/components/ui/table.tsx",
     "./components/ui/toaster": "./src/components/ui/toaster.tsx",
     "./components/ui/use-toast": "./src/components/ui/use-toast.ts"
   },
@@ -34,8 +40,11 @@
     "typescript": "^5.3.2"
   },
   "dependencies": {
+    "@radix-ui/react-dialog": "^1.0.5",
     "@radix-ui/react-icons": "^1.3.0",
     "@radix-ui/react-menubar": "^1.0.4",
+    "@radix-ui/react-navigation-menu": "^1.1.4",
+    "@radix-ui/react-separator": "^1.0.3",
     "@radix-ui/react-slot": "^1.0.2",
     "@radix-ui/react-toast": "^1.1.5",
     "class-variance-authority": "^0.7.0",
