@@ -1,49 +1,47 @@
-import * as shared from "./shared";
+import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { fastifySession } from "@fastify/session";
+import { fastifyCookie } from "@fastify/cookie";
 import prismaPlugin from "./prisma";
 
 import { api } from "./api";
 
-const fastify = shared.fastify;
+const fastify = Fastify();
 
-//Extend Session interface to include user
-declare module "fastify" {
-  interface Session {
-    uid: number;
-    username: string;
-    authenticated: boolean;
-    isAdmin: number;
-    teams: Array<number>;
-  }
-}
 //Fastify session management
-fastify.register(shared.fastifyCookie);
-fastify.register(shared.fastifySession, {
+fastify.register(fastifyCookie);
+fastify.register(fastifySession, {
   cookieName: "CrackID",
   secret: "One Alex is good but two is better if you ask me.",
   cookie: {
     secure: false,
+    maxAge: 24 * 60 * 60
+  }
+});
+
+fastify.register(prismaPlugin);
+
+fastify.register(cors, {
+  origin: (origin, cb) => {
+    if (origin === undefined) {
+      cb(null, true);
+      return;
+    }
+
+    const hostname = new URL(origin).hostname;
+
+    // TODO: Config for frontend website.
+    if (hostname !== "localhost") {
+      cb(new Error("Not allowed"), false);
+      return;
+    }
+
+    cb(null, true);
   },
 });
-fastify.register(prismaPlugin);
 
 fastify.register(api, { prefix: "api" });
 
-//Disabled CORS for easy debugging for now
-/*
-fastify.register(cors, {
-  origin: (origin, cb) => {
-    const hostname = new URL(origin || "").hostname;
-
-    if (hostname === "localhost") {
-      cb(null, true);
-    } else {
-      cb(new Error("Not allowed"), false);
-    }
-  }
-});*/
-
-//changed port to 8000 to debug with burp real quick
 fastify.listen(
   {
     host: "0.0.0.0",

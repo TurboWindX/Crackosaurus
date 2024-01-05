@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
+  url      = "file:./dev.db"
 }
 
 model User {
@@ -32,7 +32,7 @@ model Hash {
   user      User     @relation("userHashes", fields: [userId], references: [ID])
   projectId Int?
   project   Project? @relation("projectHashes", fields: [projectId], references: [PID])
-  hash      String   @unique
+  hash      String
   hashType  String
   cracked   String?
 }

@@ -1,266 +1,243 @@
-import { FastifyPluginCallback, FastifyRequest } from "fastify";
+import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import {
-  checkCreds,
+  getAuthenticatedUser,
   AuthenticatedUser,
   createUser,
   deleteUser,
   changePassword,
-  CheckDBUsers,
-} from "./prismauth"; // Import the checkCreds function
+  checkNoUsers,
+} from "./users"; // Import the checkCreds function
+import {
+  AddHashRequest,
+  AddHashResponse,
+  AddUserToProjectRequest,
+  AddUserToProjectResponse,
+  ChangePasswordRequest,
+  ChangePasswordResponse,
+  CreateProjectRequest,
+  CreateProjectResponse,
+  DeleteUserRequest,
+  DeleteUserResponse,
+  GetHashesRequest,
+  GetHashesResponse,
+  InitRequest,
+  InitResponse,
+  LoginRequest,
+  LoginResponse,
+  RegisterRequest,
+  RegisterResponse,
+} from "@repo/api";
 import { addHash, getHashes } from "./hashes";
 import { addUserToProject, createProject } from "./projects";
+import { APIError, AuthError, errorHandler } from "../errors";
 
-interface InitRequest {
-  Body: {
+declare module "fastify" {
+  interface Session {
+    uid: number;
     username: string;
-    password: string;
-  };
-}
-
-interface LoginRequest {
-  Body: {
-    username: string;
-    password: string;
-  };
-}
-
-interface RegisterRequest {
-  Body: {
-    username: string;
-    password: string;
-    isAdmin: number;
-  };
-}
-
-interface DeleteUserRequest {
-  Body: {
-    username: string;
-  };
-}
-
-interface AddHashRequest {
-  Body: {
-    hash: string;
-    hashType: string;
-    projectID: number;
-  };
-}
-
-interface CreateProjectRequest {
-  Body: {
-    projectName: string;
-  };
-}
-
-interface AddUserToProjectRequest {
-  Body: {
-    projectID: number;
-    userID: number;
-  };
-}
-
-interface GetHashesRequest {
-  Body: {
-    projectID: number;
-  };
-}
-
-interface ChangePasswordRequest {
-  Body: {
-    userID: number;
-    oldPassword: string;
-    newPassword: string;
-  };
+    isAdmin: boolean;
+  }
 }
 
 function setSession(
   request: FastifyRequest,
-  AuthenticatedUser: AuthenticatedUser
+  authenticatedUser: AuthenticatedUser
 ) {
-  request.session.uid = AuthenticatedUser.uid;
-  request.session.authenticated = true;
-  request.session.username = AuthenticatedUser.username;
-  request.session.isAdmin = AuthenticatedUser.isAdmin;
+  request.session.uid = authenticatedUser.uid;
+  request.session.username = authenticatedUser.username;
+  request.session.isAdmin = authenticatedUser.isAdmin === 1;
 }
 
-export const api: FastifyPluginCallback<{}> = (instance, opts, next) => {
-  instance.post<InitRequest>("/init", async (request, reply) => {
+function checkAuth(
+  request: FastifyRequest,
+  _reply: FastifyReply,
+  next: (err?: Error | undefined) => void
+) {
+  if (request.session.uid === undefined)
+    throw new AuthError("You need to be authenticated");
+
+  next();
+}
+
+function checkAdmin(
+  request: FastifyRequest,
+  _reply: FastifyReply,
+  next: (err?: Error | undefined) => void
+) {
+  if (request.session.isAdmin !== true)
+    throw new AuthError("You need to be admin");
+
+  next();
+}
+
+export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
+  instance.setErrorHandler(errorHandler);
+
+  instance.post<InitRequest>("/init", async (request) => {
+    if (!(await checkNoUsers(request.server.prisma)))
+      throw new APIError("App is already initiated");
+
     const { username, password } = request.body;
-    if (!CheckDBUsers) {
-      const created = await createUser(username, password, 1);
-      console.log(created);
-      if (created === false) {
-        reply.type("application/json");
-        reply.send('{"error":"An error has occured."}');
-      }
-      reply.type("application/json");
-      reply.send('{"response":"First admin user has been created."}');
-    }
-    reply.type("application/json");
-    reply.send('{"error":"App is already initiated."}');
+    if (username === undefined || password === undefined)
+      throw new APIError("Invalid user config");
+
+    await createUser(request.server.prisma, username, password, true);
+
+    return { response: "First admin user has been created" } as InitResponse;
   });
 
-  instance.post<LoginRequest>("/login", async (request, reply) => {
+  instance.post<LoginRequest>("/auth/login", async (request) => {
     const { username, password } = request.body;
-    const authenticated = await checkCreds(username, password);
-    if (authenticated != null) {
-      setSession(request, authenticated);
-      reply.type("application/json");
-      reply.send('{"response":"Login successful."}');
-    } else {
-      reply.redirect(401, "/login");
-    }
-  });
-  //register (create new user) route
-  instance.post<RegisterRequest>("/register", async (request, reply) => {
-    const { username, password, isAdmin } = request.body;
-    if (request.session.isAdmin) {
-      const created = await createUser(username, password, isAdmin);
-      console.log(created);
-      if (created === false) {
-        reply.type("application/json");
-        reply.send('{"error":"An error has occured."}');
-      }
-      reply.type("application/json");
-      reply.send('{"response":"The user has been created."}');
-    }
-    reply.type("application/json");
-    reply.send('{"error":"You need to be admin."}');
+    if (username === undefined || password === undefined)
+      throw new AuthError("Login failed");
+
+    const user = await getAuthenticatedUser(
+      request.server.prisma,
+      username,
+      password
+    );
+    if (!user) throw new APIError("Login failed");
+
+    setSession(request, user);
+
+    return { response: "Login successful" } as LoginResponse;
   });
 
-  instance.post<DeleteUserRequest>("/deleteuser", async (request, reply) => {
-    const { username } = request.body;
-    if (request.session.isAdmin) {
-      const deleted = await deleteUser(username);
-      if (deleted === false) {
-        reply.type("application/json");
-        reply.send('{"error":"An error has occured."}');
-      }
-      reply.type("application/json");
-      reply.send('{"response":"The user has been obliterated into oblivion."}');
-    }
-    reply.type("application/json");
-    reply.send('{"error":"You need to be admin."}');
+  instance.get("/auth/user", (request) => {
+    return {
+      uid: request.session.uid,
+      username: request.session.username,
+      isAdmin: request.session.isAdmin
+    };
   });
 
-  instance.post<ChangePasswordRequest>("/changepw", async (request, reply) => {
-    const { userID, oldPassword, newPassword } = request.body;
-    if (request.session.isAdmin) {
-      const deleted = await changePassword(
+  instance.post<RegisterRequest>(
+    "/users",
+    { preHandler: [checkAdmin] },
+    async (request) => {
+      const { username, password, isAdmin } = request.body;
+      if (username === undefined || password === undefined)
+        throw new APIError("Invalid user config");
+
+      await createUser(
+        request.server.prisma,
+        username,
+        password,
+        isAdmin ?? false
+      );
+
+      return { response: "The user has been created" } as RegisterResponse;
+    }
+  );
+
+  instance.delete<DeleteUserRequest>(
+    "/users",
+    { preHandler: [checkAdmin] },
+    async (request) => {
+      const { username } = request.body;
+      if (username === undefined) throw new APIError("Invalid username");
+
+      await deleteUser(request.server.prisma, username);
+
+      return { response: "The user has been obliterated into oblivion" } as DeleteUserResponse;
+    }
+  );
+
+  instance.put<ChangePasswordRequest>(
+    "/users/:userID/password",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      const { userID } = request.params;
+      const { oldPassword, newPassword } = request.body;
+      if (oldPassword === undefined || newPassword === undefined)
+        throw new APIError("Invalid user config");
+
+      await changePassword(
+        request.server.prisma,
         userID,
         oldPassword,
         newPassword,
         request.session.isAdmin
       );
-      if (deleted === false) {
-        reply.type("application/json");
-        reply.send('{"error":"An error has occured."}');
-      }
-      reply.type("application/json");
-      reply.send('{"response":"Password has been changed."}');
+
+      return { response: "Password has been changed" } as ChangePasswordResponse;
     }
-    reply.type("application/json");
-    reply.send('{"error":"You need to be authenticated."}');
-  });
+  );
 
   instance.post<CreateProjectRequest>(
-    "/createproject",
-    async (request, reply) => {
+    "/projects",
+    { preHandler: [checkAdmin] },
+    async (request) => {
       const { projectName } = request.body;
-      if (request.session.isAdmin) {
-        const projectCreated = await createProject(
-          projectName,
-          request.session.uid
-        );
-        if (projectCreated === false) {
-          reply.type("application/json");
-          reply.send('{"error":"An error has occured."}');
-        }
-        reply.type("application/json");
-        reply.send('{"response":"The project has been created."}');
-      }
-      reply.type("application/json");
-      reply.send('{"error":"You need to be admin."}');
+      if (projectName === undefined) throw new APIError("Invalid project name");
+
+      await createProject(
+        request.server.prisma,
+        projectName,
+        request.session.uid
+      );
+
+      return { response: "The project has been created" } as CreateProjectResponse;
     }
   );
 
   instance.post<AddUserToProjectRequest>(
-    "/addusertoproject",
-    async (request, reply) => {
-      const { projectID, userID } = request.body;
-      if (request.session.authenticated) {
-        const projectCreated = await addUserToProject(
-          request.session.uid,
-          userID,
-          projectID
-        );
-        if (projectCreated === false) {
-          reply.type("application/json");
-          reply.send('{"error":"An error has occured."}');
-        }
-        reply.type("application/json");
-        reply.send('{"response":"The user has been added to the project."}');
-      }
-      reply.type("application/json");
-      reply.send('{"error":"You need to be authenticated."}');
+    "/projects/:projectID/users",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      const { projectID } = request.params;
+      const { userID } = request.body;
+      if (userID === undefined) throw new APIError("Invalid user ID");
+
+      await addUserToProject(
+        request.server.prisma,
+        request.session.uid,
+        userID,
+        projectID
+      );
+
+      return { response: "The user has been added to the project" } as AddUserToProjectResponse;
     }
   );
 
-  instance.post<AddHashRequest>("/addhash", async (request, reply) => {
-    const { hash, hashType, projectID } = request.body;
-    if (request.session.authenticated) {
-      const addedhash = await addHash(
+  instance.post<AddHashRequest>(
+    "/projects/:projectID/hashes",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      const { projectID } = request.params;
+      const { hash, hashType } = request.body;
+      if (hash === undefined || hashType === undefined)
+        throw new APIError("Invalid hash config");
+
+      await addHash(
+        request.server.prisma,
         request.session.uid,
         projectID,
         hash,
         hashType,
         request.session.isAdmin
       );
-      if (typeof addedhash === "string") {
-        //returned simple string, it's a cracked hash
-        reply.type("application/json");
-        reply.send(
-          `{"error":"The hash is already in the database.","cracked":"${addedhash}"}`
-        );
-      } else if (!addedhash) {
-        //returned null, an error has occured
-        reply.type("application/json");
-        reply.send('{"error":"An error has occured."}');
-      }
-      reply.type("application/json"); //not a simple string, not null, it's a Hash object
-      reply.send('{"response":"The hash has been added."}');
-    }
-    reply.type("application/json");
-    reply.send('{"error":"You need to be authenticated."}');
-  });
 
-  instance.post<GetHashesRequest>("/gethashes", async (request, reply) => {
-    const { projectID } = request.body;
-    if (request.session.authenticated) {
+      return { response: "The hash has been added" } as AddHashResponse;
+    }
+  );
+
+  instance.get<GetHashesRequest>(
+    "/projects/:projectID/hashes",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      const { projectID } = request.params;
+
       const hashes = await getHashes(
+        request.server.prisma,
         projectID,
         request.session.uid,
         request.session.isAdmin
       );
-      if (hashes === null) {
-        reply.type("application/json");
-        reply.send('{"error":"An error has occured."}');
-      }
-      reply.type("application/json");
-      reply.send(hashes);
-    }
-    reply.type("application/json");
-    reply.send('{"error":"You need to be authenticated."}');
-  });
 
-  // Returns auth variables such as user ID, authentication status, and more later such as Teams maybe or whatever
-  //lazy for now, just returning the whole session variable (without the stupid cookie array)
-  instance.get("/authstatus", (request, reply) => {
-    reply.type("application/json");
-    const { cookie, ...wocookie } = request.session;
-    const jsonString = JSON.stringify(wocookie);
-    reply.send(jsonString);
-  });
+      return { response: hashes } as GetHashesResponse;
+    }
+  );
 
   //Epic GigaCHAD route holding the whole app together. Should not be deleted under any circumstance.
   instance.get("/ping", () => "pong");
