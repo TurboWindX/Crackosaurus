@@ -103,13 +103,11 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     return { response: "Login successful" } as LoginResponse;
   });
 
-  instance.get("/auth/user", 
-    { preHandler: [checkAuth] }, 
-    (request) => {
+  instance.get("/auth/user", { preHandler: [checkAuth] }, (request) => {
     return {
       uid: request.session.uid,
       username: request.session.username,
-      isAdmin: request.session.isAdmin
+      isAdmin: request.session.isAdmin,
     };
   });
 
@@ -141,7 +139,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
       await deleteUser(request.server.prisma, username);
 
-      return { response: "The user has been obliterated into oblivion" } as DeleteUserResponse;
+      return {
+        response: "The user has been obliterated into oblivion",
+      } as DeleteUserResponse;
     }
   );
 
@@ -162,7 +162,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         request.session.isAdmin
       );
 
-      return { response: "Password has been changed" } as ChangePasswordResponse;
+      return {
+        response: "Password has been changed",
+      } as ChangePasswordResponse;
     }
   );
 
@@ -179,7 +181,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         request.session.uid
       );
 
-      return { response: "The project has been created" } as CreateProjectResponse;
+      return {
+        response: "The project has been created",
+      } as CreateProjectResponse;
     }
   );
 
@@ -198,7 +202,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         projectID
       );
 
-      return { response: "The user has been added to the project" } as AddUserToProjectResponse;
+      return {
+        response: "The user has been added to the project",
+      } as AddUserToProjectResponse;
     }
   );
 

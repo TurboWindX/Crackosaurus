@@ -112,7 +112,7 @@ export interface ChangePasswordResponse {
 }
 
 export interface AuthUserRequest {
-  Body: {}
+  Body: {};
 }
 
 export interface AuthUserResponse {

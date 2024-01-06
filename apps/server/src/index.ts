@@ -21,8 +21,8 @@ fastify.register(fastifySession, {
   secret: "One Alex is good but two is better if you ask me.",
   cookie: {
     secure: false,
-    maxAge: 24 * 60 * 60
-  }
+    maxAge: 24 * 60 * 60,
+  },
 });
 
 fastify.register(prismaPlugin);
