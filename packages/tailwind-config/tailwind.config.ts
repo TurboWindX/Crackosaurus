@@ -2,9 +2,7 @@ import type { Config } from "tailwindcss";
 
 const config: Omit<Config, "content"> = {
   darkMode: ["class"],
-  theme: {
-    
-  },
+  theme: {},
 };
 
 export default config;

@@ -20,5 +20,5 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Toaster />
       </ThemeProvider>
     </AuthProvider>
-  </React.StrictMode>,
+  </React.StrictMode>
 );

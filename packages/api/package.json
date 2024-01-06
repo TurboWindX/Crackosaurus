@@ -1,0 +1,12 @@
+{
+  "name": "@repo/api",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "license": "MIT",
+  "scripts": {},
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

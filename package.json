@@ -5,12 +5,11 @@
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
   },
   "devDependencies": {
     "@repo/eslint-config": "*",
     "@repo/typescript-config": "*",
-    "@types/bcrypt": "^5.0.2",
     "prettier": "^3.1.0",
     "turbo": "latest"
   },
@@ -21,12 +20,5 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ],
-  "dependencies": {
-    "@fastify/cookie": "^9.2.0",
-    "@fastify/mysql": "^4.2.0",
-    "@fastify/session": "^10.7.0",
-    "bcrypt": "^5.1.1",
-    "fastify": "^4.25.2"
-  }
+  ]
 }
