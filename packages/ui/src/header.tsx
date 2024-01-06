@@ -3,6 +3,8 @@ import {
   NavigationMenuItem,
   NavigationMenuLink,
   NavigationMenuList,
+  NavigationMenuTrigger,
+  NavigationMenuContent,
   navigationMenuTriggerStyle,
 } from "@repo/shadcn/components/ui/navigation-menu";
 import {
@@ -16,54 +18,47 @@ import {
   SheetTrigger,
 } from "@repo/shadcn/components/ui/sheet";
 import { Separator } from "@repo/shadcn/components/ui/separator";
-import { BabyIcon, FolderIcon, HardHatIcon } from "lucide-react";
+import { UserIcon, FolderIcon, HardHatIcon } from "lucide-react";
 
 import { Link } from "react-router-dom";
+import { useAuth } from "./auth";
 
-export interface HeaderNavButtonProps {
-  link: string;
-  text: string;
-  icon: any;
-  textHidden?: boolean;
-}
-
-export const HeaderNavButton = ({
-  link,
-  text,
-  icon,
-  textHidden,
-}: HeaderNavButtonProps) => {
-  return (
-    <NavigationMenuItem>
-      <Link to={link}>
-        <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-          <div className="grid gap-2 grid-flow-col items-center">
-            {icon}
-            <span className={textHidden ? "md:block hidden" : ""}>{text}</span>
-          </div>
-        </NavigationMenuLink>
-      </Link>
-    </NavigationMenuItem>
-  );
-};
+const LINKS = [
+  {
+    text: "Crackosaurus",
+    path: "/",
+    icon: HardHatIcon
+  },
+  {
+    text: "Projects",
+    path: "/projects",
+    icon: FolderIcon
+  }
+] as const;
 
 export const Header = () => {
+  const { username } = useAuth();
+
   return (
     <div>
       <div className="grid grid-cols-2">
         <div className="md:block hidden">
           <NavigationMenu>
             <NavigationMenuList>
-              <HeaderNavButton
-                link="/"
-                icon={<HardHatIcon />}
-                text="Crackosaurus"
-              />
-              <HeaderNavButton
-                link="/projects"
-                icon={<FolderIcon />}
-                text="Projects"
-              />
+              {
+                LINKS.map((link) => (
+                  <NavigationMenuItem>
+                    <Link to={link.path}>
+                      <NavigationMenuLink className={navigationMenuTriggerStyle()}>
+                        <div className="grid gap-2 grid-flow-col items-center">
+                          <link.icon />
+                          <span className="md:block hidden">{link.text}</span>
+                        </div>
+                      </NavigationMenuLink>
+                    </Link>
+                  </NavigationMenuItem>
+                ))
+              }
             </NavigationMenuList>
           </NavigationMenu>
         </div>
@@ -74,7 +69,7 @@ export const Header = () => {
                 <Sheet>
                   <SheetTrigger asChild>
                     <NavigationMenuLink
-                      className={navigationMenuTriggerStyle()}
+                      className={navigationMenuTriggerStyle() + " cursor-pointer"}
                     >
                       <HardHatIcon />
                     </NavigationMenuLink>
@@ -101,12 +96,16 @@ export const Header = () => {
         <div className="grid justify-end">
           <NavigationMenu>
             <NavigationMenuList>
-              <HeaderNavButton
-                link="/account"
-                icon={<BabyIcon />}
-                text="Account"
-                textHidden
-              />
+              <NavigationMenuItem>
+                <Link to="/account">
+                  <NavigationMenuLink className={navigationMenuTriggerStyle()}>
+                    <div className="grid gap-2 grid-flow-col items-center">
+                      <UserIcon />
+                      <span className="md:block hidden">{username}</span>
+                    </div>
+                  </NavigationMenuLink>
+                </Link>
+              </NavigationMenuItem>
             </NavigationMenuList>
           </NavigationMenu>
         </div>

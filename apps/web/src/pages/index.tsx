@@ -1,20 +1,37 @@
 import { createBrowserRouter } from "react-router-dom";
 
-import { HomePage } from "./HomePage.tsx";
 import { LoginPage } from "./LoginPage.tsx";
 import { ProjectsPage } from "./ProjectsPage.tsx";
+import { AuthRoute } from "@repo/ui/auth";
+import { AccountPage } from "./AccountPage.tsx";
 
 export const router = createBrowserRouter([
   {
     path: "/",
-    element: <HomePage />,
+    element: (
+      <AuthRoute>
+        <ProjectsPage />
+      </AuthRoute>
+    ),
   },
   {
     path: "/login",
     element: <LoginPage />,
   },
   {
+    path: "/account",
+    element: (
+      <AuthRoute>
+        <AccountPage />
+      </AuthRoute>
+    ),
+  },
+  {
     path: "/projects",
-    element: <ProjectsPage />,
+    element: (
+      <AuthRoute>
+        <ProjectsPage />
+      </AuthRoute>
+    ),
   },
 ]);

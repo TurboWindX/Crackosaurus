@@ -8,13 +8,15 @@ import {
   CardTitle,
 } from "@repo/shadcn/components/ui/card";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { useToast } from "@repo/shadcn/components/ui/use-toast";
+import { useAuth } from "@repo/ui/auth";
+import { useNavigate } from "react-router-dom";
 
 export const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const { toast } = useToast();
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="grid lg:grid-cols-3 grid-rows-3 h-screen">
@@ -26,9 +28,16 @@ export const LoginPage = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 gap-2">
+          <form
+            className="grid grid-cols-1 gap-2"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              await login(email, password);
+              navigate("/");
+            }}
+          >
             <Input
-              type="email"
+              type="text"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -39,18 +48,8 @@ export const LoginPage = () => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <Button
-              onClick={() =>
-                toast({
-                  variant: "destructive",
-                  title: "Uh oh! Something went wrong.",
-                  description: "Login Failed",
-                })
-              }
-            >
-              Login
-            </Button>
-          </div>
+            <Button>Login</Button>
+          </form>
         </CardContent>
       </div>
     </div>
