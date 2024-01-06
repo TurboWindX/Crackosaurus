@@ -103,7 +103,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     return { response: "Login successful" } as LoginResponse;
   });
 
-  instance.get("/auth/user", (request) => {
+  instance.get("/auth/user", 
+    { preHandler: [checkAuth] }, 
+    (request) => {
     return {
       uid: request.session.uid,
       username: request.session.username,

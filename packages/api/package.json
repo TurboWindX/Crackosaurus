@@ -5,5 +5,8 @@
     ".": "./src/index.ts"
   },
   "license": "MIT",
-  "scripts": {}
+  "scripts": {},
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
 }

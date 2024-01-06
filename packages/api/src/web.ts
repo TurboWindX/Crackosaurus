@@ -7,17 +7,20 @@ type ApiResponse<T> = Promise<T & ApiError>;
 async function apiMethod<Req, Res>(method: string, path: string, body: Req): Promise<Res> {
   const res = await fetch(`${API_URL}${path}`, {
     method,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
     },
     body: body ? JSON.stringify(body) : undefined,
   });
-
+  
   return res.json() as ApiResponse<Res>;
 }
 
 async function apiGet<Res>(path: string): ApiResponse<Res> {
-  const res = await fetch(`${API_URL}${path}`);
+  const res = await fetch(`${API_URL}${path}`, {
+    credentials: "include"
+  });
 
   return res.json() as ApiResponse<Res>;
 }

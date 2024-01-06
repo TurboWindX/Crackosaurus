@@ -3,10 +3,16 @@ import cors from "@fastify/cors";
 import { fastifySession } from "@fastify/session";
 import { fastifyCookie } from "@fastify/cookie";
 import prismaPlugin from "./prisma";
+import fs from "node:fs";
 
 import { api } from "./api";
 
-const fastify = Fastify();
+const fastify = Fastify({
+  // https: {
+  //   key: fs.readFileSync("dev.key"),
+  //   cert: fs.readFileSync("dev.crt")
+  // }
+});
 
 //Fastify session management
 fastify.register(fastifyCookie);
@@ -22,6 +28,7 @@ fastify.register(fastifySession, {
 fastify.register(prismaPlugin);
 
 fastify.register(cors, {
+  credentials: true,
   origin: (origin, cb) => {
     if (origin === undefined) {
       cb(null, true);

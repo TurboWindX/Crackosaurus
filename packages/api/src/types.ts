@@ -118,4 +118,5 @@ export interface AuthUserRequest {
 export interface AuthUserResponse {
   uid: string;
   username: string;
+  isAdmin: boolean;
 }
