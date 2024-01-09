@@ -1,6 +1,7 @@
 import { createBrowserRouter } from "react-router-dom";
 
 import { LoginPage } from "./LoginPage.tsx";
+import { ProjectPage } from "./ProjectPage.tsx";
 import { ProjectsPage } from "./ProjectsPage.tsx";
 import { AuthRoute } from "@repo/ui/auth";
 import { AccountPage } from "./AccountPage.tsx";
@@ -33,5 +34,13 @@ export const router = createBrowserRouter([
         <ProjectsPage />
       </AuthRoute>
     ),
+  },
+  {
+    path: "/projects/:projectID",
+    element: (
+      <AuthRoute>
+        <ProjectPage />
+      </AuthRoute>
+    )
   },
 ]);

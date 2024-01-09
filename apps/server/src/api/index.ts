@@ -16,10 +16,17 @@ import {
   ChangePasswordResponse,
   CreateProjectRequest,
   CreateProjectResponse,
+  DeleteProjectRequest,
+  DeleteProjectResponse,
   DeleteUserRequest,
   DeleteUserResponse,
   GetHashesRequest,
   GetHashesResponse,
+  GetProjectRequest,
+  GetProjectResponse,
+  GetProjectsRequest,
+  GetProjectsResponse,
+  HashType,
   InitRequest,
   InitResponse,
   LoginRequest,
@@ -28,7 +35,7 @@ import {
   RegisterResponse,
 } from "@repo/api";
 import { addHash, getHashes } from "./hashes";
-import { addUserToProject, createProject } from "./projects";
+import { addUserToProject, createProject, deleteProject, getUserProject, getUserProjects } from "./projects";
 import { APIError, AuthError, errorHandler } from "../errors";
 
 declare module "fastify" {
@@ -156,7 +163,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
       await changePassword(
         request.server.prisma,
-        userID,
+        parseInt(userID),
         oldPassword,
         newPassword,
         request.session.isAdmin
@@ -165,6 +172,24 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       return {
         response: "Password has been changed",
       } as ChangePasswordResponse;
+    }
+  );
+
+  instance.get<GetProjectsRequest>(
+    "/projects",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      return { response: await getUserProjects(request.server.prisma, request.session.uid) } as GetProjectsResponse;
+    }
+  );
+
+  instance.get<GetProjectRequest>(
+    "/projects/:projectID",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      const { projectID } = request.params;
+
+      return { response: await getUserProject(request.server.prisma, parseInt(projectID), request.session.uid) } as GetProjectResponse;
     }
   );
 
@@ -187,6 +212,24 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     }
   );
 
+  instance.delete<DeleteProjectRequest>(
+    "/projects/:projectID",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      const { projectID } = request.params;
+
+      await deleteProject(
+        request.server.prisma,
+        parseInt(projectID as string),
+        request.session.uid
+      );
+
+      return {
+        response: "The project has been deleted",
+      } as DeleteProjectResponse;
+    }
+  )
+
   instance.post<AddUserToProjectRequest>(
     "/projects/:projectID/users",
     { preHandler: [checkAuth] },
@@ -199,7 +242,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         request.server.prisma,
         request.session.uid,
         userID,
-        projectID
+        parseInt(projectID)
       );
 
       return {
@@ -220,7 +263,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       await addHash(
         request.server.prisma,
         request.session.uid,
-        projectID,
+        parseInt(projectID),
         hash,
         hashType,
         request.session.isAdmin
@@ -238,7 +281,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
       const hashes = await getHashes(
         request.server.prisma,
-        projectID,
+        parseInt(projectID),
         request.session.uid,
         request.session.isAdmin
       );

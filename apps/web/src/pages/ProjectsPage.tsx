@@ -1,28 +1,12 @@
 import { Badge } from "@repo/shadcn/components/ui/badge";
-import { Card } from "@repo/shadcn/components/ui/card";
 import { Input } from "@repo/shadcn/components/ui/input";
-import {
-  Table,
-  TableHeader,
-  TableRow,
-  TableHead,
-  TableBody,
-  TableCell,
-} from "@repo/shadcn/components/ui/table";
+import { TableCell } from "@repo/shadcn/components/ui/table";
 import { Header } from "@repo/ui/header";
-import { RelativeTime } from "@repo/ui/time";
-
-import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@repo/shadcn/components/ui/pagination";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { createProject, deleteProject, getProjects, CreateProjectRequest, GetProjectsResponse } from "@repo/api";
+import { useToast } from "@repo/shadcn/components/ui/use-toast";
+import { DataTable } from "@repo/ui/data";
 
 export interface ProjectStatusBadgeProps {
   status: "complete" | "crack" | "open";
@@ -65,97 +49,95 @@ export const ProjectStatusBadge = ({ status }: ProjectStatusBadgeProps) => {
   }
 };
 
-export interface Project {
-  name: string;
-  collaborators: string[];
-  status: ProjectStatusBadgeProps["status"];
-  lastModified: number;
-}
-
-export const ProjectRow = ({
-  name,
-  collaborators,
-  status,
-  lastModified,
-}: Project) => {
-  const navigate = useNavigate();
-
-  return (
-    <TableRow
-      className="cursor-pointer"
-      onClick={() => navigate(`/projects/${name}`)}
-    >
-      <TableCell className="font-medium">{name}</TableCell>
-      <TableCell className="hidden lg:!table-cell">
-        <div className="grid gap-2 grid-flow-col max-w-max">
-          {collaborators.map((collaborator) => (
-            <Badge variant="secondary">{collaborator}</Badge>
-          ))}
-        </div>
-      </TableCell>
-      <TableCell>
-        <ProjectStatusBadge status={status} />
-      </TableCell>
-      <TableCell className="hidden sm:!table-cell">
-        <RelativeTime epoch={lastModified} />
-      </TableCell>
-    </TableRow>
-  );
-};
-
 export const ProjectsPage = () => {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  const [projects, setProjects] = useState<GetProjectsResponse["response"]>([]);
+  const [addProject, setAddProject] = useState<CreateProjectRequest["Body"]>({ projectName: "" });
+
+  async function handleResponse({ response, error }: { response?: string, error?: string }): Promise<boolean> {
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Failed",
+        description: error,
+      });
+
+      return false;
+    }
+
+    await refreshProjects();
+
+    toast({
+      variant: "default",
+      title: "Success",
+      description: response,
+    });
+
+    return true;
+  }
+
+  async function onAdd() {
+    return await handleResponse(await createProject(addProject));
+  }
+
+  async function onRemove(projects: GetProjectsResponse["response"]) {
+    let res = { response: "", error: "" };
+    for (let project of projects) {
+      const result = await deleteProject(project.PID);
+
+      if (!res.error) res = result; 
+    }
+
+    return await handleResponse(res);
+  }
+
+  async function refreshProjects() {
+    const res = await getProjects();
+
+    if (res.response) setProjects(res.response);
+  }
+
+  useEffect(() => {
+    refreshProjects();
+  }, []);
 
   return (
     <div>
       <Header />
-      <div className="grid gap-4 p-4">
-        <Input placeholder="Search" />
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Project</TableHead>
-                <TableHead className="hidden lg:!table-cell">
-                  Collaborators
-                </TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="hidden sm:!table-cell">
-                  Last Modified
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {projects.map((project) => (
-                <ProjectRow {...project} />
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-        <Pagination className="!hidden">
-          <PaginationContent>
-            <PaginationItem>
-              <PaginationPrevious href="#" />
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationLink href="#" isActive>
-                1
-              </PaginationLink>
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationLink href="#">2</PaginationLink>
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationLink href="#">3</PaginationLink>
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationEllipsis />
-            </PaginationItem>
-            <PaginationItem>
-              <PaginationNext href="#" />
-            </PaginationItem>
-          </PaginationContent>
-        </Pagination>
+      <div className="p-4">
+        <DataTable
+          typeSingular="Project"
+          values={projects}
+          head={["Project", "Collaborators"]}
+          valueKey={({ PID }) => PID}
+          row={({ PID, name, members }) => [
+            <TableCell className="font-medium cursor-pointer" onClick={() => navigate(`/projects/${PID}`)}>{name}</TableCell>,
+            <TableCell className="cursor-pointer" onClick={() => navigate(`/projects/${PID}`)}>
+              <div className="grid gap-2 grid-flow-col max-w-max">
+                {members.map((member) => (
+                  <Badge key={member.ID} variant="secondary">{member.username}</Badge>
+                ))}
+              </div>
+            </TableCell>
+          ]}
+          searchFilter={
+            (project, search) => 
+            project.name.toLowerCase().includes(search.toLowerCase())
+            || project.members.some((member) => member.username.toLowerCase().includes(search.toLowerCase()))
+          }
+          addDialog={
+            <Input
+              placeholder="Name"
+              value={addProject.projectName}
+              onChange={(e) => setAddProject({ ...addProject, projectName: e.target.value })}
+            />
+          }
+          onAdd={onAdd}
+          noRemove
+          onRemove={onRemove}
+        />
       </div>
     </div>
   );
