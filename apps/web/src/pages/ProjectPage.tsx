@@ -91,12 +91,12 @@ export const ProjectPage = () => {
     return (
       <div>
         <Header />
-        <div className="p-4 grid gap-8">
+        <div className="grid gap-8 p-4">
           <div className="grid grid-cols-2 gap-4">
             <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
               {project.name}
             </span>
-            <div className="grid gap-4 justify-end">
+            <div className="grid justify-end gap-4">
               <div className="w-max">
                 <DrawerDialog
                   title="Remove Project"
@@ -104,7 +104,7 @@ export const ProjectPage = () => {
                   setOpen={setRemoveOpen}
                   trigger={
                     <Button variant="outline">
-                      <div className="grid gap-2 grid-flow-col items-center">
+                      <div className="grid grid-flow-col items-center gap-2">
                         <TrashIcon />
                         <span>Remove</span>
                       </div>

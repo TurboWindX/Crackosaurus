@@ -19,8 +19,8 @@ export const LoginPage = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="grid lg:grid-cols-3 grid-rows-3 h-screen">
-      <div className="lg:col-start-2 row-start-2">
+    <div className="grid h-screen grid-rows-3 lg:grid-cols-3">
+      <div className="row-start-2 lg:col-start-2">
         <CardHeader>
           <CardTitle className="text-center">Crackosaurus</CardTitle>
           <CardDescription className="text-center">

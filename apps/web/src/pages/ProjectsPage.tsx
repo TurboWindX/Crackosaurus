@@ -129,7 +129,7 @@ export const ProjectsPage = () => {
           valueKey={({ PID }) => PID}
           row={({ PID, name, members }) => [
             <TableCell
-              className="font-medium cursor-pointer"
+              className="cursor-pointer font-medium"
               onClick={() => navigate(`/projects/${PID}`)}
             >
               {name}
@@ -138,7 +138,7 @@ export const ProjectsPage = () => {
               className="cursor-pointer"
               onClick={() => navigate(`/projects/${PID}`)}
             >
-              <div className="grid gap-2 grid-flow-col max-w-max">
+              <div className="grid max-w-max grid-flow-col gap-2">
                 {members.map((member) => (
                   <Badge key={member.ID} variant="secondary">
                     {member.username}

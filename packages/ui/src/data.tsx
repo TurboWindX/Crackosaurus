@@ -38,7 +38,7 @@ export const AddDialog = ({
       setOpen={setOpen}
       trigger={
         <Button variant="outline">
-          <div className="grid gap-2 grid-flow-col items-center">
+          <div className="grid grid-flow-col items-center gap-2">
             <PlusIcon />
             <span>Add</span>
           </div>
@@ -81,7 +81,7 @@ export const RemoveDialog = ({
       setOpen={setOpen}
       trigger={
         <Button variant="outline" disabled={count === 0}>
-          <div className="grid gap-2 grid-flow-col items-center">
+          <div className="grid grid-flow-col items-center gap-2">
             <TrashIcon />
             <span>Remove</span>
           </div>
@@ -156,7 +156,7 @@ export function DataTable<T>({
         />
       )}
       {hasButtons && (
-        <div className="grid gap-4 w-max grid-flow-col">
+        <div className="grid w-max grid-flow-col gap-4">
           {hasAdd && (
             <AddDialog
               typeSingular={typeSingular}
@@ -184,7 +184,7 @@ export function DataTable<T>({
         </div>
       )}
       {searchValues.length === 0 ? (
-        <Card className="p-4 grid justify-center">No {plural} Found</Card>
+        <Card className="grid justify-center p-4">No {plural} Found</Card>
       ) : (
         <Card>
           <Table>
