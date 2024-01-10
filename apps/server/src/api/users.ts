@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
+
 import { APIError, AuthError } from "../errors";
 
 export interface AuthenticatedUser {

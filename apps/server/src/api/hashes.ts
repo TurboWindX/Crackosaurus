@@ -1,6 +1,8 @@
-import { Hash, User, PrismaClient } from "@prisma/client";
-import { APIError } from "../errors";
+import { Hash, PrismaClient, User } from "@prisma/client";
+
 import { HASH_TYPES } from "@repo/api";
+
+import { APIError } from "../errors";
 
 //take in projectID+userID and return hashes associated to the project if user is part of project or admin
 export async function getHashes(

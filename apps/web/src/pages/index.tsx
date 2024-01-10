@@ -1,10 +1,11 @@
 import { createBrowserRouter } from "react-router-dom";
 
+import { AuthRoute } from "@repo/ui/auth";
+
+import { AccountPage } from "./AccountPage.tsx";
 import { LoginPage } from "./LoginPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
 import { ProjectsPage } from "./ProjectsPage.tsx";
-import { AuthRoute } from "@repo/ui/auth";
-import { AccountPage } from "./AccountPage.tsx";
 
 export const router = createBrowserRouter([
   {
@@ -41,6 +42,6 @@ export const router = createBrowserRouter([
       <AuthRoute>
         <ProjectPage />
       </AuthRoute>
-    )
+    ),
   },
 ]);

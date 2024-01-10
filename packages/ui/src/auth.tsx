@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { AuthUserResponse, authUser, login } from "@repo/api";
 import { Navigate } from "react-router-dom";
+
+import { AuthUserResponse, authUser, login } from "@repo/api";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
 
 export interface AuthInterface {

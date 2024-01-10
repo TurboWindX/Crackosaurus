@@ -1,6 +1,10 @@
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@repo/shadcn/components/ui/avatar";
 import { useAuth } from "@repo/ui/auth";
 import { Header } from "@repo/ui/header";
-import { Avatar, AvatarFallback, AvatarImage } from "@repo/shadcn/components/ui/avatar"
 
 export interface ProjectStatusBadgeProps {
   status: "complete" | "crack" | "open";

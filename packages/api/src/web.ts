@@ -1,4 +1,17 @@
-import { AddHashRequest, AddHashResponse, ApiError, AuthUserResponse, CreateProjectRequest, CreateProjectResponse, DeleteProjectResponse, GetProjectResponse, GetProjectsResponse, HashType, LoginRequest, LoginResponse } from ".";
+import {
+  AddHashRequest,
+  AddHashResponse,
+  ApiError,
+  AuthUserResponse,
+  CreateProjectRequest,
+  CreateProjectResponse,
+  DeleteProjectResponse,
+  GetProjectResponse,
+  GetProjectsResponse,
+  HashType,
+  LoginRequest,
+  LoginResponse,
+} from ".";
 
 const API_URL = "http://localhost:8000/api";
 
@@ -51,18 +64,25 @@ export async function getProject(id: number): ApiResponse<GetProjectResponse> {
   return apiGet(`/projects/${id}`);
 }
 
-export async function getProjects(): ApiResponse<GetProjectsResponse>  {
+export async function getProjects(): ApiResponse<GetProjectsResponse> {
   return apiGet("/projects");
 }
 
-export async function createProject(req: CreateProjectRequest["Body"]): ApiResponse<CreateProjectResponse> {
+export async function createProject(
+  req: CreateProjectRequest["Body"]
+): ApiResponse<CreateProjectResponse> {
   return apiPost("/projects", req);
 }
 
-export async function deleteProject(id: number): ApiResponse<DeleteProjectResponse> {
+export async function deleteProject(
+  id: number
+): ApiResponse<DeleteProjectResponse> {
   return apiDelete(`/projects/${id}`);
 }
 
-export async function addHashToProject(projectID: number, req: AddHashRequest["Body"]): ApiResponse<AddHashResponse> {
+export async function addHashToProject(
+  projectID: number,
+  req: AddHashRequest["Body"]
+): ApiResponse<AddHashResponse> {
   return apiPost(`/projects/${projectID}/hashes`, req);
 }

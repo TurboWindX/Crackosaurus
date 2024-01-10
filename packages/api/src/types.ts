@@ -1,5 +1,5 @@
 export const HASH_TYPES = ["NTLM", "bcrypt"] as const;
-export type HashType = typeof HASH_TYPES[number];
+export type HashType = (typeof HASH_TYPES)[number];
 
 export interface ApiError {
   error: string;
@@ -67,7 +67,7 @@ export interface GetProjectRequest {
   Params: {
     projectID: string;
   };
-};
+}
 
 export interface GetProjectResponse {
   response: {
@@ -83,12 +83,12 @@ export interface GetProjectResponse {
       hashType: string;
       cracked: string | null;
     }[];
-  }
-};
+  };
+}
 
 export interface GetProjectsRequest {
   Body: {};
-};
+}
 
 export interface GetProjectsResponse {
   response: {
@@ -99,7 +99,7 @@ export interface GetProjectsResponse {
       username: string;
     }[];
   }[];
-};
+}
 
 export interface CreateProjectRequest {
   Body: {

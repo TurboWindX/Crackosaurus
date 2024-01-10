@@ -1,12 +1,16 @@
+import { FolderIcon, HardHatIcon, UserIcon } from "lucide-react";
+import { Link } from "react-router-dom";
+
 import {
   NavigationMenu,
+  NavigationMenuContent,
   NavigationMenuItem,
   NavigationMenuLink,
   NavigationMenuList,
   NavigationMenuTrigger,
-  NavigationMenuContent,
   navigationMenuTriggerStyle,
 } from "@repo/shadcn/components/ui/navigation-menu";
+import { Separator } from "@repo/shadcn/components/ui/separator";
 import {
   Sheet,
   SheetClose,
@@ -17,23 +21,20 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@repo/shadcn/components/ui/sheet";
-import { Separator } from "@repo/shadcn/components/ui/separator";
-import { UserIcon, FolderIcon, HardHatIcon } from "lucide-react";
 
-import { Link } from "react-router-dom";
 import { useAuth } from "./auth";
 
 const LINKS = [
   {
     text: "Crackosaurus",
     path: "/",
-    icon: HardHatIcon
+    icon: HardHatIcon,
   },
   {
     text: "Projects",
     path: "/projects",
-    icon: FolderIcon
-  }
+    icon: FolderIcon,
+  },
 ] as const;
 
 export const Header = () => {
@@ -45,20 +46,20 @@ export const Header = () => {
         <div className="md:block hidden">
           <NavigationMenu>
             <NavigationMenuList>
-              {
-                LINKS.map((link) => (
-                  <NavigationMenuItem>
-                    <Link to={link.path}>
-                      <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-                        <div className="grid gap-2 grid-flow-col items-center">
-                          <link.icon />
-                          <span className="md:block hidden">{link.text}</span>
-                        </div>
-                      </NavigationMenuLink>
-                    </Link>
-                  </NavigationMenuItem>
-                ))
-              }
+              {LINKS.map((link) => (
+                <NavigationMenuItem>
+                  <Link to={link.path}>
+                    <NavigationMenuLink
+                      className={navigationMenuTriggerStyle()}
+                    >
+                      <div className="grid gap-2 grid-flow-col items-center">
+                        <link.icon />
+                        <span className="md:block hidden">{link.text}</span>
+                      </div>
+                    </NavigationMenuLink>
+                  </Link>
+                </NavigationMenuItem>
+              ))}
             </NavigationMenuList>
           </NavigationMenu>
         </div>
@@ -69,7 +70,9 @@ export const Header = () => {
                 <Sheet>
                   <SheetTrigger asChild>
                     <NavigationMenuLink
-                      className={navigationMenuTriggerStyle() + " cursor-pointer"}
+                      className={
+                        navigationMenuTriggerStyle() + " cursor-pointer"
+                      }
                     >
                       <HardHatIcon />
                     </NavigationMenuLink>

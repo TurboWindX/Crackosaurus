@@ -1,11 +1,11 @@
-import Fastify from "fastify";
+import { fastifyCookie } from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { fastifySession } from "@fastify/session";
-import { fastifyCookie } from "@fastify/cookie";
-import prismaPlugin from "./prisma";
+import Fastify from "fastify";
 import fs from "node:fs";
 
 import { api } from "./api";
+import prismaPlugin from "./prisma";
 
 const fastify = Fastify({
   // https: {

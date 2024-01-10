@@ -1,6 +1,7 @@
 import { Hash, PrismaClient, Project, User } from "@prisma/client";
-import { APIError } from "../errors";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
+
+import { APIError } from "../errors";
 
 export async function addUserToProject(
   prisma: PrismaClient,
@@ -77,7 +78,7 @@ export async function createProject(
 export async function getUserProjects(
   prisma: PrismaClient,
   userID: number
-): Promise<(Project | { members: ({ ID: number, username: string })[] })[]> {
+): Promise<(Project | { members: { ID: number; username: string }[] })[]> {
   try {
     return await prisma.project.findMany({
       select: {
@@ -86,17 +87,17 @@ export async function getUserProjects(
         members: {
           select: {
             ID: true,
-            username: true
-          }
-        }
+            username: true,
+          },
+        },
       },
       where: {
         members: {
           some: {
-            ID: userID
-          }
+            ID: userID,
+          },
         },
-      }
+      },
     });
   } catch (err) {
     throw new APIError("Project error");
@@ -107,7 +108,16 @@ export async function getUserProject(
   prisma: PrismaClient,
   projectID: number,
   currentUserID: number
-): Promise<Project & { members: { ID: number, username: string }[] } & { hashes: { HID: number, hash: string, hashType: string, cracked: string | null }[] }> {
+): Promise<
+  Project & { members: { ID: number; username: string }[] } & {
+    hashes: {
+      HID: number;
+      hash: string;
+      hashType: string;
+      cracked: string | null;
+    }[];
+  }
+> {
   try {
     return await prisma.project.findFirstOrThrow({
       select: {
@@ -116,26 +126,26 @@ export async function getUserProject(
         members: {
           select: {
             ID: true,
-            username: true
-          }
+            username: true,
+          },
         },
         hashes: {
           select: {
             HID: true,
             hash: true,
             hashType: true,
-            cracked: true
-          }
-        }
+            cracked: true,
+          },
+        },
       },
       where: {
         PID: projectID,
         members: {
           some: {
-            ID: currentUserID
-          }
+            ID: currentUserID,
+          },
         },
-      }
+      },
     });
   } catch (err) {
     throw new APIError("Project error");
@@ -153,11 +163,11 @@ export async function deleteProject(
         PID: projectID,
         members: {
           some: {
-            ID: userID
-          }
+            ID: userID,
+          },
         },
-      }
-    })
+      },
+    });
   } catch (err) {
     throw new APIError("Project error");
   }

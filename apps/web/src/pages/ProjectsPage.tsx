@@ -1,12 +1,19 @@
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+import {
+  CreateProjectRequest,
+  GetProjectsResponse,
+  createProject,
+  deleteProject,
+  getProjects,
+} from "@repo/api";
 import { Badge } from "@repo/shadcn/components/ui/badge";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { TableCell } from "@repo/shadcn/components/ui/table";
-import { Header } from "@repo/ui/header";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { createProject, deleteProject, getProjects, CreateProjectRequest, GetProjectsResponse } from "@repo/api";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
 import { DataTable } from "@repo/ui/data";
+import { Header } from "@repo/ui/header";
 
 export interface ProjectStatusBadgeProps {
   status: "complete" | "crack" | "open";
@@ -54,9 +61,17 @@ export const ProjectsPage = () => {
   const { toast } = useToast();
 
   const [projects, setProjects] = useState<GetProjectsResponse["response"]>([]);
-  const [addProject, setAddProject] = useState<CreateProjectRequest["Body"]>({ projectName: "" });
+  const [addProject, setAddProject] = useState<CreateProjectRequest["Body"]>({
+    projectName: "",
+  });
 
-  async function handleResponse({ response, error }: { response?: string, error?: string }): Promise<boolean> {
+  async function handleResponse({
+    response,
+    error,
+  }: {
+    response?: string;
+    error?: string;
+  }): Promise<boolean> {
     if (error) {
       toast({
         variant: "destructive",
@@ -87,7 +102,7 @@ export const ProjectsPage = () => {
     for (let project of projects) {
       const result = await deleteProject(project.PID);
 
-      if (!res.error) res = result; 
+      if (!res.error) res = result;
     }
 
     return await handleResponse(res);
@@ -113,25 +128,38 @@ export const ProjectsPage = () => {
           head={["Project", "Collaborators"]}
           valueKey={({ PID }) => PID}
           row={({ PID, name, members }) => [
-            <TableCell className="font-medium cursor-pointer" onClick={() => navigate(`/projects/${PID}`)}>{name}</TableCell>,
-            <TableCell className="cursor-pointer" onClick={() => navigate(`/projects/${PID}`)}>
+            <TableCell
+              className="font-medium cursor-pointer"
+              onClick={() => navigate(`/projects/${PID}`)}
+            >
+              {name}
+            </TableCell>,
+            <TableCell
+              className="cursor-pointer"
+              onClick={() => navigate(`/projects/${PID}`)}
+            >
               <div className="grid gap-2 grid-flow-col max-w-max">
                 {members.map((member) => (
-                  <Badge key={member.ID} variant="secondary">{member.username}</Badge>
+                  <Badge key={member.ID} variant="secondary">
+                    {member.username}
+                  </Badge>
                 ))}
               </div>
-            </TableCell>
+            </TableCell>,
           ]}
-          searchFilter={
-            (project, search) => 
-            project.name.toLowerCase().includes(search.toLowerCase())
-            || project.members.some((member) => member.username.toLowerCase().includes(search.toLowerCase()))
+          searchFilter={(project, search) =>
+            project.name.toLowerCase().includes(search.toLowerCase()) ||
+            project.members.some((member) =>
+              member.username.toLowerCase().includes(search.toLowerCase())
+            )
           }
           addDialog={
             <Input
               placeholder="Name"
               value={addProject.projectName}
-              onChange={(e) => setAddProject({ ...addProject, projectName: e.target.value })}
+              onChange={(e) =>
+                setAddProject({ ...addProject, projectName: e.target.value })
+              }
             />
           }
           onAdd={onAdd}

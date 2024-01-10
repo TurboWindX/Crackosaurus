@@ -1,12 +1,6 @@
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
-import {
-  getAuthenticatedUser,
-  AuthenticatedUser,
-  createUser,
-  deleteUser,
-  changePassword,
-  checkNoUsers,
-} from "./users"; // Import the checkCreds function
+
+// Import the checkCreds function
 import {
   AddHashRequest,
   AddHashResponse,
@@ -34,9 +28,24 @@ import {
   RegisterRequest,
   RegisterResponse,
 } from "@repo/api";
-import { addHash, getHashes } from "./hashes";
-import { addUserToProject, createProject, deleteProject, getUserProject, getUserProjects } from "./projects";
+
 import { APIError, AuthError, errorHandler } from "../errors";
+import { addHash, getHashes } from "./hashes";
+import {
+  addUserToProject,
+  createProject,
+  deleteProject,
+  getUserProject,
+  getUserProjects,
+} from "./projects";
+import {
+  AuthenticatedUser,
+  changePassword,
+  checkNoUsers,
+  createUser,
+  deleteUser,
+  getAuthenticatedUser,
+} from "./users";
 
 declare module "fastify" {
   interface Session {
@@ -179,7 +188,12 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     "/projects",
     { preHandler: [checkAuth] },
     async (request) => {
-      return { response: await getUserProjects(request.server.prisma, request.session.uid) } as GetProjectsResponse;
+      return {
+        response: await getUserProjects(
+          request.server.prisma,
+          request.session.uid
+        ),
+      } as GetProjectsResponse;
     }
   );
 
@@ -189,7 +203,13 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { projectID } = request.params;
 
-      return { response: await getUserProject(request.server.prisma, parseInt(projectID), request.session.uid) } as GetProjectResponse;
+      return {
+        response: await getUserProject(
+          request.server.prisma,
+          parseInt(projectID),
+          request.session.uid
+        ),
+      } as GetProjectResponse;
     }
   );
 
@@ -228,7 +248,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         response: "The project has been deleted",
       } as DeleteProjectResponse;
     }
-  )
+  );
 
   instance.post<AddUserToProjectRequest>(
     "/projects/:projectID/users",
