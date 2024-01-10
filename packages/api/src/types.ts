@@ -1,3 +1,6 @@
+export const HASH_TYPES = ["NTLM", "bcrypt"] as const;
+export type HashType = typeof HASH_TYPES[number];
+
 export interface ApiError {
   error: string;
 }
@@ -48,7 +51,7 @@ export interface DeleteUserResponse {
 
 export interface AddHashRequest {
   Params: {
-    projectID: number;
+    projectID: string;
   };
   Body: {
     hash: string;
@@ -60,6 +63,44 @@ export interface AddHashResponse {
   response: string;
 }
 
+export interface GetProjectRequest {
+  Params: {
+    projectID: string;
+  };
+};
+
+export interface GetProjectResponse {
+  response: {
+    PID: number;
+    name: string;
+    members: {
+      ID: number;
+      username: string;
+    }[];
+    hashes: {
+      HID: number;
+      hash: string;
+      hashType: string;
+      cracked: string | null;
+    }[];
+  }
+};
+
+export interface GetProjectsRequest {
+  Body: {};
+};
+
+export interface GetProjectsResponse {
+  response: {
+    PID: number;
+    name: string;
+    members: {
+      ID: number;
+      username: string;
+    }[];
+  }[];
+};
+
 export interface CreateProjectRequest {
   Body: {
     projectName: string;
@@ -70,9 +111,19 @@ export interface CreateProjectResponse {
   response: string;
 }
 
+export interface DeleteProjectRequest {
+  Params: {
+    projectID: string;
+  };
+}
+
+export interface DeleteProjectResponse {
+  response: string;
+}
+
 export interface AddUserToProjectRequest {
   Params: {
-    projectID: number;
+    projectID: string;
   };
   Body: {
     userID: number;
@@ -85,7 +136,7 @@ export interface AddUserToProjectResponse {
 
 export interface GetHashesRequest {
   Params: {
-    projectID: number;
+    projectID: string;
   };
 }
 
@@ -99,7 +150,7 @@ export interface GetHashesResponse {
 
 export interface ChangePasswordRequest {
   Params: {
-    userID: number;
+    userID: string;
   };
   Body: {
     oldPassword: string;

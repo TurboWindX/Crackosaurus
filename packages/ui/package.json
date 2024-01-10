@@ -7,6 +7,8 @@
   "exports": {
     "./index.css": "./dist/index.css",
     "./auth": "./src/auth.tsx",
+    "./data": "./src/data.tsx",
+    "./dialog": "./src/dialog.tsx",
     "./header": "./src/header.tsx",
     "./time": "./src/time.tsx"
   },

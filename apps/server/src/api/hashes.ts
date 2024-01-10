@@ -1,5 +1,6 @@
 import { Hash, User, PrismaClient } from "@prisma/client";
 import { APIError } from "../errors";
+import { HASH_TYPES } from "@repo/api";
 
 //take in projectID+userID and return hashes associated to the project if user is part of project or admin
 export async function getHashes(
@@ -34,9 +35,6 @@ export async function getHashes(
   return project.hashes;
 }
 
-// TODO: Config for these hash types.
-export const ALLOWED_HASH_TYPES = ["NTLM", "bcrypt"];
-
 //takes in a userID+projectID, add a hash to the project if user is part of the project or admin.
 //If the hash is already in the database, it either returns the cracked value if is cracked or null if it is not cracked
 export const addHash = async (
@@ -47,7 +45,7 @@ export const addHash = async (
   hashType: string,
   isAdmin: boolean
 ): Promise<Hash> => {
-  if (!ALLOWED_HASH_TYPES.includes(hashType))
+  if (!HASH_TYPES.includes(hashType as any))
     throw new APIError(`Invalid hash type: ${hashType}`);
 
   if (!isAdmin) {
