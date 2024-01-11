@@ -17,7 +17,7 @@ import {
 import { DrawerDialog } from "./dialog";
 
 export interface AddDialogProps {
-  typeSingular: string;
+  type: string;
   open: boolean;
   setOpen: (state: boolean) => void;
   onSubmit?: () => void;
@@ -25,7 +25,7 @@ export interface AddDialogProps {
 }
 
 export const AddDialog = ({
-  typeSingular,
+  type,
   open,
   setOpen,
   onSubmit,
@@ -33,7 +33,7 @@ export const AddDialog = ({
 }: AddDialogProps) => {
   return (
     <DrawerDialog
-      title={`Add ${typeSingular}`}
+      title={`Add ${type}`}
       open={open}
       setOpen={setOpen}
       trigger={
@@ -60,7 +60,8 @@ export const AddDialog = ({
 };
 
 export interface RemoveDialogProps {
-  typePlural: string;
+  type: string;
+  pluralSuffix: string;
   open: boolean;
   count: number;
   setOpen: (state: boolean) => void;
@@ -68,7 +69,8 @@ export interface RemoveDialogProps {
 }
 
 export const RemoveDialog = ({
-  typePlural,
+  type,
+  pluralSuffix,
   open,
   setOpen,
   count,
@@ -76,7 +78,7 @@ export const RemoveDialog = ({
 }: RemoveDialogProps) => {
   return (
     <DrawerDialog
-      title={`Remove ${typePlural}`}
+      title={`Remove ${type}${pluralSuffix}`}
       open={open}
       setOpen={setOpen}
       trigger={
@@ -90,7 +92,7 @@ export const RemoveDialog = ({
     >
       <div className="grid gap-4">
         <span>
-          Do you want to remove {count} {typePlural.toLowerCase()}?
+          Do you want to remove {count} {type.toLowerCase()}({pluralSuffix})?
         </span>
         <Button onClick={() => onSubmit?.()}>Remove</Button>
       </div>
@@ -99,8 +101,8 @@ export const RemoveDialog = ({
 };
 
 export interface DataTableProps<T> {
-  typeSingular: string;
-  typePlural?: string;
+  type: string;
+  pluralSuffix?: string;
   values: T[];
   head: string[];
   row: (value: T) => any[];
@@ -114,8 +116,8 @@ export interface DataTableProps<T> {
 }
 
 export function DataTable<T>({
-  typeSingular,
-  typePlural,
+  type,
+  pluralSuffix,
   onAdd,
   onRemove,
   row,
@@ -127,7 +129,7 @@ export function DataTable<T>({
   noAdd,
   noRemove,
 }: DataTableProps<T>) {
-  const plural = typePlural ?? `${typeSingular}s`;
+  const plural = `${type}${pluralSuffix || "s"}`;
 
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
@@ -159,7 +161,7 @@ export function DataTable<T>({
         <div className="grid w-max grid-flow-col gap-4">
           {hasAdd && (
             <AddDialog
-              typeSingular={typeSingular}
+              type={type}
               open={addDialogOpen}
               setOpen={setAddDialogOpen}
               onSubmit={async () => {
@@ -171,7 +173,8 @@ export function DataTable<T>({
           )}
           {hasRemove && (
             <RemoveDialog
-              typePlural={plural}
+              type={type}
+              pluralSuffix={pluralSuffix || "s"}
               open={removeDialogOpen}
               setOpen={setRemoveDialogOpen}
               count={selectedValues.length}
@@ -183,39 +186,48 @@ export function DataTable<T>({
           )}
         </div>
       )}
-      {searchValues.length === 0 ? (
-        <Card className="grid justify-center p-4">No {plural} Found</Card>
-      ) : (
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                {hasSelect && (
-                  <TableHead className="w-[50px]">
-                    <Checkbox
-                      checked={searchValues.length === selectedValues.length}
-                      onCheckedChange={(state) => {
-                        const val = !!state.valueOf();
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {hasSelect && (
+                <TableHead className="w-[50px]">
+                  <Checkbox
+                    checked={
+                      searchValues.length === selectedValues.length &&
+                      searchValues.length > 0
+                    }
+                    onCheckedChange={(state) => {
+                      const val = !!state.valueOf();
 
-                        setSelects({
-                          ...selects,
-                          ...Object.fromEntries(
-                            searchValues.map(
-                              (value) => [valueKey(value), val] as const
-                            )
-                          ),
-                        });
-                      }}
-                    />
-                  </TableHead>
-                )}
-                {head.map((label) => (
-                  <TableHead>{label}</TableHead>
+                      setSelects({
+                        ...selects,
+                        ...Object.fromEntries(
+                          searchValues.map(
+                            (value) => [valueKey(value), val] as const
+                          )
+                        ),
+                      });
+                    }}
+                  />
+                </TableHead>
+              )}
+              {head.map((label) => (
+                <TableHead>{label}</TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {searchValues.length === 0 ? (
+              <TableRow key="none">
+                {hasSelect && <TableCell />}
+                <TableCell>No {plural}</TableCell>
+                {new Array(head.length - 1).fill(0).map((_) => (
+                  <TableCell />
                 ))}
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {searchValues.map((value) => (
+            ) : (
+              searchValues.map((value) => (
                 <TableRow key={valueKey(value)}>
                   {hasSelect && (
                     <TableCell>
@@ -232,11 +244,11 @@ export function DataTable<T>({
                   )}
                   {row(value)}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </Card>
-      )}
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </Card>
     </div>
   );
 }

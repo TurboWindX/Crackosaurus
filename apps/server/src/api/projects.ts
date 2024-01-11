@@ -1,4 +1,4 @@
-import { Hash, PrismaClient, Project, User } from "@prisma/client";
+import { PrismaClient, Project } from "@prisma/client";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 
 import { APIError } from "../errors";
@@ -7,18 +7,25 @@ export async function addUserToProject(
   prisma: PrismaClient,
   currentUserId: number,
   userIdToAdd: number,
-  projectId: number
+  projectId: number,
+  isAdmin: boolean
 ): Promise<void> {
-  let projectIfMemberIsContained;
   try {
-    projectIfMemberIsContained = await prisma.project.findUnique({
+    await prisma.project.update({
       where: {
         PID: projectId,
+        members: isAdmin
+          ? undefined
+          : {
+              some: {
+                ID: currentUserId,
+              },
+            },
       },
-      select: {
+      data: {
         members: {
-          where: {
-            ID: currentUserId,
+          connect: {
+            ID: userIdToAdd,
           },
         },
       },
@@ -26,19 +33,31 @@ export async function addUserToProject(
   } catch (err) {
     throw new APIError("Project error");
   }
+}
 
-  if (projectIfMemberIsContained !== undefined)
-    throw new APIError("User not part of project");
-
+export async function removeUserFromProject(
+  prisma: PrismaClient,
+  currentUserId: number,
+  userIdToRemove: number,
+  projectId: number,
+  isAdmin: boolean
+): Promise<void> {
   try {
     await prisma.project.update({
       where: {
         PID: projectId,
+        members: isAdmin
+          ? undefined
+          : {
+              some: {
+                ID: currentUserId,
+              },
+            },
       },
       data: {
         members: {
-          connect: {
-            ID: userIdToAdd,
+          disconnect: {
+            ID: userIdToRemove,
           },
         },
       },
@@ -77,7 +96,8 @@ export async function createProject(
 
 export async function getUserProjects(
   prisma: PrismaClient,
-  userID: number
+  userID: number,
+  isAdmin: boolean
 ): Promise<(Project | { members: { ID: number; username: string }[] })[]> {
   try {
     return await prisma.project.findMany({
@@ -91,13 +111,15 @@ export async function getUserProjects(
           },
         },
       },
-      where: {
-        members: {
-          some: {
-            ID: userID,
+      where: isAdmin
+        ? undefined
+        : {
+            members: {
+              some: {
+                ID: userID,
+              },
+            },
           },
-        },
-      },
     });
   } catch (err) {
     throw new APIError("Project error");
@@ -107,7 +129,8 @@ export async function getUserProjects(
 export async function getUserProject(
   prisma: PrismaClient,
   projectID: number,
-  currentUserID: number
+  currentUserID: number,
+  isAdmin: boolean
 ): Promise<
   Project & { members: { ID: number; username: string }[] } & {
     hashes: {
@@ -140,14 +163,22 @@ export async function getUserProject(
       },
       where: {
         PID: projectID,
-        members: {
-          some: {
-            ID: currentUserID,
-          },
-        },
+        members: isAdmin
+          ? undefined
+          : {
+              some: {
+                ID: currentUserID,
+              },
+            },
       },
     });
   } catch (err) {
+    if (err instanceof PrismaClientKnownRequestError) {
+      if (err.code === "P2025") {
+        throw new APIError("Project not found");
+      }
+    }
+
     throw new APIError("Project error");
   }
 }

@@ -11,74 +11,61 @@ export async function getHashes(
   userId: number,
   isAdmin: boolean
 ): Promise<Hash[]> {
-  let project;
   try {
-    project = await prisma.project.findUnique({
+    const project = await prisma.project.findFirstOrThrow({
       where: {
         PID: projectId,
+        members: isAdmin
+          ? undefined
+          : {
+              some: {
+                ID: userId,
+              },
+            },
       },
       include: {
-        members: true,
         hashes: true,
       },
     });
+
+    return project.hashes;
   } catch (err) {
     throw new APIError("Project error");
   }
-
-  if (!project) throw new APIError("Project not found");
-
-  const isUserInProject = project.members.some(
-    (member) => member.ID === userId
-  );
-  if (!isUserInProject && !isAdmin)
-    throw new APIError("User is not part of the project");
-
-  return project.hashes;
 }
 
 //takes in a userID+projectID, add a hash to the project if user is part of the project or admin.
 //If the hash is already in the database, it either returns the cracked value if is cracked or null if it is not cracked
-export const addHash = async (
+export async function addHash(
   prisma: PrismaClient,
   userID: number,
   projectID: number,
   hashValue: string,
   hashType: string,
   isAdmin: boolean
-): Promise<Hash> => {
+): Promise<Hash> {
   if (!HASH_TYPES.includes(hashType as any))
     throw new APIError(`Invalid hash type: ${hashType}`);
 
-  if (!isAdmin) {
-    let project;
-    try {
-      project = await prisma.project.findUnique({
-        where: {
-          PID: projectID,
-        },
-        include: {
-          members: true,
-        },
-      });
-    } catch (err) {
-      throw new APIError("Project error");
-    }
-
-    if (!project) throw new APIError("Project not found");
-
-    const isUserInProject = project.members.some(
-      (member: User) => member.ID === userID
-    );
-    if (!isUserInProject)
-      throw new APIError(
-        "User is not authorized to add hashes to this project"
-      );
+  try {
+    await prisma.project.findFirstOrThrow({
+      where: {
+        PID: projectID,
+        members: isAdmin
+          ? undefined
+          : {
+              some: {
+                ID: userID,
+              },
+            },
+      },
+    });
+  } catch (err) {
+    throw new APIError("Project error");
   }
 
-  let createdHash;
   try {
-    createdHash = await prisma.hash.create({
+    return await prisma.hash.create({
       data: {
         userId: userID,
         projectId: projectID,
@@ -89,6 +76,40 @@ export const addHash = async (
   } catch (err) {
     throw new APIError("Hash error");
   }
+}
 
-  return createdHash;
-};
+export async function removeHash(
+  prisma: PrismaClient,
+  projectID: number,
+  hashID: number,
+  userID: number,
+  isAdmin: boolean
+): Promise<void> {
+  try {
+    await prisma.project.findFirstOrThrow({
+      where: {
+        PID: projectID,
+        members: isAdmin
+          ? undefined
+          : {
+              some: {
+                ID: userID,
+              },
+            },
+      },
+    });
+  } catch (err) {
+    throw new APIError("Project error");
+  }
+
+  try {
+    await prisma.hash.delete({
+      where: {
+        HID: hashID,
+        projectId: projectID,
+      },
+    });
+  } catch (err) {
+    throw new APIError("Hash error");
+  }
+}

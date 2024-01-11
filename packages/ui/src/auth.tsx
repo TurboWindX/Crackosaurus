@@ -10,7 +10,7 @@ export interface AuthInterface {
   readonly isAdmin: boolean;
   readonly uid: string;
   readonly username: string;
-  readonly login: (email: string, password: string) => Promise<void>;
+  readonly login: (username: string, password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthInterface>(null as any);
@@ -32,8 +32,8 @@ export function AuthProvider({ children }: { children: any }) {
     })();
   }, []);
 
-  async function authLogin(email: string, password: string) {
-    const loginData = await login({ username: email, password });
+  async function authLogin(username: string, password: string) {
+    const loginData = await login({ username, password });
 
     if (loginData.error) {
       toast({

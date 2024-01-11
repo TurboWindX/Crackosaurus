@@ -10,7 +10,8 @@
     "./data": "./src/data.tsx",
     "./dialog": "./src/dialog.tsx",
     "./header": "./src/header.tsx",
-    "./time": "./src/time.tsx"
+    "./time": "./src/time.tsx",
+    "./users": "./src/users.tsx"
   },
   "license": "MIT",
   "scripts": {

@@ -16,6 +16,43 @@ export interface InitResponse {
   response: string;
 }
 
+export interface GetUserRequest {
+  Params: {
+    userID: string;
+  };
+}
+
+export interface GetUserResponse {
+  response: {
+    ID: number;
+    username: string;
+    isAdmin: boolean;
+    projects: {
+      PID: number;
+      name: string;
+    }[];
+  };
+}
+
+export interface GetUsersRequest {}
+
+export interface GetUsersResponse {
+  response: {
+    ID: number;
+    username: string;
+    isAdmin: boolean;
+  }[];
+}
+
+export interface GetUserListRequest {}
+
+export interface GetUserListResponse {
+  response: {
+    ID: number;
+    username: string;
+  }[];
+}
+
 export interface LoginRequest {
   Body: {
     username: string;
@@ -40,8 +77,8 @@ export interface RegisterResponse {
 }
 
 export interface DeleteUserRequest {
-  Body: {
-    username: string;
+  Params: {
+    userID: string;
   };
 }
 
@@ -60,6 +97,17 @@ export interface AddHashRequest {
 }
 
 export interface AddHashResponse {
+  response: string;
+}
+
+export interface RemoveHashRequest {
+  Params: {
+    projectID: string;
+    hashID: string;
+  };
+}
+
+export interface RemoveHashResponse {
   response: string;
 }
 
@@ -124,13 +172,22 @@ export interface DeleteProjectResponse {
 export interface AddUserToProjectRequest {
   Params: {
     projectID: string;
-  };
-  Body: {
-    userID: number;
+    userID: string;
   };
 }
 
 export interface AddUserToProjectResponse {
+  response: string;
+}
+
+export interface RemoveUserFromProjectRequest {
+  Params: {
+    projectID: string;
+    userID: string;
+  };
+}
+
+export interface RemoveUserFromProjectResponse {
   response: string;
 }
 
