@@ -108,6 +108,10 @@ export const UsersPage = () => {
           searchFilter={({ username }, search) =>
             username.toLowerCase().includes(search.toLowerCase())
           }
+          addValidate={() =>
+            addUser.username.trim().length > 0 &&
+            addUser.password.trim().length > 0
+          }
           addDialog={
             <>
               <Input

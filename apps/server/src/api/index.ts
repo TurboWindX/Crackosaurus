@@ -143,9 +143,14 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     "/users/:userID",
     { preHandler: [checkAuth] },
     async (request) => {
+      const { userID } = request.params;
+
+      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
+
       return {
         response: await getUser(
           request.server.prisma,
+          parseInt(userID),
           request.session.uid,
           request.session.isAdmin
         ),
@@ -269,7 +274,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.post<CreateProjectRequest>(
     "/projects",
-    { preHandler: [checkAdmin] },
+    { preHandler: [checkAuth] },
     async (request) => {
       const { projectName } = request.body;
       if (projectName === undefined) throw new APIError("Invalid project name");

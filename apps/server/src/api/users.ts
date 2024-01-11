@@ -31,9 +31,13 @@ export async function checkNoUsers(prisma: PrismaClient) {
 
 export async function getUser(
   prisma: PrismaClient,
+  userID: number,
   currentUserID: number,
   isAdmin: boolean
 ) {
+  if (!(isAdmin || userID === currentUserID))
+    throw new APIError("User not found");
+
   try {
     const { ID, username, isadmin, projects } =
       await prisma.user.findFirstOrThrow({
@@ -48,11 +52,9 @@ export async function getUser(
             },
           },
         },
-        where: isAdmin
-          ? undefined
-          : {
-              ID: currentUserID,
-            },
+        where: {
+          ID: userID,
+        },
       });
 
     return {

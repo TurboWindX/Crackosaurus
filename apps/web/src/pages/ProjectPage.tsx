@@ -31,6 +31,177 @@ import { DrawerDialog } from "@repo/ui/dialog";
 import { Header } from "@repo/ui/header";
 import { UserSelect } from "@repo/ui/users";
 
+interface HashDataTableProps {
+  projectID: number;
+  values: GetProjectResponse["response"]["hashes"];
+  handleResponse: ({
+    response,
+    error,
+  }: {
+    response?: string;
+    error?: string;
+  }) => Promise<boolean>;
+}
+
+const HashDataTable = ({
+  projectID,
+  values,
+  handleResponse,
+}: HashDataTableProps) => {
+  const [addHash, setAddHash] = useState<AddHashRequest["Body"]>({
+    hash: "",
+    hashType: "",
+  });
+
+  async function onAdd() {
+    const res = await handleResponse(
+      await addHashToProject(projectID, addHash)
+    );
+
+    if (res)
+      setAddHash({
+        hash: "",
+        hashType: addHash.hashType,
+      });
+
+    return res;
+  }
+
+  async function onRemove(hashes: GetProjectResponse["response"]["hashes"]) {
+    let res = { response: "", error: "" };
+    for (let { HID } of hashes) {
+      const result = await removeHashFromProject(projectID, HID);
+
+      if (!res.error) res = result;
+    }
+
+    return handleResponse(res);
+  }
+
+  return (
+    <DataTable
+      type="Hash"
+      pluralSuffix="es"
+      values={values ?? []}
+      head={["Hash", "Type"]}
+      valueKey={({ HID }) => HID}
+      row={({ hash, hashType }) => [
+        <TableCell>{hash}</TableCell>,
+        <TableCell>{hashType}</TableCell>,
+      ]}
+      onAdd={onAdd}
+      onRemove={onRemove}
+      searchFilter={({ hash, hashType }, search) =>
+        hash.toLowerCase().includes(search.toLowerCase()) ||
+        hashType.toLowerCase().includes(search.toLowerCase())
+      }
+      addValidate={() =>
+        addHash.hash.trim().length > 0 && addHash.hashType.trim().length > 0
+      }
+      addDialog={
+        <>
+          <Input
+            placeholder="Value"
+            value={addHash.hash}
+            onChange={(e) =>
+              setAddHash({
+                ...addHash,
+                hash: e.target.value,
+              })
+            }
+          />
+          <Select
+            value={addHash.hashType}
+            onValueChange={(value) =>
+              setAddHash({
+                ...addHash,
+                hashType: value,
+              })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Type" />
+            </SelectTrigger>
+            <SelectContent>
+              {HASH_TYPES.map((type) => (
+                <SelectItem value={type}>{type}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </>
+      }
+    />
+  );
+};
+
+interface UserDataTableProps {
+  projectID: number;
+  values: GetProjectResponse["response"]["members"];
+  handleResponse: ({
+    response,
+    error,
+  }: {
+    response?: string;
+    error?: string;
+  }) => Promise<boolean>;
+}
+
+const UserDataTable = ({
+  projectID,
+  values,
+  handleResponse,
+}: UserDataTableProps) => {
+  const [addUser, setAddUser] = useState<number | null>(null);
+
+  async function onAdd() {
+    const res = await handleResponse(
+      await addUserToProject(projectID, addUser ?? -1)
+    );
+
+    if (res) setAddUser(null);
+
+    return res;
+  }
+
+  async function onRemove(members: GetProjectResponse["response"]["members"]) {
+    let res = { response: "", error: "" };
+    for (let { ID } of members) {
+      const result = await removeUserFromProject(projectID, ID);
+
+      if (!res.error) res = result;
+    }
+
+    return handleResponse(res);
+  }
+
+  return (
+    <DataTable
+      type="User"
+      values={values}
+      head={["User"]}
+      valueKey={({ ID }) => ID}
+      row={({ username }) => [<TableCell>{username}</TableCell>]}
+      searchFilter={({ username }, search) =>
+        username.toLowerCase().includes(search)
+      }
+      addValidate={() => addUser !== null}
+      addDialog={
+        <>
+          <UserSelect
+            value={addUser}
+            onValueChange={setAddUser}
+            filter={({ ID }) =>
+              values.every((member) => ID !== member.ID) === true
+            }
+          />
+        </>
+      }
+      onAdd={onAdd}
+      onRemove={onRemove}
+    />
+  );
+};
+
 export const ProjectPage = () => {
   const { projectID } = useParams();
   const { toast } = useToast();
@@ -40,13 +211,6 @@ export const ProjectPage = () => {
     null
   );
   const [removeOpen, setRemoveOpen] = useState(false);
-
-  const [addHash, setAddHash] = useState<AddHashRequest["Body"]>({
-    hash: "",
-    hashType: "",
-  });
-
-  const [addUser, setAddUser] = useState<number | null>(null);
 
   async function refreshProject() {
     const res = await getProject(parseInt(projectID ?? "-1"));
@@ -82,50 +246,6 @@ export const ProjectPage = () => {
     });
 
     return true;
-  }
-
-  async function onHashAdd() {
-    return handleResponse(
-      await addHashToProject(parseInt(projectID ?? "-1"), addHash)
-    );
-  }
-
-  async function onHashesRemove(
-    hashes: GetProjectResponse["response"]["hashes"]
-  ) {
-    let res = { response: "", error: "" };
-    for (let { HID } of hashes) {
-      const result = await removeHashFromProject(
-        parseInt(projectID ?? "-1"),
-        HID
-      );
-
-      if (!res.error) res = result;
-    }
-
-    return handleResponse(res);
-  }
-
-  async function onUserAdd() {
-    return handleResponse(
-      await addUserToProject(parseInt(projectID ?? "-1"), addUser ?? -1)
-    );
-  }
-
-  async function onUsersRemove(
-    members: GetProjectResponse["response"]["members"]
-  ) {
-    let res = { response: "", error: "" };
-    for (let { ID } of members) {
-      const result = await removeUserFromProject(
-        parseInt(projectID ?? "-1"),
-        ID
-      );
-
-      if (!res.error) res = result;
-    }
-
-    return handleResponse(res);
   }
 
   useEffect(() => {
@@ -186,78 +306,16 @@ export const ProjectPage = () => {
             </div>
           </div>
         </div>
-        <DataTable
-          type="Hash"
-          pluralSuffix="es"
+        <HashDataTable
+          projectID={parseInt(projectID ?? "-1")}
           values={project?.hashes ?? []}
-          head={["Hash", "Type"]}
-          valueKey={({ HID }) => HID}
-          row={({ hash, hashType }) => [
-            <TableCell>{hash}</TableCell>,
-            <TableCell>{hashType}</TableCell>,
-          ]}
-          onAdd={onHashAdd}
-          onRemove={onHashesRemove}
-          searchFilter={({ hash, hashType }, search) =>
-            hash.toLowerCase().includes(search.toLowerCase()) ||
-            hashType.toLowerCase().includes(search.toLowerCase())
-          }
-          addDialog={
-            <>
-              <Input
-                placeholder="Value"
-                value={addHash.hash}
-                onChange={(e) =>
-                  setAddHash({
-                    ...addHash,
-                    hash: e.target.value,
-                  })
-                }
-              />
-              <Select
-                value={addHash.hashType}
-                onValueChange={(value) =>
-                  setAddHash({
-                    ...addHash,
-                    hashType: value,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {HASH_TYPES.map((type) => (
-                    <SelectItem value={type}>{type}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </>
-          }
+          handleResponse={handleResponse}
         />
         <Separator />
-        <DataTable
-          type="User"
+        <UserDataTable
+          projectID={parseInt(projectID ?? "-1")}
           values={project?.members ?? []}
-          head={["User"]}
-          valueKey={({ ID }) => ID}
-          row={({ username }) => [<TableCell>{username}</TableCell>]}
-          searchFilter={({ username }, search) =>
-            username.toLowerCase().includes(search)
-          }
-          addDialog={
-            <>
-              <UserSelect
-                value={addUser}
-                onValueChange={setAddUser}
-                filter={({ ID }) =>
-                  project?.members?.every((member) => ID !== member.ID) === true
-                }
-              />
-            </>
-          }
-          onAdd={onUserAdd}
-          onRemove={onUsersRemove}
+          handleResponse={handleResponse}
         />
       </div>
     </div>

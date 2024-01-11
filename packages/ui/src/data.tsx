@@ -20,6 +20,7 @@ export interface AddDialogProps {
   type: string;
   open: boolean;
   setOpen: (state: boolean) => void;
+  validate?: () => boolean;
   onSubmit?: () => void;
   children: any;
 }
@@ -30,6 +31,7 @@ export const AddDialog = ({
   setOpen,
   onSubmit,
   children,
+  validate,
 }: AddDialogProps) => {
   return (
     <DrawerDialog
@@ -53,7 +55,7 @@ export const AddDialog = ({
         }}
       >
         {children}
-        <Button>Add</Button>
+        <Button disabled={!(validate === undefined || validate())}>Add</Button>
       </form>
     </DrawerDialog>
   );
@@ -108,6 +110,7 @@ export interface DataTableProps<T> {
   row: (value: T) => any[];
   valueKey: (value: T) => string | number;
   addDialog?: any;
+  addValidate?: () => boolean;
   onAdd?: () => Promise<boolean>;
   onRemove?: (values: T[]) => Promise<boolean>;
   searchFilter?: (value: T, search: string) => boolean;
@@ -119,6 +122,7 @@ export function DataTable<T>({
   type,
   pluralSuffix,
   onAdd,
+  addValidate,
   onRemove,
   row,
   valueKey,
@@ -164,6 +168,7 @@ export function DataTable<T>({
               type={type}
               open={addDialogOpen}
               setOpen={setAddDialogOpen}
+              validate={addValidate}
               onSubmit={async () => {
                 if (await onAdd?.()) setAddDialogOpen(false);
               }}

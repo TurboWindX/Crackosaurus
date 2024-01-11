@@ -153,6 +153,7 @@ export const ProjectsPage = () => {
               member.username.toLowerCase().includes(search.toLowerCase())
             )
           }
+          addValidate={() => addProject.projectName.trim().length > 0}
           addDialog={
             <Input
               placeholder="Name"
