@@ -20,23 +20,32 @@ import {
   GetProjectResponse,
   GetProjectsRequest,
   GetProjectsResponse,
-  HashType,
+  GetUserListRequest,
+  GetUserListResponse,
+  GetUserRequest,
+  GetUserResponse,
+  GetUsersRequest,
+  GetUsersResponse,
   InitRequest,
   InitResponse,
   LoginRequest,
   LoginResponse,
   RegisterRequest,
   RegisterResponse,
+  RemoveHashRequest,
+  RemoveUserFromProjectRequest,
+  RemoveUserFromProjectResponse,
 } from "@repo/api";
 
 import { APIError, AuthError, errorHandler } from "../errors";
-import { addHash, getHashes } from "./hashes";
+import { addHash, getHashes, removeHash } from "./hashes";
 import {
   addUserToProject,
   createProject,
   deleteProject,
   getUserProject,
   getUserProjects,
+  removeUserFromProject,
 } from "./projects";
 import {
   AuthenticatedUser,
@@ -45,6 +54,9 @@ import {
   createUser,
   deleteUser,
   getAuthenticatedUser,
+  getUser,
+  getUserList,
+  getUsers,
 } from "./users";
 
 declare module "fastify" {
@@ -127,6 +139,45 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     };
   });
 
+  instance.get<GetUserRequest>(
+    "/users/:userID",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      const { userID } = request.params;
+
+      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
+
+      return {
+        response: await getUser(
+          request.server.prisma,
+          parseInt(userID),
+          request.session.uid,
+          request.session.isAdmin
+        ),
+      } as GetUserResponse;
+    }
+  );
+
+  instance.get<GetUsersRequest>(
+    "/users",
+    { preHandler: [checkAdmin] },
+    async (request) => {
+      return {
+        response: await getUsers(request.server.prisma),
+      } as GetUsersResponse;
+    }
+  );
+
+  instance.get<GetUserListRequest>(
+    "/users/list",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      return {
+        response: await getUserList(request.server.prisma),
+      } as GetUserListResponse;
+    }
+  );
+
   instance.post<RegisterRequest>(
     "/users",
     { preHandler: [checkAdmin] },
@@ -142,21 +193,22 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         isAdmin ?? false
       );
 
-      return { response: "The user has been created" } as RegisterResponse;
+      return { response: "User has been created" } as RegisterResponse;
     }
   );
 
   instance.delete<DeleteUserRequest>(
-    "/users",
+    "/users/:userID",
     { preHandler: [checkAdmin] },
     async (request) => {
-      const { username } = request.body;
-      if (username === undefined) throw new APIError("Invalid username");
+      const { userID } = request.params;
 
-      await deleteUser(request.server.prisma, username);
+      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
+
+      await deleteUser(request.server.prisma, parseInt(userID));
 
       return {
-        response: "The user has been obliterated into oblivion",
+        response: "User has been obliterated into oblivion",
       } as DeleteUserResponse;
     }
   );
@@ -166,6 +218,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     { preHandler: [checkAuth] },
     async (request) => {
       const { userID } = request.params;
+
+      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
+
       const { oldPassword, newPassword } = request.body;
       if (oldPassword === undefined || newPassword === undefined)
         throw new APIError("Invalid user config");
@@ -191,7 +246,8 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       return {
         response: await getUserProjects(
           request.server.prisma,
-          request.session.uid
+          request.session.uid,
+          request.session.isAdmin
         ),
       } as GetProjectsResponse;
     }
@@ -203,11 +259,14 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { projectID } = request.params;
 
+      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
+
       return {
         response: await getUserProject(
           request.server.prisma,
           parseInt(projectID),
-          request.session.uid
+          request.session.uid,
+          request.session.isAdmin
         ),
       } as GetProjectResponse;
     }
@@ -215,7 +274,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.post<CreateProjectRequest>(
     "/projects",
-    { preHandler: [checkAdmin] },
+    { preHandler: [checkAuth] },
     async (request) => {
       const { projectName } = request.body;
       if (projectName === undefined) throw new APIError("Invalid project name");
@@ -227,7 +286,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       );
 
       return {
-        response: "The project has been created",
+        response: "Project has been created",
       } as CreateProjectResponse;
     }
   );
@@ -238,6 +297,8 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { projectID } = request.params;
 
+      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
+
       await deleteProject(
         request.server.prisma,
         parseInt(projectID as string),
@@ -245,29 +306,54 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       );
 
       return {
-        response: "The project has been deleted",
+        response: "Project has been deleted",
       } as DeleteProjectResponse;
     }
   );
 
   instance.post<AddUserToProjectRequest>(
-    "/projects/:projectID/users",
+    "/projects/:projectID/users/:userID",
     { preHandler: [checkAuth] },
     async (request) => {
-      const { projectID } = request.params;
-      const { userID } = request.body;
-      if (userID === undefined) throw new APIError("Invalid user ID");
+      const { projectID, userID } = request.params;
+
+      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
+      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
 
       await addUserToProject(
         request.server.prisma,
         request.session.uid,
-        userID,
-        parseInt(projectID)
+        parseInt(userID),
+        parseInt(projectID),
+        request.session.isAdmin
       );
 
       return {
-        response: "The user has been added to the project",
+        response: "User has been added to the project",
       } as AddUserToProjectResponse;
+    }
+  );
+
+  instance.delete<RemoveUserFromProjectRequest>(
+    "/projects/:projectID/users/:userID",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      const { projectID, userID } = request.params;
+
+      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
+      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
+
+      await removeUserFromProject(
+        request.server.prisma,
+        request.session.uid,
+        parseInt(userID),
+        parseInt(projectID),
+        request.session.isAdmin
+      );
+
+      return {
+        response: "User has been removed from the project",
+      } as RemoveUserFromProjectResponse;
     }
   );
 
@@ -276,6 +362,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     { preHandler: [checkAuth] },
     async (request) => {
       const { projectID } = request.params;
+
+      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
+
       const { hash, hashType } = request.body;
       if (hash === undefined || hashType === undefined)
         throw new APIError("Invalid hash config");
@@ -289,7 +378,28 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         request.session.isAdmin
       );
 
-      return { response: "The hash has been added" } as AddHashResponse;
+      return { response: "Hash has been added" } as AddHashResponse;
+    }
+  );
+
+  instance.delete<RemoveHashRequest>(
+    "/projects/:projectID/hashes/:hashID",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      const { projectID, hashID } = request.params;
+
+      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
+      if (isNaN(parseInt(hashID))) throw new APIError("Invalid hashID");
+
+      await removeHash(
+        request.server.prisma,
+        parseInt(projectID),
+        parseInt(hashID),
+        request.session.uid,
+        request.session.isAdmin
+      );
+
+      return { response: "Hash has been removed" } as AddHashResponse;
     }
   );
 
@@ -298,6 +408,8 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     { preHandler: [checkAuth] },
     async (request) => {
       const { projectID } = request.params;
+
+      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
 
       const hashes = await getHashes(
         request.server.prisma,

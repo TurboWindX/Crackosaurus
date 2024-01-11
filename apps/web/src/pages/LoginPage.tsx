@@ -12,7 +12,7 @@ import { Input } from "@repo/shadcn/components/ui/input";
 import { useAuth } from "@repo/ui/auth";
 
 export const LoginPage = () => {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
   const { login } = useAuth();
@@ -24,7 +24,7 @@ export const LoginPage = () => {
         <CardHeader>
           <CardTitle className="text-center">Crackosaurus</CardTitle>
           <CardDescription className="text-center">
-            Enter your email and password below to login
+            Enter your username and password below to login
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -32,15 +32,15 @@ export const LoginPage = () => {
             className="grid grid-cols-1 gap-2"
             onSubmit={async (event) => {
               event.preventDefault();
-              await login(email, password);
+              await login(username, password);
               navigate("/");
             }}
           >
             <Input
               type="text"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
             />
             <Input
               type="password"

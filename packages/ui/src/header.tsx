@@ -1,4 +1,4 @@
-import { FolderIcon, HardHatIcon, UserIcon } from "lucide-react";
+import { FolderIcon, HardHatIcon, UserIcon, UsersIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import {
@@ -29,16 +29,24 @@ const LINKS = [
     text: "Crackosaurus",
     path: "/",
     icon: HardHatIcon,
+    isAdmin: false,
   },
   {
     text: "Projects",
     path: "/projects",
     icon: FolderIcon,
+    isAdmin: false,
+  },
+  {
+    text: "Users",
+    path: "/users",
+    icon: UsersIcon,
+    isAdmin: true,
   },
 ] as const;
 
 export const Header = () => {
-  const { username } = useAuth();
+  const { uid, username, isAdmin } = useAuth();
 
   return (
     <div>
@@ -46,20 +54,23 @@ export const Header = () => {
         <div className="hidden md:block">
           <NavigationMenu>
             <NavigationMenuList>
-              {LINKS.map((link) => (
-                <NavigationMenuItem>
-                  <Link to={link.path}>
-                    <NavigationMenuLink
-                      className={navigationMenuTriggerStyle()}
-                    >
-                      <div className="grid grid-flow-col items-center gap-2">
-                        <link.icon />
-                        <span className="hidden md:block">{link.text}</span>
-                      </div>
-                    </NavigationMenuLink>
-                  </Link>
-                </NavigationMenuItem>
-              ))}
+              {LINKS.map(
+                (link) =>
+                  (isAdmin || !link.isAdmin) && (
+                    <NavigationMenuItem>
+                      <Link to={link.path}>
+                        <NavigationMenuLink
+                          className={navigationMenuTriggerStyle()}
+                        >
+                          <div className="grid grid-flow-col items-center gap-2">
+                            <link.icon />
+                            <span className="hidden md:block">{link.text}</span>
+                          </div>
+                        </NavigationMenuLink>
+                      </Link>
+                    </NavigationMenuItem>
+                  )
+              )}
             </NavigationMenuList>
           </NavigationMenu>
         </div>
@@ -83,12 +94,18 @@ export const Header = () => {
                       <SheetDescription></SheetDescription>
                     </SheetHeader>
                     <SheetFooter>
-                      <SheetClose asChild>
-                        <Link to="/projects">Projects</Link>
-                      </SheetClose>
-                      <SheetClose asChild>
-                        <Link to="/">Home</Link>
-                      </SheetClose>
+                      {[...LINKS].reverse().map(
+                        (link) =>
+                          (isAdmin || !link.isAdmin) && (
+                            <SheetClose asChild>
+                              <Link to={link.path}>
+                                {link.text === "Crackosaurus"
+                                  ? "Home"
+                                  : link.text}
+                              </Link>
+                            </SheetClose>
+                          )
+                      )}
                     </SheetFooter>
                   </SheetContent>
                 </Sheet>
@@ -100,7 +117,7 @@ export const Header = () => {
           <NavigationMenu>
             <NavigationMenuList>
               <NavigationMenuItem>
-                <Link to="/account">
+                <Link to={`/users/${uid}`}>
                   <NavigationMenuLink className={navigationMenuTriggerStyle()}>
                     <div className="grid grid-flow-col items-center gap-2">
                       <UserIcon />

@@ -99,8 +99,8 @@ export const ProjectsPage = () => {
 
   async function onRemove(projects: GetProjectsResponse["response"]) {
     let res = { response: "", error: "" };
-    for (let project of projects) {
-      const result = await deleteProject(project.PID);
+    for (let { PID } of projects) {
+      const result = await deleteProject(PID);
 
       if (!res.error) res = result;
     }
@@ -123,7 +123,7 @@ export const ProjectsPage = () => {
       <Header />
       <div className="p-4">
         <DataTable
-          typeSingular="Project"
+          type="Project"
           values={projects}
           head={["Project", "Collaborators"]}
           valueKey={({ PID }) => PID}
@@ -153,6 +153,7 @@ export const ProjectsPage = () => {
               member.username.toLowerCase().includes(search.toLowerCase())
             )
           }
+          addValidate={() => addProject.projectName.trim().length > 0}
           addDialog={
             <Input
               placeholder="Name"

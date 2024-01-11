@@ -29,6 +29,78 @@ export async function checkNoUsers(prisma: PrismaClient) {
   return users.length === 0;
 }
 
+export async function getUser(
+  prisma: PrismaClient,
+  userID: number,
+  currentUserID: number,
+  isAdmin: boolean
+) {
+  if (!(isAdmin || userID === currentUserID))
+    throw new APIError("User not found");
+
+  try {
+    const { ID, username, isadmin, projects } =
+      await prisma.user.findFirstOrThrow({
+        select: {
+          ID: true,
+          username: true,
+          isadmin: true,
+          projects: {
+            select: {
+              PID: true,
+              name: true,
+            },
+          },
+        },
+        where: {
+          ID: userID,
+        },
+      });
+
+    return {
+      ID,
+      username,
+      isAdmin: isadmin === 1,
+      projects,
+    };
+  } catch (err) {
+    throw new APIError("User error");
+  }
+}
+
+export async function getUsers(prisma: PrismaClient) {
+  try {
+    return (
+      await prisma.user.findMany({
+        select: {
+          ID: true,
+          username: true,
+          isadmin: true,
+        },
+      })
+    ).map(({ ID, username, isadmin }) => ({
+      ID,
+      username,
+      isAdmin: isadmin === 1,
+    }));
+  } catch (err) {
+    throw new APIError("User error");
+  }
+}
+
+export async function getUserList(prisma: PrismaClient) {
+  try {
+    return await prisma.user.findMany({
+      select: {
+        ID: true,
+        username: true,
+      },
+    });
+  } catch (err) {
+    throw new APIError("User error");
+  }
+}
+
 //add user into db
 export async function createUser(
   prisma: PrismaClient,
@@ -82,11 +154,11 @@ export async function getAuthenticatedUser(
 //delete user from database
 export async function deleteUser(
   prisma: PrismaClient,
-  username: string
+  userId: number
 ): Promise<void> {
   await prisma.user.delete({
     where: {
-      username: username,
+      ID: userId,
     },
   });
 }
