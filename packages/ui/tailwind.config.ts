@@ -7,8 +7,8 @@ const config: Pick<Config, "prefix" | "presets" | "content" | "corePlugins"> = {
   presets: [sharedConfig],
   prefix: "ui-",
   corePlugins: {
-    preflight: false
-  }
+    preflight: false,
+  },
 };
 
 export default config;

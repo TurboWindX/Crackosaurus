@@ -12,6 +12,7 @@ import { Badge } from "@repo/shadcn/components/ui/badge";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { TableCell } from "@repo/shadcn/components/ui/table";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
+import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { Header } from "@repo/ui/header";
 
@@ -58,12 +59,15 @@ export const ProjectStatusBadge = ({ status }: ProjectStatusBadgeProps) => {
 
 export const ProjectsPage = () => {
   const navigate = useNavigate();
+  const { hasPermission } = useAuth();
   const { toast } = useToast();
 
   const [projects, setProjects] = useState<GetProjectsResponse["response"]>([]);
   const [addProject, setAddProject] = useState<CreateProjectRequest["Body"]>({
     projectName: "",
   });
+
+  const hasCollaborators = hasPermission("projects:users:get");
 
   async function handleResponse({
     response,
@@ -125,7 +129,7 @@ export const ProjectsPage = () => {
         <DataTable
           type="Project"
           values={projects}
-          head={["Project", "Collaborators"]}
+          head={["Project", hasCollaborators ? "Collaborators" : null]}
           valueKey={({ PID }) => PID}
           row={({ PID, name, members }) => [
             <TableCell
@@ -134,22 +138,24 @@ export const ProjectsPage = () => {
             >
               {name}
             </TableCell>,
-            <TableCell
-              className="cursor-pointer"
-              onClick={() => navigate(`/projects/${PID}`)}
-            >
-              <div className="grid max-w-max grid-flow-col gap-2">
-                {members.map((member) => (
-                  <Badge key={member.ID} variant="secondary">
-                    {member.username}
-                  </Badge>
-                ))}
-              </div>
-            </TableCell>,
+            hasCollaborators ? (
+              <TableCell
+                className="cursor-pointer"
+                onClick={() => navigate(`/projects/${PID}`)}
+              >
+                <div className="grid max-w-max grid-flow-col gap-2">
+                  {(members ?? []).map((member) => (
+                    <Badge key={member.ID} variant="secondary">
+                      {member.username}
+                    </Badge>
+                  ))}
+                </div>
+              </TableCell>
+            ) : null,
           ]}
           searchFilter={(project, search) =>
             project.name.toLowerCase().includes(search.toLowerCase()) ||
-            project.members.some((member) =>
+            (project.members ?? []).some((member) =>
               member.username.toLowerCase().includes(search.toLowerCase())
             )
           }
@@ -163,6 +169,7 @@ export const ProjectsPage = () => {
               }
             />
           }
+          noAdd={!hasPermission("projects:add")}
           onAdd={onAdd}
           noRemove
           onRemove={onRemove}

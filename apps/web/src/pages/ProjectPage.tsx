@@ -4,7 +4,6 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import {
   AddHashRequest,
-  AddUserToProjectRequest,
   GetProjectResponse,
   HASH_TYPES,
   addHashToProject,
@@ -26,6 +25,7 @@ import {
 import { Separator } from "@repo/shadcn/components/ui/separator";
 import { TableCell } from "@repo/shadcn/components/ui/table";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
+import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { Header } from "@repo/ui/header";
@@ -48,6 +48,8 @@ const HashDataTable = ({
   values,
   handleResponse,
 }: HashDataTableProps) => {
+  const { hasPermission } = useAuth();
+
   const [addHash, setAddHash] = useState<AddHashRequest["Body"]>({
     hash: "",
     hashType: "",
@@ -69,7 +71,7 @@ const HashDataTable = ({
 
   async function onRemove(hashes: GetProjectResponse["response"]["hashes"]) {
     let res = { response: "", error: "" };
-    for (let { HID } of hashes) {
+    for (let { HID } of hashes!) {
       const result = await removeHashFromProject(projectID, HID);
 
       if (!res.error) res = result;
@@ -89,7 +91,9 @@ const HashDataTable = ({
         <TableCell>{hash}</TableCell>,
         <TableCell>{hashType}</TableCell>,
       ]}
+      noAdd={!hasPermission("projects:hashes:add")}
       onAdd={onAdd}
+      noRemove={!hasPermission("projects:hashes:remove")}
       onRemove={onRemove}
       searchFilter={({ hash, hashType }, search) =>
         hash.toLowerCase().includes(search.toLowerCase()) ||
@@ -151,6 +155,8 @@ const UserDataTable = ({
   values,
   handleResponse,
 }: UserDataTableProps) => {
+  const { hasPermission } = useAuth();
+
   const [addUser, setAddUser] = useState<number | null>(null);
 
   async function onAdd() {
@@ -165,7 +171,7 @@ const UserDataTable = ({
 
   async function onRemove(members: GetProjectResponse["response"]["members"]) {
     let res = { response: "", error: "" };
-    for (let { ID } of members) {
+    for (let { ID } of members!) {
       const result = await removeUserFromProject(projectID, ID);
 
       if (!res.error) res = result;
@@ -177,7 +183,7 @@ const UserDataTable = ({
   return (
     <DataTable
       type="User"
-      values={values}
+      values={values ?? []}
       head={["User"]}
       valueKey={({ ID }) => ID}
       row={({ username }) => [<TableCell>{username}</TableCell>]}
@@ -191,12 +197,14 @@ const UserDataTable = ({
             value={addUser}
             onValueChange={setAddUser}
             filter={({ ID }) =>
-              values.every((member) => ID !== member.ID) === true
+              (values ?? []).every((member) => ID !== member.ID) === true
             }
           />
         </>
       }
+      noAdd={!hasPermission("projects:users:add")}
       onAdd={onAdd}
+      noRemove={!hasPermission("projects:users:remove")}
       onRemove={onRemove}
     />
   );
@@ -205,6 +213,7 @@ const UserDataTable = ({
 export const ProjectPage = () => {
   const { projectID } = useParams();
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
   const [project, setProject] = useState<GetProjectResponse["response"] | null>(
@@ -263,6 +272,28 @@ export const ProjectPage = () => {
     })();
   }, []);
 
+  const tables = [
+    hasPermission("projects:hashes:get") && (
+      <HashDataTable
+        projectID={parseInt(projectID ?? "-1")}
+        values={project?.hashes ?? []}
+        handleResponse={handleResponse}
+      />
+    ),
+    hasPermission("projects:users:get") && (
+      <UserDataTable
+        projectID={parseInt(projectID ?? "-1")}
+        values={project?.members ?? []}
+        handleResponse={handleResponse}
+      />
+    ),
+  ];
+
+  const separatedTables = tables
+    .filter((value) => value)
+    .flatMap((value) => [value, <Separator />]);
+  separatedTables.pop();
+
   return (
     <div>
       <Header />
@@ -271,52 +302,44 @@ export const ProjectPage = () => {
           <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
             {project?.name ?? "Project"}
           </span>
-          <div className="grid justify-end gap-4">
-            <div className="w-max">
-              <DrawerDialog
-                title="Remove Project"
-                open={removeOpen}
-                setOpen={setRemoveOpen}
-                trigger={
-                  <Button variant="outline">
-                    <div className="grid grid-flow-col items-center gap-2">
-                      <TrashIcon />
-                      <span>Remove</span>
-                    </div>
-                  </Button>
-                }
-              >
-                <form
-                  className="grid gap-4"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-
-                    const res = await deleteProject(
-                      parseInt(projectID ?? "-1")
-                    );
-                    await handleResponse(res);
-
-                    if (res.response) navigate("/projects");
-                  }}
+          <div className="grid grid-flow-col justify-end gap-4">
+            {hasPermission("projects:remove") && (
+              <div className="w-max">
+                <DrawerDialog
+                  title="Remove Project"
+                  open={removeOpen}
+                  setOpen={setRemoveOpen}
+                  trigger={
+                    <Button variant="outline">
+                      <div className="grid grid-flow-col items-center gap-2">
+                        <TrashIcon />
+                        <span>Remove</span>
+                      </div>
+                    </Button>
+                  }
                 >
-                  <span>Do you want to permanently remove this project?</span>
-                  <Button>Remove</Button>
-                </form>
-              </DrawerDialog>
-            </div>
+                  <form
+                    className="grid gap-4"
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+
+                      const res = await deleteProject(
+                        parseInt(projectID ?? "-1")
+                      );
+                      await handleResponse(res);
+
+                      if (res.response) navigate("/projects");
+                    }}
+                  >
+                    <span>Do you want to permanently remove this project?</span>
+                    <Button>Remove</Button>
+                  </form>
+                </DrawerDialog>
+              </div>
+            )}
           </div>
         </div>
-        <HashDataTable
-          projectID={parseInt(projectID ?? "-1")}
-          values={project?.hashes ?? []}
-          handleResponse={handleResponse}
-        />
-        <Separator />
-        <UserDataTable
-          projectID={parseInt(projectID ?? "-1")}
-          values={project?.members ?? []}
-          handleResponse={handleResponse}
-        />
+        {separatedTables}
       </div>
     </div>
   );

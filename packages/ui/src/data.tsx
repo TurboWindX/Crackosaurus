@@ -106,7 +106,7 @@ export interface DataTableProps<T> {
   type: string;
   pluralSuffix?: string;
   values: T[];
-  head: string[];
+  head: (string | null)[];
   row: (value: T) => any[];
   valueKey: (value: T) => string | number;
   addDialog?: any;
@@ -217,9 +217,11 @@ export function DataTable<T>({
                   />
                 </TableHead>
               )}
-              {head.map((label) => (
-                <TableHead>{label}</TableHead>
-              ))}
+              {head
+                .filter((label) => label)
+                .map((label) => (
+                  <TableHead>{label}</TableHead>
+                ))}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -227,9 +229,11 @@ export function DataTable<T>({
               <TableRow key="none">
                 {hasSelect && <TableCell />}
                 <TableCell>No {plural}</TableCell>
-                {new Array(head.length - 1).fill(0).map((_) => (
-                  <TableCell />
-                ))}
+                {new Array(head.filter((label) => label).length - 1)
+                  .fill(0)
+                  .map((_) => (
+                    <TableCell />
+                  ))}
               </TableRow>
             ) : (
               searchValues.map((value) => (

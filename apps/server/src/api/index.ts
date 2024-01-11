@@ -14,8 +14,6 @@ import {
   DeleteProjectResponse,
   DeleteUserRequest,
   DeleteUserResponse,
-  GetHashesRequest,
-  GetHashesResponse,
   GetProjectRequest,
   GetProjectResponse,
   GetProjectsRequest,
@@ -30,15 +28,19 @@ import {
   InitResponse,
   LoginRequest,
   LoginResponse,
+  LogoutRequest,
+  LogoutResponse,
+  PermissionType,
   RegisterRequest,
   RegisterResponse,
   RemoveHashRequest,
   RemoveUserFromProjectRequest,
   RemoveUserFromProjectResponse,
+  hasPermission,
 } from "@repo/api";
 
 import { APIError, AuthError, errorHandler } from "../errors";
-import { addHash, getHashes, removeHash } from "./hashes";
+import { addHash, removeHash } from "./hashes";
 import {
   addUserToProject,
   createProject,
@@ -63,7 +65,7 @@ declare module "fastify" {
   interface Session {
     uid: number;
     username: string;
-    isAdmin: boolean;
+    permissions: string;
   }
 }
 
@@ -71,9 +73,9 @@ function setSession(
   request: FastifyRequest,
   authenticatedUser: AuthenticatedUser
 ) {
-  request.session.uid = authenticatedUser.uid;
+  request.session.uid = authenticatedUser.ID;
   request.session.username = authenticatedUser.username;
-  request.session.isAdmin = authenticatedUser.isAdmin === 1;
+  request.session.permissions = authenticatedUser.permissions;
 }
 
 function checkAuth(
@@ -87,15 +89,17 @@ function checkAuth(
   next();
 }
 
-function checkAdmin(
-  request: FastifyRequest,
-  _reply: FastifyReply,
-  next: (err?: Error | undefined) => void
-) {
-  if (request.session.isAdmin !== true)
-    throw new AuthError("You need to be admin");
+function checkPermission(permission: PermissionType) {
+  return (
+    request: FastifyRequest,
+    _reply: FastifyReply,
+    next: (err?: Error | undefined) => void
+  ) => {
+    if (!hasPermission(request.session.permissions, permission))
+      throw new AuthError("Access denied");
 
-  next();
+    next();
+  };
 }
 
 export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
@@ -109,7 +113,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     if (username === undefined || password === undefined)
       throw new APIError("Invalid user config");
 
-    await createUser(request.server.prisma, username, password, true);
+    await createUser(request.server.prisma, username, password, ["root"]);
 
     return { response: "First admin user has been created" } as InitResponse;
   });
@@ -131,11 +135,19 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     return { response: "Login successful" } as LoginResponse;
   });
 
+  instance.get<LogoutRequest>("/auth/logout", async (request) => {
+    await request.session.destroy();
+
+    return {
+      response: "Logout successful",
+    } as LogoutResponse;
+  });
+
   instance.get("/auth/user", { preHandler: [checkAuth] }, (request) => {
     return {
       uid: request.session.uid,
       username: request.session.username,
-      isAdmin: request.session.isAdmin,
+      permissions: request.session.permissions.split(" "),
     };
   });
 
@@ -147,12 +159,18 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
       if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
 
+      if (
+        !hasPermission(request.session.permissions, "users:get") &&
+        parseInt(userID) !== request.session.uid
+      )
+        throw new APIError("Cannot get user");
+
       return {
         response: await getUser(
           request.server.prisma,
           parseInt(userID),
           request.session.uid,
-          request.session.isAdmin
+          hasPermission(request.session.permissions, "projects:get")
         ),
       } as GetUserResponse;
     }
@@ -160,7 +178,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.get<GetUsersRequest>(
     "/users",
-    { preHandler: [checkAdmin] },
+    { preHandler: [checkPermission("users:get")] },
     async (request) => {
       return {
         response: await getUsers(request.server.prisma),
@@ -170,7 +188,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.get<GetUserListRequest>(
     "/users/list",
-    { preHandler: [checkAuth] },
+    { preHandler: [checkPermission("users:list")] },
     async (request) => {
       return {
         response: await getUserList(request.server.prisma),
@@ -180,17 +198,27 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.post<RegisterRequest>(
     "/users",
-    { preHandler: [checkAdmin] },
+    { preHandler: [checkPermission("users:add")] },
     async (request) => {
-      const { username, password, isAdmin } = request.body;
+      const { username, password, permissions } = request.body;
       if (username === undefined || password === undefined)
         throw new APIError("Invalid user config");
+
+      if (
+        (permissions ?? []).some(
+          (permission) =>
+            !hasPermission(request.session.permissions, permission)
+        )
+      )
+        throw new APIError(
+          "You must have the permission to provide these permissions"
+        );
 
       await createUser(
         request.server.prisma,
         username,
         password,
-        isAdmin ?? false
+        permissions ?? []
       );
 
       return { response: "User has been created" } as RegisterResponse;
@@ -199,11 +227,17 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.delete<DeleteUserRequest>(
     "/users/:userID",
-    { preHandler: [checkAdmin] },
+    { preHandler: [checkAuth] },
     async (request) => {
       const { userID } = request.params;
 
       if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
+
+      if (
+        !hasPermission(request.session.permissions, "users:remove") &&
+        parseInt(userID) !== request.session.uid
+      )
+        throw new APIError("Cannot remove user");
 
       await deleteUser(request.server.prisma, parseInt(userID));
 
@@ -225,12 +259,19 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       if (oldPassword === undefined || newPassword === undefined)
         throw new APIError("Invalid user config");
 
+      const bypassCheck = hasPermission(
+        request.session.permissions,
+        "users:edit"
+      );
+      if (!bypassCheck && parseInt(userID) !== request.session.uid)
+        throw new APIError("Cannot edit user");
+
       await changePassword(
         request.server.prisma,
         parseInt(userID),
         oldPassword,
         newPassword,
-        request.session.isAdmin
+        bypassCheck
       );
 
       return {
@@ -243,13 +284,19 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     "/projects",
     { preHandler: [checkAuth] },
     async (request) => {
-      return {
-        response: await getUserProjects(
-          request.server.prisma,
-          request.session.uid,
-          request.session.isAdmin
-        ),
-      } as GetProjectsResponse;
+      let response: GetProjectsResponse["response"] = await getUserProjects(
+        request.server.prisma,
+        request.session.uid,
+        hasPermission(request.session.permissions, "projects:get")
+      );
+
+      if (!hasPermission(request.session.permissions, "projects:users:get"))
+        response = response.map((project) => ({
+          ...project,
+          members: undefined,
+        }));
+
+      return { response } as GetProjectsResponse;
     }
   );
 
@@ -261,20 +308,25 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
       if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
 
-      return {
-        response: await getUserProject(
-          request.server.prisma,
-          parseInt(projectID),
-          request.session.uid,
-          request.session.isAdmin
-        ),
-      } as GetProjectResponse;
+      let response: GetProjectResponse["response"] = await getUserProject(
+        request.server.prisma,
+        parseInt(projectID),
+        request.session.uid,
+        hasPermission(request.session.permissions, "projects:get")
+      );
+
+      if (!hasPermission(request.session.permissions, "projects:users:get"))
+        delete response["members"];
+      if (!hasPermission(request.session.permissions, "projects:hashes:get"))
+        delete response["hashes"];
+
+      return { response } as GetProjectResponse;
     }
   );
 
   instance.post<CreateProjectRequest>(
     "/projects",
-    { preHandler: [checkAuth] },
+    { preHandler: [checkPermission("projects:add")] },
     async (request) => {
       const { projectName } = request.body;
       if (projectName === undefined) throw new APIError("Invalid project name");
@@ -302,7 +354,8 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       await deleteProject(
         request.server.prisma,
         parseInt(projectID as string),
-        request.session.uid
+        request.session.uid,
+        hasPermission(request.session.permissions, "projects:remove")
       );
 
       return {
@@ -313,7 +366,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.post<AddUserToProjectRequest>(
     "/projects/:projectID/users/:userID",
-    { preHandler: [checkAuth] },
+    { preHandler: [checkPermission("projects:users:add")] },
     async (request) => {
       const { projectID, userID } = request.params;
 
@@ -325,7 +378,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         request.session.uid,
         parseInt(userID),
         parseInt(projectID),
-        request.session.isAdmin
+        hasPermission(request.session.permissions, "root")
       );
 
       return {
@@ -336,7 +389,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.delete<RemoveUserFromProjectRequest>(
     "/projects/:projectID/users/:userID",
-    { preHandler: [checkAuth] },
+    { preHandler: [checkPermission("projects:users:remove")] },
     async (request) => {
       const { projectID, userID } = request.params;
 
@@ -348,7 +401,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         request.session.uid,
         parseInt(userID),
         parseInt(projectID),
-        request.session.isAdmin
+        hasPermission(request.session.permissions, "root")
       );
 
       return {
@@ -359,7 +412,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.post<AddHashRequest>(
     "/projects/:projectID/hashes",
-    { preHandler: [checkAuth] },
+    { preHandler: [checkPermission("projects:hashes:add")] },
     async (request) => {
       const { projectID } = request.params;
 
@@ -375,7 +428,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         parseInt(projectID),
         hash,
         hashType,
-        request.session.isAdmin
+        hasPermission(request.session.permissions, "root")
       );
 
       return { response: "Hash has been added" } as AddHashResponse;
@@ -384,7 +437,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.delete<RemoveHashRequest>(
     "/projects/:projectID/hashes/:hashID",
-    { preHandler: [checkAuth] },
+    { preHandler: [checkPermission("projects:hashes:remove")] },
     async (request) => {
       const { projectID, hashID } = request.params;
 
@@ -396,29 +449,10 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         parseInt(projectID),
         parseInt(hashID),
         request.session.uid,
-        request.session.isAdmin
+        hasPermission(request.session.permissions, "root")
       );
 
       return { response: "Hash has been removed" } as AddHashResponse;
-    }
-  );
-
-  instance.get<GetHashesRequest>(
-    "/projects/:projectID/hashes",
-    { preHandler: [checkAuth] },
-    async (request) => {
-      const { projectID } = request.params;
-
-      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
-
-      const hashes = await getHashes(
-        request.server.prisma,
-        parseInt(projectID),
-        request.session.uid,
-        request.session.isAdmin
-      );
-
-      return { response: hashes } as GetHashesResponse;
     }
   );
 

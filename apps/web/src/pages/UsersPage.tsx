@@ -2,29 +2,36 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
+  DEFAULT_PERMISSION_PROFILE,
   GetUsersResponse,
+  PERMISSION_PROFILES,
   RegisterRequest,
   deleteUser,
   getUsers,
   registerUser,
 } from "@repo/api";
-import { Checkbox } from "@repo/shadcn/components/ui/checkbox";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { TableCell } from "@repo/shadcn/components/ui/table";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
+import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { Header } from "@repo/ui/header";
+import { PermissionProfileSelect } from "@repo/ui/users";
 
 export const UsersPage = () => {
   const { toast } = useToast();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
   const [users, setUsers] = useState<GetUsersResponse["response"]>([]);
 
+  const [addUserProfile, setAddUserProfile] = useState(
+    DEFAULT_PERMISSION_PROFILE
+  );
   const [addUser, setAddUser] = useState<RegisterRequest["Body"]>({
     username: "",
     password: "",
-    isAdmin: false,
+    permissions: PERMISSION_PROFILES[DEFAULT_PERMISSION_PROFILE],
   });
 
   async function refreshUsers() {
@@ -88,20 +95,14 @@ export const UsersPage = () => {
       <div className="p-4">
         <DataTable
           type="User"
-          head={["User", "Is Admin?"]}
+          head={["User"]}
           values={users}
-          row={({ ID, username, isAdmin }) => [
+          row={({ ID, username }) => [
             <TableCell
               className="cursor-pointer font-medium"
               onClick={() => navigate(`/users/${ID}`)}
             >
               {username}
-            </TableCell>,
-            <TableCell
-              className="cursor-pointer"
-              onClick={() => navigate(`/users/${ID}`)}
-            >
-              {isAdmin ? "Yes" : "No"}
             </TableCell>,
           ]}
           valueKey={({ ID }) => ID}
@@ -135,26 +136,19 @@ export const UsersPage = () => {
                   })
                 }
               />
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="isAdmin"
-                  checked={addUser.isAdmin}
-                  onCheckedChange={(state) =>
-                    setAddUser({
-                      ...addUser,
-                      isAdmin: state === true,
-                    })
-                  }
-                />
-                <label
-                  htmlFor="isAdmin"
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                >
-                  Is Admin?
-                </label>
-              </div>
+              <PermissionProfileSelect
+                value={addUserProfile}
+                onValueChange={(value, permissions) => {
+                  setAddUserProfile(value);
+                  setAddUser({
+                    ...addUser,
+                    permissions,
+                  });
+                }}
+              />
             </>
           }
+          noAdd={!hasPermission("users:add")}
           onAdd={onAdd}
           noRemove
           onRemove={onRemove}

@@ -11,12 +11,12 @@ datasource db {
 }
 
 model User {
-  ID       Int       @id @default(autoincrement())
-  username String    @unique
-  password String
-  isadmin  Int
-  projects Project[] @relation("members")
-  hashes   Hash[]    @relation("userHashes")
+  ID          Int       @id @default(autoincrement())
+  username    String    @unique
+  password    String
+  permissions String    @default("")
+  projects    Project[] @relation("members")
+  hashes      Hash[]    @relation("userHashes")
 }
 
 model Project {

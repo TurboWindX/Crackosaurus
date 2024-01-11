@@ -1,4 +1,4 @@
-import { TrashIcon } from "lucide-react";
+import { LogOutIcon, TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -21,7 +21,7 @@ const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
   return (
     <DataTable
       type="Project"
-      values={values}
+      values={values ?? []}
       head={["Project"]}
       row={({ PID, name }) => [
         <TableCell
@@ -42,7 +42,7 @@ const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
 export const UserPage = () => {
   const { userID } = useParams();
   const { toast } = useToast();
-  const { isAdmin } = useAuth();
+  const { uid, hasPermission, logout } = useAuth();
   const navigate = useNavigate();
 
   const [user, setUser] = useState<GetUserResponse["response"] | null>(null);
@@ -108,8 +108,24 @@ export const UserPage = () => {
           <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
             {user?.username ?? "User"}
           </span>
-          <div className="grid justify-end gap-4">
-            {isAdmin && (
+          <div className="grid grid-flow-col justify-end gap-4">
+            {uid.toString() === userID && (
+              <div className="w-max">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    await logout();
+                    navigate("/");
+                  }}
+                >
+                  <div className="grid grid-flow-col items-center gap-2">
+                    <LogOutIcon />
+                    <span>Logout</span>
+                  </div>
+                </Button>
+              </div>
+            )}
+            {(hasPermission("users:remove") || uid.toString() === userID) && (
               <div className="w-max">
                 <DrawerDialog
                   title="Remove User"
@@ -143,7 +159,7 @@ export const UserPage = () => {
             )}
           </div>
         </div>
-        <ProjectDataTable values={user?.projects ?? []} />
+        <ProjectDataTable values={user?.projects} />
       </div>
     </div>
   );

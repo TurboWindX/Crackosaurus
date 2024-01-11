@@ -1,13 +1,14 @@
 import { PrismaClient } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import bcrypt from "bcrypt";
 
-import { APIError, AuthError } from "../errors";
+import { PermissionType } from "../../../../packages/api/src/types";
+import { APIError } from "../errors";
 
 export interface AuthenticatedUser {
-  uid: number;
+  ID: number;
   username: string;
-  //teams: Array<number>; //would hold TIDs (Team IDs)
-  isAdmin: number;
+  permissions: string;
 }
 
 //hash a plaintext password for storage
@@ -33,36 +34,34 @@ export async function getUser(
   prisma: PrismaClient,
   userID: number,
   currentUserID: number,
-  isAdmin: boolean
+  bypassCheck: boolean
 ) {
-  if (!(isAdmin || userID === currentUserID))
-    throw new APIError("User not found");
-
   try {
-    const { ID, username, isadmin, projects } =
-      await prisma.user.findFirstOrThrow({
-        select: {
-          ID: true,
-          username: true,
-          isadmin: true,
-          projects: {
-            select: {
-              PID: true,
-              name: true,
-            },
+    return await prisma.user.findUniqueOrThrow({
+      select: {
+        ID: true,
+        username: true,
+        permissions: true,
+        projects: {
+          select: {
+            PID: true,
+            name: true,
           },
+          where: bypassCheck
+            ? undefined
+            : {
+                members: {
+                  some: {
+                    ID: currentUserID,
+                  },
+                },
+              },
         },
-        where: {
-          ID: userID,
-        },
-      });
-
-    return {
-      ID,
-      username,
-      isAdmin: isadmin === 1,
-      projects,
-    };
+      },
+      where: {
+        ID: userID,
+      },
+    });
   } catch (err) {
     throw new APIError("User error");
   }
@@ -70,19 +69,13 @@ export async function getUser(
 
 export async function getUsers(prisma: PrismaClient) {
   try {
-    return (
-      await prisma.user.findMany({
-        select: {
-          ID: true,
-          username: true,
-          isadmin: true,
-        },
-      })
-    ).map(({ ID, username, isadmin }) => ({
-      ID,
-      username,
-      isAdmin: isadmin === 1,
-    }));
+    return await prisma.user.findMany({
+      select: {
+        ID: true,
+        username: true,
+        permissions: true,
+      },
+    });
   } catch (err) {
     throw new APIError("User error");
   }
@@ -105,15 +98,15 @@ export async function getUserList(prisma: PrismaClient) {
 export async function createUser(
   prisma: PrismaClient,
   username: string,
-  pass: string,
-  isAdmin: boolean
+  password: string,
+  permissions?: PermissionType[]
 ): Promise<void> {
   try {
     await prisma.user.create({
       data: {
-        username: username,
-        password: hashPassword(pass),
-        isadmin: isAdmin ? 1 : 0,
+        username,
+        password: hashPassword(password),
+        permissions: permissions?.join(" ") ?? "",
       },
     });
   } catch (err) {
@@ -127,28 +120,51 @@ export async function getAuthenticatedUser(
   username: string,
   password: string
 ): Promise<AuthenticatedUser> {
-  let user;
+  let userPassword = "";
   try {
-    user = await prisma.user.findUnique({
+    const user = await prisma.user.findUniqueOrThrow({
+      select: {
+        password: true,
+      },
+      where: {
+        username: username,
+      },
+    });
+
+    userPassword = user.password;
+  } catch (err) {
+    if (err instanceof PrismaClientKnownRequestError) {
+      if (err.code === "P2025") {
+        throw new APIError("Login failed");
+      }
+    }
+
+    throw new APIError("User error");
+  }
+
+  if (!checkPassword(password, userPassword))
+    throw new APIError("Login failed");
+
+  try {
+    return await prisma.user.findUniqueOrThrow({
+      select: {
+        ID: true,
+        username: true,
+        permissions: true,
+      },
       where: {
         username: username,
       },
     });
   } catch (err) {
+    if (err instanceof PrismaClientKnownRequestError) {
+      if (err.code === "P2025") {
+        throw new APIError("Login failed");
+      }
+    }
+
     throw new APIError("User error");
   }
-
-  if (!user) throw new AuthError("Login failed");
-
-  const valid = checkPassword(password, user.password);
-  if (!valid) throw new AuthError("Login failed");
-
-  const authUser: AuthenticatedUser = {
-    uid: user.ID,
-    username: user.username,
-    isAdmin: user.isadmin,
-  };
-  return authUser;
 }
 
 //delete user from database
@@ -168,32 +184,36 @@ export async function changePassword(
   userId: number,
   oldPassword: string,
   newPassword: string,
-  isAdmin: boolean
+  bypassCheck: boolean
 ): Promise<void> {
-  if (!isAdmin) {
-    // Check old password for non-admin users
-    let user;
+  // Check if old password is valid or bypass
+  if (!bypassCheck) {
+    let userPassword = "";
     try {
-      user = await prisma.user.findUnique({
+      const user = await prisma.user.findUniqueOrThrow({
+        select: {
+          password: true,
+        },
         where: {
           ID: userId,
         },
       });
+
+      userPassword = user.password;
     } catch (err) {
       throw new APIError("User error");
     }
 
-    if (!user) throw new APIError("User not found");
-
-    const isPasswordValid = checkPassword(oldPassword, user.password);
-    if (!isPasswordValid) throw new APIError("Old password is incorrect");
+    if (!checkPassword(oldPassword, userPassword))
+      throw new APIError("Invalid old password");
   }
 
-  // Update password for the user
+  // Update password for user
   try {
     await prisma.user.update({
       where: {
         ID: userId,
+        password: bypassCheck ? undefined : hashPassword(oldPassword),
       },
       data: {
         password: hashPassword(newPassword),
