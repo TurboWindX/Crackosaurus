@@ -4,6 +4,9 @@ const config = {
   darkMode: ["class"],
   content: ["src/**/*.{ts,tsx}"],
   prefix: "scn-",
+  corePlugins: {
+    preflight: false
+  },
   theme: {
     container: {
       center: true,
