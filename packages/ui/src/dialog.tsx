@@ -42,7 +42,7 @@ export function DrawerDialog({
     return (
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>{trigger}</DialogTrigger>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:ui-max-w-[425px]">
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription>{description}</DialogDescription>
@@ -56,12 +56,12 @@ export function DrawerDialog({
       <Drawer open={open} onOpenChange={setOpen}>
         <DrawerTrigger asChild>{trigger}</DrawerTrigger>
         <DrawerContent>
-          <DrawerHeader className="text-left">
+          <DrawerHeader className="ui-text-left">
             <DrawerTitle>{title}</DrawerTitle>
             <DrawerDescription>{description}</DrawerDescription>
           </DrawerHeader>
-          <div className="px-4">{children}</div>
-          <DrawerFooter className="pt-2">
+          <div className="ui-px-4">{children}</div>
+          <DrawerFooter className="ui-pt-2">
             <DrawerClose asChild>
               <Button variant="outline">Cancel</Button>
             </DrawerClose>

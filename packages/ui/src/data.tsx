@@ -40,7 +40,7 @@ export const AddDialog = ({
       setOpen={setOpen}
       trigger={
         <Button variant="outline">
-          <div className="grid grid-flow-col items-center gap-2">
+          <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
             <PlusIcon />
             <span>Add</span>
           </div>
@@ -48,7 +48,7 @@ export const AddDialog = ({
       }
     >
       <form
-        className="grid gap-4"
+        className="ui-grid ui-gap-4"
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit?.();
@@ -85,14 +85,14 @@ export const RemoveDialog = ({
       setOpen={setOpen}
       trigger={
         <Button variant="outline" disabled={count === 0}>
-          <div className="grid grid-flow-col items-center gap-2">
+          <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
             <TrashIcon />
             <span>Remove</span>
           </div>
         </Button>
       }
     >
-      <div className="grid gap-4">
+      <div className="ui-grid ui-gap-4">
         <span>
           Do you want to remove {count} {type.toLowerCase()}({pluralSuffix})?
         </span>
@@ -153,7 +153,7 @@ export function DataTable<T>({
   const hasSelect = hasRemove;
 
   return (
-    <div className="grid gap-4">
+    <div className="ui-grid ui-gap-4">
       {searchFilter !== undefined && (
         <Input
           placeholder={`Search ${plural}`}
@@ -162,7 +162,7 @@ export function DataTable<T>({
         />
       )}
       {hasButtons && (
-        <div className="grid w-max grid-flow-col gap-4">
+        <div className="ui-grid ui-w-max ui-grid-flow-col ui-gap-4">
           {hasAdd && (
             <AddDialog
               type={type}
@@ -196,7 +196,7 @@ export function DataTable<T>({
           <TableHeader>
             <TableRow>
               {hasSelect && (
-                <TableHead className="w-[50px]">
+                <TableHead className="ui-w-[50px]">
                   <Checkbox
                     checked={
                       searchValues.length === selectedValues.length &&

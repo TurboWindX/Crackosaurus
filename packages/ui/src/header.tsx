@@ -50,8 +50,8 @@ export const Header = () => {
 
   return (
     <div>
-      <div className="grid grid-cols-2">
-        <div className="hidden md:block">
+      <div className="ui-grid ui-grid-cols-2">
+        <div className="ui-hidden md:ui-block">
           <NavigationMenu>
             <NavigationMenuList>
               {LINKS.map(
@@ -62,9 +62,9 @@ export const Header = () => {
                         <NavigationMenuLink
                           className={navigationMenuTriggerStyle()}
                         >
-                          <div className="grid grid-flow-col items-center gap-2">
+                          <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
                             <link.icon />
-                            <span className="hidden md:block">{link.text}</span>
+                            <span className="ui-hidden md:ui-block">{link.text}</span>
                           </div>
                         </NavigationMenuLink>
                       </Link>
@@ -74,7 +74,7 @@ export const Header = () => {
             </NavigationMenuList>
           </NavigationMenu>
         </div>
-        <div className="block md:hidden">
+        <div className="ui-block md:ui-hidden">
           <NavigationMenu>
             <NavigationMenuList>
               <NavigationMenuItem>
@@ -82,7 +82,7 @@ export const Header = () => {
                   <SheetTrigger asChild>
                     <NavigationMenuLink
                       className={
-                        navigationMenuTriggerStyle() + " cursor-pointer"
+                        navigationMenuTriggerStyle() + " ui-cursor-pointer"
                       }
                     >
                       <HardHatIcon />
@@ -113,15 +113,15 @@ export const Header = () => {
             </NavigationMenuList>
           </NavigationMenu>
         </div>
-        <div className="grid justify-end">
+        <div className="ui-grid ui-justify-end">
           <NavigationMenu>
             <NavigationMenuList>
               <NavigationMenuItem>
                 <Link to={`/users/${uid}`}>
                   <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-                    <div className="grid grid-flow-col items-center gap-2">
+                    <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
                       <UserIcon />
-                      <span className="hidden md:block">{username}</span>
+                      <span className="ui-hidden md:ui-block">{username}</span>
                     </div>
                   </NavigationMenuLink>
                 </Link>
