@@ -15,6 +15,7 @@ import {
   GetUsersResponse,
   LoginRequest,
   LoginResponse,
+  LogoutResponse,
   RegisterRequest,
   RegisterResponse,
   RemoveHashResponse,
@@ -65,6 +66,10 @@ export async function login(
   req: LoginRequest["Body"]
 ): ApiResponse<LoginResponse> {
   return apiPost("/auth/login", req);
+}
+
+export async function logout(): ApiResponse<LogoutResponse> {
+  return apiGet("/auth/logout");
 }
 
 export async function authUser(): ApiResponse<AuthUserResponse> {

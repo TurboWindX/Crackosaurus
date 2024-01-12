@@ -1,6 +1,45 @@
 export const HASH_TYPES = ["NTLM", "bcrypt"] as const;
 export type HashType = (typeof HASH_TYPES)[number];
 
+export const PERMISSIONS = [
+  "*",
+  "root",
+  "projects:*",
+  "projects:get",
+  "projects:add",
+  "projects:remove",
+  "projects:users:*",
+  "projects:users:get",
+  "projects:users:add",
+  "projects:users:remove",
+  "projects:hashes:*",
+  "projects:hashes:get",
+  "projects:hashes:add",
+  "projects:hashes:remove",
+  "users:*",
+  "users:get",
+  "users:list",
+  "users:add",
+  "users:edit",
+  "users:remove",
+] as const;
+export type PermissionType = (typeof PERMISSIONS)[number];
+
+export const PERMISSION_PROFILES = {
+  admin: ["*"],
+  contributor: [
+    "projects:add",
+    "projects:remove",
+    "projects:users:*",
+    "projects:hashes:*",
+    "users:list",
+  ],
+  viewer: ["projects:hashes:get"],
+} satisfies Record<string, PermissionType[]>;
+
+export const DEFAULT_PERMISSION_PROFILE: keyof typeof PERMISSION_PROFILES =
+  "viewer";
+
 export interface ApiError {
   error: string;
 }
@@ -26,8 +65,8 @@ export interface GetUserResponse {
   response: {
     ID: number;
     username: string;
-    isAdmin: boolean;
-    projects: {
+    permissions: string;
+    projects?: {
       PID: number;
       name: string;
     }[];
@@ -40,7 +79,7 @@ export interface GetUsersResponse {
   response: {
     ID: number;
     username: string;
-    isAdmin: boolean;
+    permissions: string;
   }[];
 }
 
@@ -64,11 +103,17 @@ export interface LoginResponse {
   response: string;
 }
 
+export interface LogoutRequest {}
+
+export interface LogoutResponse {
+  response: string;
+}
+
 export interface RegisterRequest {
   Body: {
     username: string;
     password: string;
-    isAdmin?: boolean;
+    permissions?: PermissionType[];
   };
 }
 
@@ -121,11 +166,11 @@ export interface GetProjectResponse {
   response: {
     PID: number;
     name: string;
-    members: {
+    members?: {
       ID: number;
       username: string;
     }[];
-    hashes: {
+    hashes?: {
       HID: number;
       hash: string;
       hashType: string;
@@ -134,15 +179,13 @@ export interface GetProjectResponse {
   };
 }
 
-export interface GetProjectsRequest {
-  Body: {};
-}
+export interface GetProjectsRequest {}
 
 export interface GetProjectsResponse {
   response: {
     PID: number;
     name: string;
-    members: {
+    members?: {
       ID: number;
       username: string;
     }[];
@@ -219,12 +262,10 @@ export interface ChangePasswordResponse {
   response: string;
 }
 
-export interface AuthUserRequest {
-  Body: {};
-}
+export interface AuthUserRequest {}
 
 export interface AuthUserResponse {
-  uid: string;
+  uid: number;
   username: string;
-  isAdmin: boolean;
+  permissions: PermissionType[];
 }

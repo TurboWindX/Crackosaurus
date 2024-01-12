@@ -8,13 +8,13 @@ export async function addUserToProject(
   currentUserId: number,
   userIdToAdd: number,
   projectId: number,
-  isAdmin: boolean
+  bypassCheck: boolean
 ): Promise<void> {
   try {
     await prisma.project.update({
       where: {
         PID: projectId,
-        members: isAdmin
+        members: bypassCheck
           ? undefined
           : {
               some: {
@@ -40,13 +40,13 @@ export async function removeUserFromProject(
   currentUserId: number,
   userIdToRemove: number,
   projectId: number,
-  isAdmin: boolean
+  bypassCheck: boolean
 ): Promise<void> {
   try {
     await prisma.project.update({
       where: {
         PID: projectId,
-        members: isAdmin
+        members: bypassCheck
           ? undefined
           : {
               some: {
@@ -97,8 +97,8 @@ export async function createProject(
 export async function getUserProjects(
   prisma: PrismaClient,
   userID: number,
-  isAdmin: boolean
-): Promise<(Project | { members: { ID: number; username: string }[] })[]> {
+  bypassCheck: boolean
+): Promise<(Project & { members: { ID: number; username: string }[] })[]> {
   try {
     return await prisma.project.findMany({
       select: {
@@ -111,7 +111,7 @@ export async function getUserProjects(
           },
         },
       },
-      where: isAdmin
+      where: bypassCheck
         ? undefined
         : {
             members: {
@@ -130,7 +130,7 @@ export async function getUserProject(
   prisma: PrismaClient,
   projectID: number,
   currentUserID: number,
-  isAdmin: boolean
+  bypassCheck: boolean
 ): Promise<
   Project & { members: { ID: number; username: string }[] } & {
     hashes: {
@@ -142,7 +142,7 @@ export async function getUserProject(
   }
 > {
   try {
-    return await prisma.project.findFirstOrThrow({
+    return await prisma.project.findUniqueOrThrow({
       select: {
         PID: true,
         name: true,
@@ -163,7 +163,7 @@ export async function getUserProject(
       },
       where: {
         PID: projectID,
-        members: isAdmin
+        members: bypassCheck
           ? undefined
           : {
               some: {
@@ -186,17 +186,20 @@ export async function getUserProject(
 export async function deleteProject(
   prisma: PrismaClient,
   projectID: number,
-  userID: number
+  userID: number,
+  bypassCheck: boolean
 ): Promise<void> {
   try {
     await prisma.project.delete({
       where: {
         PID: projectID,
-        members: {
-          some: {
-            ID: userID,
-          },
-        },
+        members: bypassCheck
+          ? undefined
+          : {
+              some: {
+                ID: userID,
+              },
+            },
       },
     });
   } catch (err) {

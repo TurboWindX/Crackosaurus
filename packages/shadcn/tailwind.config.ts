@@ -5,7 +5,7 @@ const config = {
   content: ["src/**/*.{ts,tsx}"],
   prefix: "scn-",
   corePlugins: {
-    preflight: false
+    preflight: false,
   },
   theme: {
     container: {

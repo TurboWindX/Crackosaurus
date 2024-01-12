@@ -1,13 +1,12 @@
-import { FolderIcon, HardHatIcon, UserIcon, UsersIcon } from "lucide-react";
+import { HardHatIcon, UserIcon, UsersIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { PermissionType } from "@repo/api";
 import {
   NavigationMenu,
-  NavigationMenuContent,
   NavigationMenuItem,
   NavigationMenuLink,
   NavigationMenuList,
-  NavigationMenuTrigger,
   navigationMenuTriggerStyle,
 } from "@repo/shadcn/components/ui/navigation-menu";
 import { Separator } from "@repo/shadcn/components/ui/separator";
@@ -24,29 +23,29 @@ import {
 
 import { useAuth } from "./auth";
 
-const LINKS = [
+interface HeaderLinkProps {
+  text: string;
+  path: string;
+  icon: any;
+  permission?: PermissionType;
+}
+
+const LINKS: readonly HeaderLinkProps[] = [
   {
     text: "Crackosaurus",
     path: "/",
     icon: HardHatIcon,
-    isAdmin: false,
-  },
-  {
-    text: "Projects",
-    path: "/projects",
-    icon: FolderIcon,
-    isAdmin: false,
   },
   {
     text: "Users",
     path: "/users",
     icon: UsersIcon,
-    isAdmin: true,
+    permission: "users:get",
   },
 ] as const;
 
 export const Header = () => {
-  const { uid, username, isAdmin } = useAuth();
+  const { uid, username, hasPermission } = useAuth();
 
   return (
     <div>
@@ -56,7 +55,7 @@ export const Header = () => {
             <NavigationMenuList>
               {LINKS.map(
                 (link) =>
-                  (isAdmin || !link.isAdmin) && (
+                  (!link.permission || hasPermission(link.permission)) && (
                     <NavigationMenuItem>
                       <Link to={link.path}>
                         <NavigationMenuLink
@@ -64,7 +63,9 @@ export const Header = () => {
                         >
                           <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
                             <link.icon />
-                            <span className="ui-hidden md:ui-block">{link.text}</span>
+                            <span className="ui-hidden md:ui-block">
+                              {link.text}
+                            </span>
                           </div>
                         </NavigationMenuLink>
                       </Link>
@@ -96,7 +97,8 @@ export const Header = () => {
                     <SheetFooter>
                       {[...LINKS].reverse().map(
                         (link) =>
-                          (isAdmin || !link.isAdmin) && (
+                          (!link.permission ||
+                            hasPermission(link.permission)) && (
                             <SheetClose asChild>
                               <Link to={link.path}>
                                 {link.text === "Crackosaurus"

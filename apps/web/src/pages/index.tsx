@@ -1,6 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 
-import { AdminRoute, AuthRoute } from "@repo/ui/auth";
+import { AuthRoute, PermissionRoute } from "@repo/ui/auth";
 
 import { LoginPage } from "./LoginPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
@@ -48,9 +48,9 @@ export const router = createBrowserRouter([
   {
     path: "/users",
     element: (
-      <AdminRoute>
+      <PermissionRoute permission="users:get">
         <UsersPage />
-      </AdminRoute>
+      </PermissionRoute>
     ),
   },
 ]);
