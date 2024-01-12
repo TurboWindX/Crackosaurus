@@ -23,6 +23,7 @@
     "./components/ui/select": "./src/components/ui/select.tsx",
     "./components/ui/separator": "./src/components/ui/separator.tsx",
     "./components/ui/sheet": "./src/components/ui/sheet.tsx",
+    "./components/ui/spinner": "./src/components/ui/spinner.tsx",
     "./components/ui/table": "./src/components/ui/table.tsx",
     "./components/ui/toaster": "./src/components/ui/toaster.tsx",
     "./components/ui/use-toast": "./src/components/ui/use-toast.ts"

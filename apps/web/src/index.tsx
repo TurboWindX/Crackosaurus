@@ -8,17 +8,17 @@ import "@repo/ui/index.css";
 
 import { ThemeProvider } from "@repo/shadcn/components/theme-provider";
 import { Toaster } from "@repo/shadcn/components/ui/toaster";
-import { AuthProvider } from "@repo/ui/auth";
+import { APIProvider } from "@repo/ui/api";
 
 import { router } from "./pages/index.tsx";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <AuthProvider>
-      <ThemeProvider defaultTheme="dark" storageKey="ui-theme">
+    <ThemeProvider defaultTheme="dark" storageKey="ui-theme">
+      <APIProvider>
         <RouterProvider router={router} />
         <Toaster />
-      </ThemeProvider>
-    </AuthProvider>
+      </APIProvider>
+    </ThemeProvider>
   </React.StrictMode>
 );

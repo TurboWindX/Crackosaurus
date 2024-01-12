@@ -165,6 +165,7 @@ export function DataTable<T>({
         <div className="ui-grid ui-w-max ui-grid-flow-col ui-gap-4">
           {hasAdd && (
             <AddDialog
+              key="add"
               type={type}
               open={addDialogOpen}
               setOpen={setAddDialogOpen}
@@ -178,6 +179,7 @@ export function DataTable<T>({
           )}
           {hasRemove && (
             <RemoveDialog
+              key="remove"
               type={type}
               pluralSuffix={pluralSuffix || "s"}
               open={removeDialogOpen}
