@@ -6,10 +6,12 @@
   ],
   "exports": {
     "./index.css": "./dist/index.css",
+    "./api": "./src/api.tsx",
     "./auth": "./src/auth.tsx",
     "./data": "./src/data.tsx",
     "./dialog": "./src/dialog.tsx",
     "./header": "./src/header.tsx",
+    "./projects": "./src/projects.tsx",
     "./time": "./src/time.tsx",
     "./users": "./src/users.tsx"
   },

@@ -21,7 +21,15 @@ export interface AuthInterface {
   readonly hasPermission: (permission: PermissionType) => boolean;
 }
 
-const AuthContext = createContext<AuthInterface>(null as any);
+const AuthContext = createContext<AuthInterface>({
+  isLoading: true,
+  isAuthenticated: false,
+  uid: -1,
+  username: "",
+  login: async () => {},
+  logout: async () => {},
+  hasPermission: () => false,
+});
 
 export function AuthProvider({ children }: { children: any }) {
   const [isLoading, setLoading] = useState(true);
@@ -41,13 +49,14 @@ export function AuthProvider({ children }: { children: any }) {
   }, []);
 
   async function authLogin(username: string, password: string) {
+    setLoading(true);
+
     const { response, error } = await login({ username, password });
 
-    setLoading(true);
     if (error) {
       toast({
         variant: "destructive",
-        title: "Failed",
+        title: "Error",
         description: error,
       });
 
@@ -66,9 +75,10 @@ export function AuthProvider({ children }: { children: any }) {
   }
 
   async function authLogout() {
+    setLoading(true);
+
     const { response, error } = await logout();
 
-    setLoading(true);
     if (error) {
       toast({
         variant: "destructive",

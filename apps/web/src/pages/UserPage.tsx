@@ -2,14 +2,13 @@ import { LogOutIcon, TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { GetUserResponse, deleteUser, getUser } from "@repo/api";
+import { GetUserResponse } from "@repo/api";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { TableCell } from "@repo/shadcn/components/ui/table";
-import { useToast } from "@repo/shadcn/components/ui/use-toast";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
-import { Header } from "@repo/ui/header";
+import { useUsers } from "@repo/ui/users";
 
 interface ProjectDataTableProps {
   values: GetUserResponse["response"]["projects"];
@@ -41,126 +40,72 @@ const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
 
 export const UserPage = () => {
   const { userID } = useParams();
-  const { toast } = useToast();
   const { uid, hasPermission, logout } = useAuth();
+  const { one, loadOne, remove } = useUsers();
   const navigate = useNavigate();
-
-  const [user, setUser] = useState<GetUserResponse["response"] | null>(null);
 
   const [removeOpen, setRemoveOpen] = useState(false);
 
-  async function refreshUser() {
-    const res = await getUser(parseInt(userID ?? "-1"));
-
-    if (res.response) setUser(res.response);
-
-    return res;
-  }
-
-  async function handleResponse({
-    response,
-    error,
-  }: {
-    response?: string;
-    error?: string;
-  }): Promise<boolean> {
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Failed",
-        description: error,
-      });
-
-      return false;
-    }
-
-    await refreshUser();
-
-    toast({
-      variant: "default",
-      title: "Success",
-      description: response,
-    });
-
-    return true;
-  }
-
   useEffect(() => {
-    (async () => {
-      const { error } = await refreshUser();
-      if (error) {
-        toast({
-          variant: "destructive",
-          title: "Failed",
-          description: error,
-        });
-
-        navigate("/users");
-      }
-    })();
+    loadOne(parseInt(userID ?? "-1"));
   }, []);
 
   return (
-    <div>
-      <Header />
-      <div className="grid gap-8 p-4">
-        <div className="grid grid-cols-2 gap-4">
-          <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-            {user?.username ?? "User"}
-          </span>
-          <div className="grid grid-flow-col justify-end gap-4">
-            {uid.toString() === userID && (
-              <div className="w-max">
-                <Button
-                  variant="outline"
-                  onClick={async () => {
-                    await logout();
-                    navigate("/");
+    <div className="grid gap-8 p-4">
+      <div className="grid grid-cols-2 gap-4">
+        <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
+          {one.username}
+        </span>
+        <div className="grid grid-flow-col justify-end gap-4">
+          {uid.toString() === userID && (
+            <div className="w-max">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await logout();
+                  navigate("/");
+                }}
+              >
+                <div className="grid grid-flow-col items-center gap-2">
+                  <LogOutIcon />
+                  <span>Logout</span>
+                </div>
+              </Button>
+            </div>
+          )}
+          {(hasPermission("users:remove") || uid.toString() === userID) && (
+            <div className="w-max">
+              <DrawerDialog
+                title="Remove User"
+                open={removeOpen}
+                setOpen={setRemoveOpen}
+                trigger={
+                  <Button variant="outline">
+                    <div className="grid grid-flow-col items-center gap-2">
+                      <TrashIcon />
+                      <span>Remove</span>
+                    </div>
+                  </Button>
+                }
+              >
+                <form
+                  className="grid gap-4"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+
+                    if (await remove(parseInt(userID ?? "-1")))
+                      navigate("/users");
                   }}
                 >
-                  <div className="grid grid-flow-col items-center gap-2">
-                    <LogOutIcon />
-                    <span>Logout</span>
-                  </div>
-                </Button>
-              </div>
-            )}
-            {(hasPermission("users:remove") || uid.toString() === userID) && (
-              <div className="w-max">
-                <DrawerDialog
-                  title="Remove User"
-                  open={removeOpen}
-                  setOpen={setRemoveOpen}
-                  trigger={
-                    <Button variant="outline">
-                      <div className="grid grid-flow-col items-center gap-2">
-                        <TrashIcon />
-                        <span>Remove</span>
-                      </div>
-                    </Button>
-                  }
-                >
-                  <form
-                    className="grid gap-4"
-                    onSubmit={async (e) => {
-                      e.preventDefault();
-
-                      const res = await deleteUser(parseInt(userID ?? "-1"));
-                      await handleResponse(res);
-
-                      if (res.response) navigate("/users");
-                    }}
-                  >
-                    <span>Do you want to permanently remove this user?</span>
-                    <Button>Remove</Button>
-                  </form>
-                </DrawerDialog>
-              </div>
-            )}
-          </div>
+                  <span>Do you want to permanently remove this user?</span>
+                  <Button>Remove</Button>
+                </form>
+              </DrawerDialog>
+            </div>
+          )}
         </div>
-        <ProjectDataTable values={user?.projects} />
       </div>
+      <ProjectDataTable values={one?.projects} />
     </div>
   );
 };
