@@ -1,8 +1,5 @@
 import { Outlet, createBrowserRouter } from "react-router-dom";
 
-import { ThemeProvider } from "@repo/shadcn/components/theme-provider";
-import { Toaster } from "@repo/shadcn/components/ui/toaster";
-import { APIProvider } from "@repo/ui/api";
 import { AuthRoute, PermissionRoute } from "@repo/ui/auth";
 import { Header } from "@repo/ui/header";
 
