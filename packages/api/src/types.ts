@@ -46,13 +46,7 @@ export const PERMISSION_PROFILES = {
 export const DEFAULT_PERMISSION_PROFILE: keyof typeof PERMISSION_PROFILES =
   "viewer";
 
-export const STATUSES = [
-  "PENDING",
-  "STARTED",
-  "STOPPED",
-  "COMPLETE",
-  "ERROR"
-];
+export const STATUSES = ["PENDING", "STARTED", "STOPPED", "COMPLETE", "ERROR"];
 export type Status = (typeof STATUSES)[number];
 
 export interface ApiError {

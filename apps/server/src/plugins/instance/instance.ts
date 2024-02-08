@@ -8,7 +8,11 @@ export abstract class InstanceAPI<TConfig = undefined> {
   }
 
   public abstract load(): Promise<boolean>;
-  public abstract create(hashType: HashType, hashes: string[], instanceType?: string): Promise<string | null>;
+  public abstract create(
+    hashType: HashType,
+    hashes: string[],
+    instanceType?: string
+  ): Promise<string | null>;
   public abstract start(instanceId: string): Promise<boolean>;
   public abstract stop(instanceId: string): Promise<boolean>;
   public abstract terminate(instanceId: string): Promise<boolean>;

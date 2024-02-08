@@ -152,9 +152,9 @@ export async function getUserProject(
             job: {
               select: {
                 JID: true,
-                status: true
-              }
-            }
+                status: true,
+              },
+            },
           },
         },
       },

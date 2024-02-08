@@ -8,6 +8,8 @@ import {
   AddUserToProjectResponse,
   ChangePasswordRequest,
   ChangePasswordResponse,
+  CreateProjectJobsRequest,
+  CreateProjectJobsResponse,
   CreateProjectRequest,
   CreateProjectResponse,
   DeleteProjectRequest,
@@ -31,18 +33,17 @@ import {
   LogoutRequest,
   LogoutResponse,
   PermissionType,
-  CreateProjectJobsRequest,
   RegisterRequest,
   RegisterResponse,
   RemoveHashRequest,
   RemoveUserFromProjectRequest,
   RemoveUserFromProjectResponse,
   hasPermission,
-  CreateProjectJobsResponse,
 } from "@repo/api";
 
 import { APIError, AuthError, errorHandler } from "../plugins/errors";
 import { addHash, removeHash } from "./hashes";
+import { createProjectJobs } from "./jobs";
 import {
   addUserToProject,
   createProject,
@@ -62,7 +63,6 @@ import {
   getUserList,
   getUsers,
 } from "./users";
-import { createProjectJobs } from "./jobs";
 
 declare module "fastify" {
   interface Session {
@@ -446,7 +446,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.post<CreateProjectJobsRequest>(
     "/projects/:projectID/jobs",
-    { preHandler: [checkPermission("hashes:get"), checkPermission("jobs:add")] },
+    {
+      preHandler: [checkPermission("hashes:get"), checkPermission("jobs:add")],
+    },
     async (request) => {
       const { projectID } = request.params;
 

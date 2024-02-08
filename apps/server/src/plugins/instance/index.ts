@@ -1,18 +1,19 @@
 import { type FastifyPluginOptions } from "fastify";
 import fp from "fastify-plugin";
-import { LocalInstanceAPI, type LocalInstanceAPIConfig } from "./local";
+
 import { AWSInstanceAPI } from "./aws";
 import { DebugInstanceAPI } from "./debug";
+import { LocalInstanceAPI, type LocalInstanceAPIConfig } from "./local";
 
 export interface InstanceAPIProviders {
-  aws?: AWSInstanceAPI
-  debug?: DebugInstanceAPI
-  local?: LocalInstanceAPI
+  aws?: AWSInstanceAPI;
+  debug?: DebugInstanceAPI;
+  local?: LocalInstanceAPI;
 }
 
 declare module "fastify" {
   interface FastifyInstance {
-    instances: InstanceAPIProviders
+    instances: InstanceAPIProviders;
   }
 }
 
@@ -26,14 +27,14 @@ const instancePlugin = fp<InstancePluginConfig>(async (server, options) => {
 
   if (options.debug) {
     const instanceAPI = new DebugInstanceAPI(undefined);
-    
-    if (await instanceAPI.load()) instances.debug = instanceAPI; 
+
+    if (await instanceAPI.load()) instances.debug = instanceAPI;
   }
 
   if (options.local) {
     const instanceAPI = new LocalInstanceAPI(options.local);
-    
-    if (await instanceAPI.load()) instances.local = instanceAPI; 
+
+    if (await instanceAPI.load()) instances.local = instanceAPI;
   }
 
   server.decorate("instances", instances);

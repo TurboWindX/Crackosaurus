@@ -1,8 +1,13 @@
-import { TrashIcon, PlayIcon } from "lucide-react";
+import { PlayIcon, TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { AddHashRequest, GetProjectJob, GetProjectResponse, HASH_TYPES } from "@repo/api";
+import {
+  AddHashRequest,
+  GetProjectJob,
+  GetProjectResponse,
+  HASH_TYPES,
+} from "@repo/api";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import {
@@ -95,7 +100,7 @@ const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
 };
 
 interface JobDataTableProps {
-  values: GetProjectJob[]
+  values: GetProjectJob[];
 }
 
 const JobDataTable = ({ values }: JobDataTableProps) => {
@@ -105,10 +110,11 @@ const JobDataTable = ({ values }: JobDataTableProps) => {
       values={values ?? []}
       head={["Job", "Status"]}
       valueKey={({ JID }) => JID}
-      row={({ JID, status }) => [<TableCell>{JID}</TableCell>, <TableCell>{status}</TableCell>]}
-      searchFilter={({ JID }, search) =>
-        JID.toLowerCase().includes(search)
-      }
+      row={({ JID, status }) => [
+        <TableCell>{JID}</TableCell>,
+        <TableCell>{status}</TableCell>,
+      ]}
+      searchFilter={({ JID }, search) => JID.toLowerCase().includes(search)}
       noAdd
       noRemove
     />
@@ -166,23 +172,21 @@ export const ProjectPage = () => {
 
   const hashes = useMemo(() => one?.hashes ?? [], [one]);
 
-  const members = useMemo(() => 
-    one?.members ?? []
-  , [one]);
+  const members = useMemo(() => one?.members ?? [], [one]);
 
-  const jobs = useMemo(() =>
-    {
-      const unfilteredJobs = (one?.hashes ?? []).map((hash) => hash.job).filter((job) => job) as GetProjectJob[];
-      const seenJobs: Record<string, boolean> = {};
+  const jobs = useMemo(() => {
+    const unfilteredJobs = (one?.hashes ?? [])
+      .map((hash) => hash.job)
+      .filter((job) => job) as GetProjectJob[];
+    const seenJobs: Record<string, boolean> = {};
 
-      return unfilteredJobs.filter(({ JID }) => {
-        if (seenJobs[JID]) return false;
-        seenJobs[JID] = true;
+    return unfilteredJobs.filter(({ JID }) => {
+      if (seenJobs[JID]) return false;
+      seenJobs[JID] = true;
 
-        return true;
-      })
-    }
-  , [one]);
+      return true;
+    });
+  }, [one]);
 
   useEffect(() => {
     loadOne(projectID ?? "");
@@ -190,24 +194,11 @@ export const ProjectPage = () => {
 
   const tables = [
     hasPermission("hashes:get") && (
-      <HashDataTable
-        key="hashes"
-        projectID={projectID ?? ""}
-        values={hashes}
-      />
+      <HashDataTable key="hashes" projectID={projectID ?? ""} values={hashes} />
     ),
-    hasPermission("jobs:get") && (
-      <JobDataTable 
-        key="jobs"
-        values={jobs}
-      />
-    ),
+    hasPermission("jobs:get") && <JobDataTable key="jobs" values={jobs} />,
     hasPermission("projects:users:get") && (
-      <UserDataTable
-        key="users"
-        projectID={projectID ?? ""}
-        values={members}
-      />
+      <UserDataTable key="users" projectID={projectID ?? ""} values={members} />
     ),
   ];
 
@@ -225,7 +216,10 @@ export const ProjectPage = () => {
         <div className="grid grid-flow-col justify-end gap-4">
           {hasPermission("jobs:add") && (
             <div className="w-max">
-              <Button variant="outline" onClick={() => addJobs(projectID as string, "debug")}>
+              <Button
+                variant="outline"
+                onClick={() => addJobs(projectID as string, "debug")}
+              >
                 <div className="grid grid-flow-col items-center gap-2">
                   <PlayIcon />
                   <span>Start</span>
@@ -253,8 +247,7 @@ export const ProjectPage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await remove(projectID ?? ""))
-                      navigate("/projects");
+                    if (await remove(projectID ?? "")) navigate("/projects");
                   }}
                 >
                   <span>Do you want to permanently remove this project?</span>

@@ -40,7 +40,11 @@ export interface ProjectsInterface {
     ...ids: string[]
   ) => Promise<boolean>;
 
-  readonly addJobs: (projectID: string, provider: string, instanceType?: string) => Promise<boolean>;
+  readonly addJobs: (
+    projectID: string,
+    provider: string,
+    instanceType?: string
+  ) => Promise<boolean>;
 
   readonly one: GetProjectResponse["response"];
   readonly loadOne: (id: string) => Promise<void>;
@@ -57,7 +61,7 @@ const ProjectsContext = createContext<ProjectsInterface>({
   removeHashes: async () => false,
   addUsers: async () => false,
   removeUsers: async () => false,
-  addJobs: async() => false,
+  addJobs: async () => false,
   one: {
     PID: "",
     name: "Project",
@@ -216,12 +220,18 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
         removeUserFromProject(projectID, id)
       );
 
-      setList(list.map((project) => project.PID === projectID ? {
-        ...project,
-        members: project.members?.filter(({ ID }) => 
-          results.every(([id, { error }]) => ID !== id || error)
+      setList(
+        list.map((project) =>
+          project.PID === projectID
+            ? {
+                ...project,
+                members: project.members?.filter(({ ID }) =>
+                  results.every(([id, { error }]) => ID !== id || error)
+                ),
+              }
+            : project
         )
-      } : project));
+      );
 
       const project = cache[projectID]!;
       setCache({
@@ -236,9 +246,12 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
 
       return true;
     },
-    addJobs: async (projectID, provider, instanceType) => { 
-      const _results = await handleRequests("Jobs(s) added", [{ provider, instanceType }], ({ provider, instanceType }) =>
-        addProjectJobs(projectID, provider, instanceType)
+    addJobs: async (projectID, provider, instanceType) => {
+      const _results = await handleRequests(
+        "Jobs(s) added",
+        [{ provider, instanceType }],
+        ({ provider, instanceType }) =>
+          addProjectJobs(projectID, provider, instanceType)
       );
 
       await reloadOne(projectID);

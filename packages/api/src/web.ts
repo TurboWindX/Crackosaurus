@@ -95,10 +95,14 @@ export async function registerUser(
   return apiPost("/users", req);
 }
 
-export async function addProjectJobs(id: string, provider: string, instanceType?: string): ApiResponse<CreateProjectJobsResponse> {
+export async function addProjectJobs(
+  id: string,
+  provider: string,
+  instanceType?: string
+): ApiResponse<CreateProjectJobsResponse> {
   return apiPost(`/projects/${id}/jobs`, {
     provider,
-    instanceType
+    instanceType,
   });
 }
 

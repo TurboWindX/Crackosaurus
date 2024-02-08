@@ -93,8 +93,7 @@ export const UserPage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await remove(userID ?? ""))
-                      navigate("/users");
+                    if (await remove(userID ?? "")) navigate("/users");
                   }}
                 >
                   <span>Do you want to permanently remove this user?</span>
