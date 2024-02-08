@@ -3,10 +3,12 @@ import { createContext, useContext, useState } from "react";
 import {
   AddHashRequest,
   ApiError,
+  CreateProjectJobsRequest,
   CreateProjectRequest,
   GetProjectResponse,
   GetProjectsResponse,
   addHashToProject,
+  addProjectJobs,
   addUserToProject,
   createProject,
   deleteProject,
@@ -21,25 +23,27 @@ export interface ProjectsInterface {
   readonly isLoading: boolean;
 
   readonly add: (...reqs: CreateProjectRequest["Body"][]) => Promise<boolean>;
-  readonly remove: (...ids: number[]) => Promise<boolean>;
+  readonly remove: (...ids: string[]) => Promise<boolean>;
 
   readonly addHashes: (
-    projectID: number,
+    projectID: string,
     ...reqs: AddHashRequest["Body"][]
   ) => Promise<boolean>;
   readonly removeHashes: (
-    projectID: number,
-    ...ids: number[]
+    projectID: string,
+    ...ids: string[]
   ) => Promise<boolean>;
 
-  readonly addUsers: (projectID: number, ...ids: number[]) => Promise<boolean>;
+  readonly addUsers: (projectID: string, ...ids: string[]) => Promise<boolean>;
   readonly removeUsers: (
-    projectID: number,
-    ...ids: number[]
+    projectID: string,
+    ...ids: string[]
   ) => Promise<boolean>;
+
+  readonly addJobs: (projectID: string, provider: string, instanceType?: string) => Promise<boolean>;
 
   readonly one: GetProjectResponse["response"];
-  readonly loadOne: (id: number) => Promise<void>;
+  readonly loadOne: (id: string) => Promise<void>;
 
   readonly list: GetProjectsResponse["response"];
   readonly loadList: () => Promise<void>;
@@ -53,8 +57,9 @@ const ProjectsContext = createContext<ProjectsInterface>({
   removeHashes: async () => false,
   addUsers: async () => false,
   removeUsers: async () => false,
+  addJobs: async() => false,
   one: {
-    PID: -1,
+    PID: "",
     name: "Project",
   },
   loadOne: async () => {},
@@ -69,14 +74,14 @@ export function useProjects() {
 export const ProjectsProvider = ({ children }: { children: any }) => {
   const { toast } = useToast();
   const [isLoading, setLoading] = useState(false);
-  const [id, setID] = useState<number>(-1);
+  const [id, setID] = useState<string>("");
   const [cache, setCache] = useState<
-    Record<number, GetProjectResponse["response"]>
+    Record<string, GetProjectResponse["response"]>
   >({});
   const [list, setList] = useState<GetProjectsResponse["response"]>([]);
   const [listLoaded, setListLoaded] = useState(false);
 
-  async function reloadOne(id: number): Promise<boolean> {
+  async function reloadOne(id: string): Promise<boolean> {
     setLoading(true);
     const { response, error } = await getProject(id);
     if (error) return false;
@@ -143,7 +148,7 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
   const value: ProjectsInterface = {
     isLoading,
     one: cache[id] ?? {
-      PID: -1,
+      PID: "",
       name: "Project",
     },
     list,
@@ -231,7 +236,16 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
 
       return true;
     },
-    loadOne: async (id: number) => {
+    addJobs: async (projectID, provider, instanceType) => { 
+      const _results = await handleRequests("Jobs(s) added", [{ provider, instanceType }], ({ provider, instanceType }) =>
+        addProjectJobs(projectID, provider, instanceType)
+      );
+
+      await reloadOne(projectID);
+
+      return true;
+    },
+    loadOne: async (id: string) => {
       setLoading(true);
 
       if (cache[id] || (await reloadOne(id))) setID(id);

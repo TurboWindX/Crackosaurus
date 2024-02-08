@@ -5,7 +5,8 @@ import Fastify from "fastify";
 import fs from "node:fs";
 
 import { api } from "./api";
-import prismaPlugin from "./prisma";
+import prismaPlugin from "./plugins/prisma";
+import instancePlugin from "./plugins/instance";
 
 const fastify = Fastify({
   // https: {
@@ -26,6 +27,9 @@ fastify.register(fastifySession, {
 });
 
 fastify.register(prismaPlugin);
+fastify.register(instancePlugin, {
+  debug: true
+});
 
 fastify.register(cors, {
   credentials: true,

@@ -2,11 +2,11 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import bcrypt from "bcrypt";
 
-import { PermissionType } from "../../../../packages/api/src/types";
-import { APIError } from "../errors";
+import { PermissionType } from "@repo/api";
+import { APIError } from "../plugins/errors";
 
 export interface AuthenticatedUser {
-  ID: number;
+  ID: string;
   username: string;
   permissions: string;
 }
@@ -32,8 +32,8 @@ export async function checkNoUsers(prisma: PrismaClient) {
 
 export async function getUser(
   prisma: PrismaClient,
-  userID: number,
-  currentUserID: number,
+  userID: string,
+  currentUserID: string,
   bypassCheck: boolean
 ) {
   try {
@@ -170,7 +170,7 @@ export async function getAuthenticatedUser(
 //delete user from database
 export async function deleteUser(
   prisma: PrismaClient,
-  userId: number
+  userId: string
 ): Promise<void> {
   await prisma.user.delete({
     where: {
@@ -181,7 +181,7 @@ export async function deleteUser(
 
 export async function changePassword(
   prisma: PrismaClient,
-  userId: number,
+  userId: string,
   oldPassword: string,
   newPassword: string,
   bypassCheck: boolean

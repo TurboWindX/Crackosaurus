@@ -1,8 +1,8 @@
-import { TrashIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { TrashIcon, PlayIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { AddHashRequest, GetProjectResponse, HASH_TYPES } from "@repo/api";
+import { AddHashRequest, GetProjectJob, GetProjectResponse, HASH_TYPES } from "@repo/api";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import {
@@ -21,7 +21,7 @@ import { useProjects } from "@repo/ui/projects";
 import { UserSelect } from "@repo/ui/users";
 
 interface HashDataTableProps {
-  projectID: number;
+  projectID: string;
   values: GetProjectResponse["response"]["hashes"];
 }
 
@@ -45,9 +45,9 @@ const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
         <TableCell>{hash}</TableCell>,
         <TableCell>{hashType}</TableCell>,
       ]}
-      noAdd={!hasPermission("projects:hashes:add")}
+      noAdd={!hasPermission("hashes:add")}
       onAdd={() => addHashes(projectID, addHash)}
-      noRemove={!hasPermission("projects:hashes:remove")}
+      noRemove={!hasPermission("hashes:remove")}
       onRemove={(hashes) =>
         removeHashes(projectID, ...hashes.map(({ HID }) => HID))
       }
@@ -94,8 +94,29 @@ const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
   );
 };
 
+interface JobDataTableProps {
+  values: GetProjectJob[]
+}
+
+const JobDataTable = ({ values }: JobDataTableProps) => {
+  return (
+    <DataTable
+      type="Job"
+      values={values ?? []}
+      head={["Job", "Status"]}
+      valueKey={({ JID }) => JID}
+      row={({ JID, status }) => [<TableCell>{JID}</TableCell>, <TableCell>{status}</TableCell>]}
+      searchFilter={({ JID }, search) =>
+        JID.toLowerCase().includes(search)
+      }
+      noAdd
+      noRemove
+    />
+  );
+};
+
 interface UserDataTableProps {
-  projectID: number;
+  projectID: string;
   values: GetProjectResponse["response"]["members"];
 }
 
@@ -103,7 +124,7 @@ const UserDataTable = ({ projectID, values }: UserDataTableProps) => {
   const { hasPermission } = useAuth();
   const { addUsers, removeUsers } = useProjects();
 
-  const [addUser, setAddUser] = useState<number | null>(null);
+  const [addUser, setAddUser] = useState<string | null>(null);
 
   return (
     <DataTable
@@ -128,7 +149,7 @@ const UserDataTable = ({ projectID, values }: UserDataTableProps) => {
         </>
       }
       noAdd={!hasPermission("projects:users:add")}
-      onAdd={() => addUsers(projectID, addUser ?? -1)}
+      onAdd={() => addUsers(projectID, addUser ?? "")}
       noRemove={!hasPermission("projects:users:remove")}
       onRemove={(users) => removeUsers(projectID, ...users.map(({ ID }) => ID))}
     />
@@ -140,26 +161,52 @@ export const ProjectPage = () => {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
-  const { one, loadOne, remove } = useProjects();
+  const { one, loadOne, remove, addJobs } = useProjects();
   const [removeOpen, setRemoveOpen] = useState(false);
 
+  const hashes = useMemo(() => one?.hashes ?? [], [one]);
+
+  const members = useMemo(() => 
+    one?.members ?? []
+  , [one]);
+
+  const jobs = useMemo(() =>
+    {
+      const unfilteredJobs = (one?.hashes ?? []).map((hash) => hash.job).filter((job) => job) as GetProjectJob[];
+      const seenJobs: Record<string, boolean> = {};
+
+      return unfilteredJobs.filter(({ JID }) => {
+        if (seenJobs[JID]) return false;
+        seenJobs[JID] = true;
+
+        return true;
+      })
+    }
+  , [one]);
+
   useEffect(() => {
-    loadOne(parseInt(projectID ?? "-1"));
+    loadOne(projectID ?? "");
   }, []);
 
   const tables = [
-    hasPermission("projects:hashes:get") && (
+    hasPermission("hashes:get") && (
       <HashDataTable
         key="hashes"
-        projectID={parseInt(projectID ?? "-1")}
-        values={one?.hashes ?? []}
+        projectID={projectID ?? ""}
+        values={hashes}
+      />
+    ),
+    hasPermission("jobs:get") && (
+      <JobDataTable 
+        key="jobs"
+        values={jobs}
       />
     ),
     hasPermission("projects:users:get") && (
       <UserDataTable
         key="users"
-        projectID={parseInt(projectID ?? "-1")}
-        values={one?.members ?? []}
+        projectID={projectID ?? ""}
+        values={members}
       />
     ),
   ];
@@ -176,6 +223,16 @@ export const ProjectPage = () => {
           {one.name}
         </span>
         <div className="grid grid-flow-col justify-end gap-4">
+          {hasPermission("jobs:add") && (
+            <div className="w-max">
+              <Button variant="outline" onClick={() => addJobs(projectID as string, "debug")}>
+                <div className="grid grid-flow-col items-center gap-2">
+                  <PlayIcon />
+                  <span>Start</span>
+                </div>
+              </Button>
+            </div>
+          )}
           {hasPermission("projects:remove") && (
             <div className="w-max">
               <DrawerDialog
@@ -196,7 +253,7 @@ export const ProjectPage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await remove(parseInt(projectID ?? "-1")))
+                    if (await remove(projectID ?? ""))
                       navigate("/projects");
                   }}
                 >

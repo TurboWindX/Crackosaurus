@@ -14,7 +14,7 @@ import { useToast } from "@repo/shadcn/components/ui/use-toast";
 export interface AuthInterface {
   readonly isLoading: boolean;
   readonly isAuthenticated: boolean;
-  readonly uid: number;
+  readonly uid: string;
   readonly username: string;
   readonly login: (username: string, password: string) => Promise<void>;
   readonly logout: () => Promise<void>;
@@ -24,7 +24,7 @@ export interface AuthInterface {
 const AuthContext = createContext<AuthInterface>({
   isLoading: true,
   isAuthenticated: false,
-  uid: -1,
+  uid: "",
   username: "",
   login: async () => {},
   logout: async () => {},
@@ -101,7 +101,7 @@ export function AuthProvider({ children }: { children: any }) {
   const value: AuthInterface = {
     login: authLogin,
     logout: authLogout,
-    uid: data?.uid ?? -1,
+    uid: data?.uid ?? "",
     username: data?.username ?? "username",
     isLoading,
     isAuthenticated: data?.uid !== undefined,

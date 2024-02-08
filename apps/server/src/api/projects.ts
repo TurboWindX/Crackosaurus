@@ -1,13 +1,13 @@
 import { PrismaClient, Project } from "@prisma/client";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 
-import { APIError } from "../errors";
+import { APIError } from "../plugins/errors";
 
 export async function addUserToProject(
   prisma: PrismaClient,
-  currentUserId: number,
-  userIdToAdd: number,
-  projectId: number,
+  currentUserId: string,
+  userIdToAdd: string,
+  projectId: string,
   bypassCheck: boolean
 ): Promise<void> {
   try {
@@ -37,9 +37,9 @@ export async function addUserToProject(
 
 export async function removeUserFromProject(
   prisma: PrismaClient,
-  currentUserId: number,
-  userIdToRemove: number,
-  projectId: number,
+  currentUserId: string,
+  userIdToRemove: string,
+  projectId: string,
   bypassCheck: boolean
 ): Promise<void> {
   try {
@@ -70,7 +70,7 @@ export async function removeUserFromProject(
 export async function createProject(
   prisma: PrismaClient,
   name: string,
-  userID: number
+  userID: string
 ): Promise<void> {
   try {
     await prisma.project.create({
@@ -96,9 +96,9 @@ export async function createProject(
 
 export async function getUserProjects(
   prisma: PrismaClient,
-  userID: number,
+  userID: string,
   bypassCheck: boolean
-): Promise<(Project & { members: { ID: number; username: string }[] })[]> {
+) {
   try {
     return await prisma.project.findMany({
       select: {
@@ -128,19 +128,10 @@ export async function getUserProjects(
 
 export async function getUserProject(
   prisma: PrismaClient,
-  projectID: number,
-  currentUserID: number,
+  projectID: string,
+  currentUserID: string,
   bypassCheck: boolean
-): Promise<
-  Project & { members: { ID: number; username: string }[] } & {
-    hashes: {
-      HID: number;
-      hash: string;
-      hashType: string;
-      cracked: string | null;
-    }[];
-  }
-> {
+) {
   try {
     return await prisma.project.findUniqueOrThrow({
       select: {
@@ -158,6 +149,12 @@ export async function getUserProject(
             hash: true,
             hashType: true,
             cracked: true,
+            job: {
+              select: {
+                JID: true,
+                status: true
+              }
+            }
           },
         },
       },
@@ -185,8 +182,8 @@ export async function getUserProject(
 
 export async function deleteProject(
   prisma: PrismaClient,
-  projectID: number,
-  userID: number,
+  projectID: string,
+  userID: string,
   bypassCheck: boolean
 ): Promise<void> {
   try {

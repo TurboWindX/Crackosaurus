@@ -24,8 +24,8 @@ import {
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
 
 export interface UserSelectProps {
-  value?: number | null;
-  onValueChange?: (value: number) => void;
+  value?: string | null;
+  onValueChange?: (value: string) => void;
   filter?: (user: GetUserListResponse["response"][number]) => boolean;
 }
 
@@ -49,7 +49,7 @@ export const UserSelect = ({
   return (
     <Select
       value={value?.toString()}
-      onValueChange={(value) => onValueChange?.(parseInt(value))}
+      onValueChange={(value) => onValueChange?.(value)}
     >
       <SelectTrigger>
         <SelectValue placeholder="User" />
@@ -107,10 +107,10 @@ export interface UsersInterface {
   readonly isLoading: boolean;
 
   readonly add: (...reqs: RegisterRequest["Body"][]) => Promise<boolean>;
-  readonly remove: (...ids: number[]) => Promise<boolean>;
+  readonly remove: (...ids: string[]) => Promise<boolean>;
 
   readonly one: GetUserResponse["response"];
-  readonly loadOne: (id: number) => Promise<void>;
+  readonly loadOne: (id: string) => Promise<void>;
 
   readonly list: GetUsersResponse["response"];
   readonly loadList: () => Promise<void>;
@@ -121,7 +121,7 @@ const UsersContext = createContext<UsersInterface>({
   add: async () => false,
   remove: async () => false,
   one: {
-    ID: -1,
+    ID: "",
     username: "username",
     permissions: "",
   },
@@ -137,14 +137,14 @@ export function useUsers() {
 export const UsersProvider = ({ children }: { children: any }) => {
   const { toast } = useToast();
   const [isLoading, setLoading] = useState(false);
-  const [id, setID] = useState<number>(-1);
+  const [id, setID] = useState<string>("");
   const [cache, setCache] = useState<
-    Record<number, GetUserResponse["response"]>
+    Record<string, GetUserResponse["response"]>
   >({});
   const [list, setList] = useState<GetUsersResponse["response"]>([]);
   const [listLoaded, setListLoaded] = useState(false);
 
-  async function reloadOne(id: number): Promise<boolean> {
+  async function reloadOne(id: string): Promise<boolean> {
     setLoading(true);
 
     const { response, error } = await getUser(id);
@@ -212,7 +212,7 @@ export const UsersProvider = ({ children }: { children: any }) => {
   const value: UsersInterface = {
     isLoading,
     one: cache[id] ?? {
-      ID: -1,
+      ID: "",
       username: "username",
       permissions: "",
     },
@@ -239,7 +239,7 @@ export const UsersProvider = ({ children }: { children: any }) => {
 
       return true;
     },
-    loadOne: async (id: number) => {
+    loadOne: async (id: string) => {
       setLoading(true);
 
       if (cache[id] || (await reloadOne(id))) setID(id);

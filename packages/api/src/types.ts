@@ -4,6 +4,15 @@ export type HashType = (typeof HASH_TYPES)[number];
 export const PERMISSIONS = [
   "*",
   "root",
+  "hashes:*",
+  "hashes:get",
+  "hashes:add",
+  "hashes:remove",
+  "jobs:*",
+  "jobs:get",
+  "jobs:add",
+  "jobs:start",
+  "jobs:stop",
   "projects:*",
   "projects:get",
   "projects:add",
@@ -12,10 +21,6 @@ export const PERMISSIONS = [
   "projects:users:get",
   "projects:users:add",
   "projects:users:remove",
-  "projects:hashes:*",
-  "projects:hashes:get",
-  "projects:hashes:add",
-  "projects:hashes:remove",
   "users:*",
   "users:get",
   "users:list",
@@ -28,17 +33,27 @@ export type PermissionType = (typeof PERMISSIONS)[number];
 export const PERMISSION_PROFILES = {
   admin: ["*"],
   contributor: [
+    "jobs:*",
     "projects:add",
     "projects:remove",
     "projects:users:*",
-    "projects:hashes:*",
+    "hashes:*",
     "users:list",
   ],
-  viewer: ["projects:hashes:get"],
+  viewer: ["hashes:get"],
 } satisfies Record<string, PermissionType[]>;
 
 export const DEFAULT_PERMISSION_PROFILE: keyof typeof PERMISSION_PROFILES =
   "viewer";
+
+export const STATUSES = [
+  "PENDING",
+  "STARTED",
+  "STOPPED",
+  "COMPLETE",
+  "ERROR"
+];
+export type Status = (typeof STATUSES)[number];
 
 export interface ApiError {
   error: string;
@@ -63,11 +78,11 @@ export interface GetUserRequest {
 
 export interface GetUserResponse {
   response: {
-    ID: number;
+    ID: string;
     username: string;
     permissions: string;
     projects?: {
-      PID: number;
+      PID: string;
       name: string;
     }[];
   };
@@ -77,7 +92,7 @@ export interface GetUsersRequest {}
 
 export interface GetUsersResponse {
   response: {
-    ID: number;
+    ID: string;
     username: string;
     permissions: string;
   }[];
@@ -87,7 +102,7 @@ export interface GetUserListRequest {}
 
 export interface GetUserListResponse {
   response: {
-    ID: number;
+    ID: string;
     username: string;
   }[];
 }
@@ -156,25 +171,45 @@ export interface RemoveHashResponse {
   response: string;
 }
 
+export interface CreateProjectJobsRequest {
+  Params: {
+    projectID: string;
+  };
+  Body: {
+    instanceType?: string;
+    provider: string;
+  };
+}
+
+export interface CreateProjectJobsResponse {
+  response: string[];
+}
+
 export interface GetProjectRequest {
   Params: {
     projectID: string;
   };
 }
 
+export interface GetProjectJob {
+  JID: string;
+  status: string;
+}
+
 export interface GetProjectResponse {
   response: {
-    PID: number;
+    PID: string;
     name: string;
     members?: {
-      ID: number;
+      ID: string;
       username: string;
     }[];
     hashes?: {
-      HID: number;
+      HID: string;
       hash: string;
       hashType: string;
       cracked: string | null;
+      job?: GetProjectJob | null;
     }[];
   };
 }
@@ -183,10 +218,10 @@ export interface GetProjectsRequest {}
 
 export interface GetProjectsResponse {
   response: {
-    PID: number;
+    PID: string;
     name: string;
     members?: {
-      ID: number;
+      ID: string;
       username: string;
     }[];
   }[];
@@ -265,7 +300,7 @@ export interface ChangePasswordResponse {
 export interface AuthUserRequest {}
 
 export interface AuthUserResponse {
-  uid: number;
+  uid: string;
   username: string;
   permissions: PermissionType[];
 }

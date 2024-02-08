@@ -4,6 +4,7 @@ import {
   AddUserToProjectResponse,
   ApiError,
   AuthUserResponse,
+  CreateProjectJobsResponse,
   CreateProjectRequest,
   CreateProjectResponse,
   DeleteProjectResponse,
@@ -76,7 +77,7 @@ export async function authUser(): ApiResponse<AuthUserResponse> {
   return apiGet("/auth/user");
 }
 
-export async function getUser(id: number): ApiResponse<GetUserResponse> {
+export async function getUser(id: string): ApiResponse<GetUserResponse> {
   return apiGet(`/users/${id}`);
 }
 
@@ -94,11 +95,18 @@ export async function registerUser(
   return apiPost("/users", req);
 }
 
-export async function deleteUser(id: number): ApiResponse<DeleteUserResponse> {
+export async function addProjectJobs(id: string, provider: string, instanceType?: string): ApiResponse<CreateProjectJobsResponse> {
+  return apiPost(`/projects/${id}/jobs`, {
+    provider,
+    instanceType
+  });
+}
+
+export async function deleteUser(id: string): ApiResponse<DeleteUserResponse> {
   return apiDelete(`/users/${id}`);
 }
 
-export async function getProject(id: number): ApiResponse<GetProjectResponse> {
+export async function getProject(id: string): ApiResponse<GetProjectResponse> {
   return apiGet(`/projects/${id}`);
 }
 
@@ -113,35 +121,35 @@ export async function createProject(
 }
 
 export async function deleteProject(
-  id: number
+  id: string
 ): ApiResponse<DeleteProjectResponse> {
   return apiDelete(`/projects/${id}`);
 }
 
 export async function addHashToProject(
-  projectID: number,
+  projectID: string,
   req: AddHashRequest["Body"]
 ): ApiResponse<AddHashResponse> {
   return apiPost(`/projects/${projectID}/hashes`, req);
 }
 
 export async function removeHashFromProject(
-  projectID: number,
-  hashID: number
+  projectID: string,
+  hashID: string
 ): ApiResponse<RemoveHashResponse> {
   return apiDelete(`/projects/${projectID}/hashes/${hashID}`);
 }
 
 export async function addUserToProject(
-  projectID: number,
-  userID: number
+  projectID: string,
+  userID: string
 ): ApiResponse<AddUserToProjectResponse> {
   return apiPost(`/projects/${projectID}/users/${userID}`);
 }
 
 export async function removeUserFromProject(
-  projectID: number,
-  userID: number
+  projectID: string,
+  userID: string
 ): ApiResponse<RemoveUserFromProjectResponse> {
   return apiDelete(`/projects/${projectID}/users/${userID}`);
 }

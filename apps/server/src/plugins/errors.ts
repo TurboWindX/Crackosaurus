@@ -1,4 +1,3 @@
-import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import { FastifyError, FastifyReply, FastifyRequest } from "fastify";
 
 export class APIError extends Error {

@@ -2,14 +2,13 @@ import { Hash, PrismaClient } from "@prisma/client";
 
 import { HASH_TYPES } from "@repo/api";
 
-import { APIError } from "../errors";
+import { APIError } from "../plugins/errors";
 
 //takes in a userID+projectID, add a hash to the project if user is part of the project or admin.
-//If the hash is already in the database, it either returns the cracked value if is cracked or null if it is not cracked
 export async function addHash(
   prisma: PrismaClient,
-  userID: number,
-  projectID: number,
+  userID: string,
+  projectID: string,
   hashValue: string,
   hashType: string,
   bypassCheck: boolean
@@ -37,7 +36,6 @@ export async function addHash(
   try {
     return await prisma.hash.create({
       data: {
-        userId: userID,
         projectId: projectID,
         hash: hashValue,
         hashType,
@@ -50,9 +48,9 @@ export async function addHash(
 
 export async function removeHash(
   prisma: PrismaClient,
-  projectID: number,
-  hashID: number,
-  userID: number,
+  projectID: string,
+  hashID: string,
+  userID: string,
   bypassCheck: boolean
 ): Promise<void> {
   try {

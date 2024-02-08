@@ -31,15 +31,17 @@ import {
   LogoutRequest,
   LogoutResponse,
   PermissionType,
+  CreateProjectJobsRequest,
   RegisterRequest,
   RegisterResponse,
   RemoveHashRequest,
   RemoveUserFromProjectRequest,
   RemoveUserFromProjectResponse,
   hasPermission,
+  CreateProjectJobsResponse,
 } from "@repo/api";
 
-import { APIError, AuthError, errorHandler } from "../errors";
+import { APIError, AuthError, errorHandler } from "../plugins/errors";
 import { addHash, removeHash } from "./hashes";
 import {
   addUserToProject,
@@ -60,10 +62,11 @@ import {
   getUserList,
   getUsers,
 } from "./users";
+import { createProjectJobs } from "./jobs";
 
 declare module "fastify" {
   interface Session {
-    uid: number;
+    uid: string;
     username: string;
     permissions: string;
   }
@@ -157,18 +160,16 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { userID } = request.params;
 
-      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
-
       if (
         !hasPermission(request.session.permissions, "users:get") &&
-        parseInt(userID) !== request.session.uid
+        userID !== request.session.uid
       )
         throw new APIError("Cannot get user");
 
       return {
         response: await getUser(
           request.server.prisma,
-          parseInt(userID),
+          userID,
           request.session.uid,
           hasPermission(request.session.permissions, "projects:get")
         ),
@@ -231,15 +232,13 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { userID } = request.params;
 
-      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
-
       if (
         !hasPermission(request.session.permissions, "users:remove") &&
-        parseInt(userID) !== request.session.uid
+        userID !== request.session.uid
       )
         throw new APIError("Cannot remove user");
 
-      await deleteUser(request.server.prisma, parseInt(userID));
+      await deleteUser(request.server.prisma, userID);
 
       return {
         response: "User has been obliterated into oblivion",
@@ -253,8 +252,6 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { userID } = request.params;
 
-      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
-
       const { oldPassword, newPassword } = request.body;
       if (oldPassword === undefined || newPassword === undefined)
         throw new APIError("Invalid user config");
@@ -263,12 +260,12 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         request.session.permissions,
         "users:edit"
       );
-      if (!bypassCheck && parseInt(userID) !== request.session.uid)
+      if (!bypassCheck && userID !== request.session.uid)
         throw new APIError("Cannot edit user");
 
       await changePassword(
         request.server.prisma,
-        parseInt(userID),
+        userID,
         oldPassword,
         newPassword,
         bypassCheck
@@ -306,19 +303,23 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { projectID } = request.params;
 
-      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
-
       let response: GetProjectResponse["response"] = await getUserProject(
         request.server.prisma,
-        parseInt(projectID),
+        projectID,
         request.session.uid,
         hasPermission(request.session.permissions, "projects:get")
       );
 
       if (!hasPermission(request.session.permissions, "projects:users:get"))
-        delete response["members"];
-      if (!hasPermission(request.session.permissions, "projects:hashes:get"))
-        delete response["hashes"];
+        delete response.members;
+
+      if (!hasPermission(request.session.permissions, "hashes:get"))
+        delete response.hashes;
+      else if (!hasPermission(request.session.permissions, "jobs:get"))
+        response.hashes = response.hashes?.map((hash) => {
+          delete hash.job;
+          return hash;
+        });
 
       return { response } as GetProjectResponse;
     }
@@ -349,11 +350,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { projectID } = request.params;
 
-      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
-
       await deleteProject(
         request.server.prisma,
-        parseInt(projectID as string),
+        projectID,
         request.session.uid,
         hasPermission(request.session.permissions, "projects:remove")
       );
@@ -370,14 +369,11 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { projectID, userID } = request.params;
 
-      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
-      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
-
       await addUserToProject(
         request.server.prisma,
         request.session.uid,
-        parseInt(userID),
-        parseInt(projectID),
+        userID,
+        projectID,
         hasPermission(request.session.permissions, "root")
       );
 
@@ -393,14 +389,11 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     async (request) => {
       const { projectID, userID } = request.params;
 
-      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
-      if (isNaN(parseInt(userID))) throw new APIError("Invalid userID");
-
       await removeUserFromProject(
         request.server.prisma,
         request.session.uid,
-        parseInt(userID),
-        parseInt(projectID),
+        userID,
+        projectID,
         hasPermission(request.session.permissions, "root")
       );
 
@@ -412,11 +405,9 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.post<AddHashRequest>(
     "/projects/:projectID/hashes",
-    { preHandler: [checkPermission("projects:hashes:add")] },
+    { preHandler: [checkPermission("hashes:add")] },
     async (request) => {
       const { projectID } = request.params;
-
-      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
 
       const { hash, hashType } = request.body;
       if (hash === undefined || hashType === undefined)
@@ -425,7 +416,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       await addHash(
         request.server.prisma,
         request.session.uid,
-        parseInt(projectID),
+        projectID,
         hash,
         hashType,
         hasPermission(request.session.permissions, "root")
@@ -437,22 +428,43 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
   instance.delete<RemoveHashRequest>(
     "/projects/:projectID/hashes/:hashID",
-    { preHandler: [checkPermission("projects:hashes:remove")] },
+    { preHandler: [checkPermission("hashes:remove")] },
     async (request) => {
       const { projectID, hashID } = request.params;
 
-      if (isNaN(parseInt(projectID))) throw new APIError("Invalid projectID");
-      if (isNaN(parseInt(hashID))) throw new APIError("Invalid hashID");
-
       await removeHash(
         request.server.prisma,
-        parseInt(projectID),
-        parseInt(hashID),
+        projectID,
+        hashID,
         request.session.uid,
         hasPermission(request.session.permissions, "root")
       );
 
       return { response: "Hash has been removed" } as AddHashResponse;
+    }
+  );
+
+  instance.post<CreateProjectJobsRequest>(
+    "/projects/:projectID/jobs",
+    { preHandler: [checkPermission("hashes:get"), checkPermission("jobs:add")] },
+    async (request) => {
+      const { projectID } = request.params;
+
+      const { provider, instanceType } = request.body;
+      if (provider === undefined)
+        throw new APIError("Invalid project jobs config");
+
+      const jobIDs = await createProjectJobs(
+        request.server.prisma,
+        request.server.instances,
+        provider,
+        projectID,
+        request.session.uid,
+        hasPermission(request.session.permissions, "root"),
+        instanceType
+      );
+
+      return { response: jobIDs } as CreateProjectJobsResponse;
     }
   );
 

@@ -47,7 +47,7 @@ export const UserPage = () => {
   const [removeOpen, setRemoveOpen] = useState(false);
 
   useEffect(() => {
-    loadOne(parseInt(userID ?? "-1"));
+    loadOne(userID ?? "");
   }, []);
 
   return (
@@ -93,7 +93,7 @@ export const UserPage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await remove(parseInt(userID ?? "-1")))
+                    if (await remove(userID ?? ""))
                       navigate("/users");
                   }}
                 >
