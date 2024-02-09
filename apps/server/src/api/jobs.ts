@@ -143,19 +143,27 @@ export async function createProjectJobs(
     else hashByType[hashType] = [HID];
   });
 
-  const jobIds = await Promise.all(
-    Object.entries(hashByType).map(([_hashType, hashIds]) =>
-      createJob(
-        prisma,
-        instanceAPIs,
-        provider,
-        hashIds,
-        currentUserID,
-        bypassCheck,
-        instanceType
-      )
-    )
+  let nullJobIds = await Promise.all(
+    Object.entries(hashByType)
+      .map(async ([_hashType, hashIds]) => {
+        try {
+          return await createJob(
+            prisma,
+            instanceAPIs,
+            provider,
+            hashIds,
+            currentUserID,
+            bypassCheck,
+            instanceType
+          );
+        } catch (e) {
+          return null;
+        }
+      })
   );
+  const jobIds = nullJobIds.filter((job) => job) as string[];
+
+  if (jobIds.length === 0) throw new APIError("No jobs created");
 
   return jobIds;
 }
