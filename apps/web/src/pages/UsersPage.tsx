@@ -7,7 +7,6 @@ import {
   RegisterRequest,
 } from "@repo/api";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { TableCell } from "@repo/shadcn/components/ui/table";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { PermissionProfileSelect, useUsers } from "@repo/ui/users";
@@ -36,14 +35,8 @@ export const UsersPage = () => {
         type="User"
         head={["User"]}
         values={list}
-        row={({ ID, username }) => [
-          <TableCell
-            className="cursor-pointer font-medium"
-            onClick={() => navigate(`/users/${ID}`)}
-          >
-            {username}
-          </TableCell>,
-        ]}
+        rowClick={({ ID }) => navigate(`/users/${ID}`)}
+        row={({ username }) => [username]}
         valueKey={({ ID }) => ID}
         searchFilter={({ username }, search) =>
           username.toLowerCase().includes(search.toLowerCase())

@@ -1,5 +1,5 @@
 import { PlusIcon, TrashIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Card } from "@repo/shadcn/components/ui/card";
@@ -109,6 +109,8 @@ export interface DataTableProps<T> {
   head: (string | null)[];
   row: (value: T) => any[];
   valueKey: (value: T) => string | number;
+  sort?: (a: T, b: T) => number;
+  rowClick?: (value: T) => void;
   addDialog?: any;
   addValidate?: () => boolean;
   onAdd?: () => Promise<boolean>;
@@ -125,6 +127,8 @@ export function DataTable<T>({
   addValidate,
   onRemove,
   row,
+  rowClick,
+  sort,
   valueKey,
   addDialog,
   values,
@@ -133,24 +137,41 @@ export function DataTable<T>({
   noAdd,
   noRemove,
 }: DataTableProps<T>) {
-  const plural = `${type}${pluralSuffix || "s"}`;
-
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selects, setSelects] = useState<Record<string | number, boolean>>({});
   const [search, setSearch] = useState("");
 
-  const searchValues = values.filter(
-    (value) => searchFilter?.(value, search) ?? true
-  );
-  const selectedValues = searchValues.filter(
-    (value) => selects[valueKey(value)]
+  const plural = useMemo(
+    () => `${type}${pluralSuffix || "s"}`,
+    [type, pluralSuffix]
   );
 
-  const hasAdd = addDialog !== undefined && onAdd !== undefined && !noAdd;
-  const hasRemove = onRemove !== undefined && !noRemove;
-  const hasButtons = hasAdd || hasRemove;
-  const hasSelect = hasRemove;
+  const sortedValues = useMemo(
+    () => (sort ? values.sort(sort) : values),
+    [values, sort]
+  );
+
+  const searchValues = useMemo(
+    () => sortedValues.filter((value) => searchFilter?.(value, search) ?? true),
+    [search, sortedValues, searchFilter]
+  );
+
+  const selectedValues = useMemo(
+    () => searchValues.filter((value) => selects[valueKey(value)]),
+    [selects, searchValues, valueKey]
+  );
+
+  const hasAdd = useMemo(
+    () => addDialog !== undefined && onAdd !== undefined && !noAdd,
+    [addDialog, onAdd, noAdd]
+  );
+  const hasRemove = useMemo(
+    () => onRemove !== undefined && !noRemove,
+    [onRemove, noRemove]
+  );
+  const hasButtons = useMemo(() => hasAdd || hasRemove, [hasAdd, hasRemove]);
+  const hasSelect = useMemo(() => hasRemove, [hasRemove]);
 
   return (
     <div className="ui-grid ui-gap-4">
@@ -253,7 +274,18 @@ export function DataTable<T>({
                       />
                     </TableCell>
                   )}
-                  {row(value)}
+                  {row(value).map((column, index) =>
+                    column ? (
+                      <TableCell
+                        className={`${index === 0 ? "ui-font-medium" : ""} ${
+                          rowClick ? "ui-cursor-pointer" : ""
+                        }`}
+                        onClick={() => rowClick?.(value)}
+                      >
+                        {column}
+                      </TableCell>
+                    ) : null
+                  )}
                 </TableRow>
               ))
             )}

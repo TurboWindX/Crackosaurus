@@ -11,8 +11,14 @@ export const PERMISSIONS = [
   "jobs:*",
   "jobs:get",
   "jobs:add",
-  "jobs:start",
-  "jobs:stop",
+  "jobs:remove",
+  "instances:*",
+  "instances:get",
+  "instances:list",
+  "instances:add",
+  "instances:remove",
+  "instances:jobs:*",
+  "instances:jobs:get",
   "projects:*",
   "projects:get",
   "projects:add",
@@ -33,11 +39,11 @@ export type PermissionType = (typeof PERMISSIONS)[number];
 export const PERMISSION_PROFILES = {
   admin: ["*"],
   contributor: [
-    "jobs:*",
+    "hashes:*",
+    "instances:jobs:*",
     "projects:add",
     "projects:remove",
     "projects:users:*",
-    "hashes:*",
     "users:list",
   ],
   viewer: ["hashes:get"],
@@ -46,11 +52,28 @@ export const PERMISSION_PROFILES = {
 export const DEFAULT_PERMISSION_PROFILE: keyof typeof PERMISSION_PROFILES =
   "viewer";
 
-export const STATUSES = ["PENDING", "STARTED", "STOPPED", "COMPLETE", "ERROR"];
+export const STATUSES = [
+  "PENDING",
+  "STARTED",
+  "STOPPED",
+  "COMPLETE",
+  "ERROR",
+] as const;
 export type Status = (typeof STATUSES)[number];
 
-export interface ApiError {
-  error: string;
+export const ACTIVE_STATUSES: { [key in Status]?: boolean } = {
+  PENDING: true,
+  STARTED: true,
+} as const;
+
+export const PROVIDERS = ["aws", "debug", "local"] as const;
+export type Provider = (typeof PROVIDERS)[number];
+
+export interface APIError {
+  error: {
+    code: number;
+    message: string;
+  };
 }
 
 export interface InitRequest {
@@ -165,18 +188,92 @@ export interface RemoveHashResponse {
   response: string;
 }
 
+export interface GetInstanceRequest {
+  Params: {
+    instanceID: string;
+  };
+}
+
+export interface GetInstanceResponse {
+  response: {
+    IID: string;
+    name?: string | null;
+    provider: string;
+    tag: string;
+    status: string;
+    updatedAt: Date;
+    jobs: {
+      JID: string;
+      status: string;
+      updatedAt: Date;
+    }[];
+  };
+}
+
+export interface GetInstancesRequest {}
+
+export interface GetInstancesResponse {
+  response: {
+    IID: string;
+    name?: string | null;
+    provider: string;
+    status: string;
+    updatedAt: Date;
+  }[];
+}
+
+export interface GetInstanceListRequest {}
+
+export interface GetInstanceListResponse {
+  response: {
+    IID: string;
+    name?: string | null;
+  }[];
+}
+
+export interface DeleteInstanceRequest {
+  Params: {
+    instanceID: string;
+  };
+}
+
+export interface DeleteInstanceResponse {
+  response: any;
+}
+
+export interface CreateInstanceRequest {
+  Body: {
+    name?: string;
+    provider: Provider;
+    type?: string;
+  };
+}
+
+export interface CreateInstanceResponse {
+  response: string;
+}
+
 export interface CreateProjectJobsRequest {
   Params: {
     projectID: string;
   };
   Body: {
-    instanceType?: string;
-    provider: string;
+    instanceID: string;
   };
 }
 
 export interface CreateProjectJobsResponse {
   response: string[];
+}
+
+export interface DeleteProjectJobRequest {
+  Params: {
+    projectID: string;
+  };
+}
+
+export interface DeleteProjectJobResponse {
+  response: string;
 }
 
 export interface GetProjectRequest {
@@ -188,12 +285,18 @@ export interface GetProjectRequest {
 export interface GetProjectJob {
   JID: string;
   status: string;
+  updatedAt: Date;
+  instance: {
+    IID: string;
+    name?: string | null;
+  };
 }
 
 export interface GetProjectResponse {
   response: {
     PID: string;
     name: string;
+    updatedAt: Date;
     members?: {
       ID: string;
       username: string;
@@ -214,6 +317,7 @@ export interface GetProjectsResponse {
   response: {
     PID: string;
     name: string;
+    updatedAt: Date;
     members?: {
       ID: string;
       username: string;

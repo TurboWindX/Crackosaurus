@@ -15,10 +15,9 @@ export interface LocalInstanceAPIConfig {
 }
 
 export class LocalInstanceAPI extends InstanceAPI<LocalInstanceAPIConfig> {
-  private readonly insanceConfigs: Record<string, string[]> = {};
   private readonly instances: Record<
     string,
-    child_process.ChildProcessWithoutNullStreams
+    Record<string, child_process.ChildProcessWithoutNullStreams>
   > = {};
 
   public async load(): Promise<boolean> {
@@ -32,66 +31,83 @@ export class LocalInstanceAPI extends InstanceAPI<LocalInstanceAPIConfig> {
     return true;
   }
 
-  public async create(
-    hashType: HashType,
-    hashes: string[],
-    _instanceType?: string
-  ): Promise<string | null> {
+  public async create(_instanceType?: string): Promise<string | null> {
     const uuid = crypto.randomUUID();
 
     const instanceFolder = path.join(this.config.rootFolder, "instances", uuid);
     fs.mkdirSync(instanceFolder);
 
-    const hashesFile = path.join(instanceFolder, "hashes.txt");
-    fs.writeFileSync(hashesFile, hashes.join("\n"));
-
-    const outputFile = path.join(instanceFolder, "output.txt");
-
-    const wordlistFile = this.config.wordlistPath;
-
-    this.insanceConfigs[uuid] = [
-      "-a 0",
-      `-m ${getHashcatMode(hashType)}`,
-      `-o ${outputFile}`,
-      hashesFile,
-      wordlistFile,
-    ];
+    this.instances[uuid] = {};
 
     return uuid;
   }
 
-  public async start(instanceId: string): Promise<boolean> {
-    const config = this.insanceConfigs[instanceId];
-    if (!config) return false;
+  public async queue(
+    instanceId: string,
+    jobId: string,
+    hashType: HashType,
+    hashes: string[]
+  ): Promise<boolean> {
+    const instance = this.instances[instanceId];
+    if (instance === undefined) return false;
 
     const exe = path.basename(this.config.exePath);
     const exeCwd = path.dirname(this.config.exePath);
 
-    const instance = child_process.spawn(exe, config, {
-      cwd: exeCwd,
-    });
+    const instanceFolder = path.join(
+      this.config.rootFolder,
+      "instances",
+      instanceId
+    );
+    const jobFolder = path.join(instanceFolder, jobId);
 
-    this.instances[instanceId] = instance;
+    const hashesFile = path.join(jobFolder, "hashes.txt");
+    fs.writeFileSync(hashesFile, hashes.join("\n"));
 
-    delete this.insanceConfigs[instanceId];
+    const outputFile = path.join(jobFolder, "output.txt");
+
+    const wordlistFile = this.config.wordlistPath;
+
+    const process = child_process.spawn(
+      exe,
+      [
+        "-a 0",
+        `-m ${getHashcatMode(hashType)}`,
+        `-o ${outputFile}`,
+        hashesFile,
+        wordlistFile,
+      ],
+      {
+        cwd: exeCwd,
+      }
+    );
+
+    instance[jobId] = process;
 
     return true;
   }
 
-  public async stop(instanceId: string): Promise<boolean> {
+  public async dequeue(instanceId: string, jobId: string): Promise<boolean> {
     const instance = this.instances[instanceId];
-    if (!instance) return false;
+    if (instance === undefined) return false;
 
-    instance.kill();
+    const process = instance[jobId];
+    if (process === undefined) return false;
+
+    process.kill();
+
+    delete instance[jobId];
 
     return true;
   }
 
   public async terminate(instanceId: string): Promise<boolean> {
     const instance = this.instances[instanceId];
-    if (!instance) return false;
+    if (instance === undefined) return false;
 
-    if (!instance.killed) instance.kill();
+    Object.values(instance).map((process) => {
+      process.kill();
+    });
 
     delete this.instances[instanceId];
 

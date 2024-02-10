@@ -2,8 +2,6 @@ import { createContext, useContext, useState } from "react";
 
 import {
   AddHashRequest,
-  ApiError,
-  CreateProjectJobsRequest,
   CreateProjectRequest,
   GetProjectResponse,
   GetProjectsResponse,
@@ -12,12 +10,21 @@ import {
   addUserToProject,
   createProject,
   deleteProject,
+  deleteProjectJobs,
   getProject,
   getProjects,
   removeHashFromProject,
   removeUserFromProject,
 } from "@repo/api";
-import { useToast } from "@repo/shadcn/components/ui/use-toast";
+
+import { useAuth } from "./auth";
+import { useRequests } from "./requests";
+
+const DEFAULT_ONE: GetProjectResponse["response"] = {
+  PID: "",
+  name: "Project",
+  updatedAt: new Date(),
+};
 
 export interface ProjectsInterface {
   readonly isLoading: boolean;
@@ -40,11 +47,8 @@ export interface ProjectsInterface {
     ...ids: string[]
   ) => Promise<boolean>;
 
-  readonly addJobs: (
-    projectID: string,
-    provider: string,
-    instanceType?: string
-  ) => Promise<boolean>;
+  readonly addJobs: (projectID: string, instanceID: string) => Promise<boolean>;
+  readonly deleteJobs: (projectID: string) => Promise<boolean>;
 
   readonly one: GetProjectResponse["response"];
   readonly loadOne: (id: string) => Promise<void>;
@@ -55,6 +59,8 @@ export interface ProjectsInterface {
 
 const ProjectsContext = createContext<ProjectsInterface>({
   isLoading: true,
+  one: DEFAULT_ONE,
+  list: [],
   add: async () => false,
   remove: async () => false,
   addHashes: async () => false,
@@ -62,12 +68,8 @@ const ProjectsContext = createContext<ProjectsInterface>({
   addUsers: async () => false,
   removeUsers: async () => false,
   addJobs: async () => false,
-  one: {
-    PID: "",
-    name: "Project",
-  },
+  deleteJobs: async () => false,
   loadOne: async () => {},
-  list: [],
   loadList: async () => {},
 });
 
@@ -76,28 +78,33 @@ export function useProjects() {
 }
 
 export const ProjectsProvider = ({ children }: { children: any }) => {
-  const { toast } = useToast();
+  const { invalidate } = useAuth();
+  const { handleRequests } = useRequests();
+
   const [isLoading, setLoading] = useState(false);
-  const [id, setID] = useState<string>("");
   const [cache, setCache] = useState<
     Record<string, GetProjectResponse["response"]>
   >({});
+
+  const [id, setID] = useState<string>("");
   const [list, setList] = useState<GetProjectsResponse["response"]>([]);
   const [listLoaded, setListLoaded] = useState(false);
 
   async function reloadOne(id: string): Promise<boolean> {
     setLoading(true);
-    const { response, error } = await getProject(id);
-    if (error) return false;
 
-    setCache({
-      ...cache,
-      [id]: response,
-    });
-    setID(id);
+    const { response, error } = await getProject(id);
+    if (response) {
+      setCache({
+        ...cache,
+        [id]: response,
+      });
+      setID(id);
+    } else if (error.code === 401) invalidate();
+
     setLoading(false);
 
-    return true;
+    return response !== undefined;
   }
 
   async function reloadList() {
@@ -105,56 +112,15 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
     setListLoaded(true);
 
     const { response, error } = await getProjects();
-    if (!error) setList(response);
+    if (response) setList(response);
+    else if (error.code === 401) invalidate();
 
     setLoading(false);
   }
 
-  async function handleRequests<T, R extends ApiError>(
-    message: string,
-    values: T[],
-    callback: (value: T) => Promise<R>
-  ): Promise<(readonly [T, R])[]> {
-    const results = await Promise.all(
-      values.map(async (value) => [value, await callback(value)] as const)
-    );
-    if (!handleErrors(results)) return results;
-
-    handleSuccess(message);
-
-    return results;
-  }
-
-  function handleSuccess(message: string) {
-    toast({
-      variant: "default",
-      title: "Success",
-      description: message,
-    });
-  }
-
-  function handleErrors(results: (readonly [any, ApiError])[]): boolean {
-    const errors = results
-      .map(([_, { error }]) => error)
-      .filter((error) => error != null);
-
-    if (errors.length === 0) return true;
-
-    toast({
-      variant: "destructive",
-      title: "Error",
-      description: errors.join(", "),
-    });
-
-    return false;
-  }
-
   const value: ProjectsInterface = {
     isLoading,
-    one: cache[id] ?? {
-      PID: "",
-      name: "Project",
-    },
+    one: cache[id] ?? DEFAULT_ONE,
     list,
     add: async (...reqs) => {
       const _results = await handleRequests("Project(s) added", reqs, (req) =>
@@ -246,12 +212,22 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
 
       return true;
     },
-    addJobs: async (projectID, provider, instanceType) => {
+    addJobs: async (projectID, instanceID) => {
       const _results = await handleRequests(
         "Jobs(s) added",
-        [{ provider, instanceType }],
-        ({ provider, instanceType }) =>
-          addProjectJobs(projectID, provider, instanceType)
+        [instanceID],
+        (instanceID) => addProjectJobs(projectID, instanceID)
+      );
+
+      await reloadOne(projectID);
+
+      return true;
+    },
+    deleteJobs: async (projectID) => {
+      const _results = await handleRequests(
+        "Jobs(s) deleted",
+        [projectID],
+        (projectID) => deleteProjectJobs(projectID)
       );
 
       await reloadOne(projectID);

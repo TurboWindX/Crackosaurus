@@ -28,11 +28,7 @@ export class AWSInstanceAPI extends InstanceAPI<AWSInstanceAPIConfig> {
     return true;
   }
 
-  public async create(
-    _hashType: HashType,
-    _hashes: string[],
-    instanceType?: string
-  ): Promise<string | null> {
+  public async create(instanceType?: string): Promise<string | null> {
     try {
       const res = await this.ec2
         .runInstances({
@@ -52,7 +48,12 @@ export class AWSInstanceAPI extends InstanceAPI<AWSInstanceAPIConfig> {
     }
   }
 
-  public async start(instanceId: string): Promise<boolean> {
+  public async queue(
+    instanceId: string,
+    _jobId: string,
+    _hashType: HashType,
+    _hashes: string[]
+  ): Promise<boolean> {
     try {
       await this.ec2
         .startInstances({
@@ -66,7 +67,7 @@ export class AWSInstanceAPI extends InstanceAPI<AWSInstanceAPIConfig> {
     }
   }
 
-  public async stop(instanceId: string): Promise<boolean> {
+  public async dequeue(instanceId: string, _jobId: string): Promise<boolean> {
     try {
       await this.ec2
         .stopInstances({

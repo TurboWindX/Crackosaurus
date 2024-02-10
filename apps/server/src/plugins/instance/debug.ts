@@ -5,8 +5,6 @@ import { type HashType } from "@repo/api";
 import { InstanceAPI } from "./instance";
 
 export class DebugInstanceAPI extends InstanceAPI {
-  private instances: Record<string, boolean> = {};
-
   public async load(): Promise<boolean> {
     console.log("Debug Instance API loaded");
 
@@ -14,56 +12,35 @@ export class DebugInstanceAPI extends InstanceAPI {
   }
 
   public async create(
-    hashType: HashType,
-    hashes: string[],
     instanceType?: string | undefined
   ): Promise<string | null> {
     const uuid = crypto.randomUUID();
 
-    console.log(
-      `Creating instance ${uuid} of type ${instanceType} with ${hashes.length} hash(es) of type ${hashType}`
-    );
-
-    this.instances[uuid] = true;
+    console.log(`Creating instance ${uuid} of type ${instanceType}`);
 
     return uuid;
   }
 
-  public async start(instanceId: string): Promise<boolean> {
-    if (this.instances[instanceId]) {
-      console.log(`Starting instance ${instanceId}`);
+  public async queue(
+    instanceId: string,
+    jobId: string,
+    _hashType: HashType,
+    _hashes: string[]
+  ): Promise<boolean> {
+    console.log(`Queued job ${jobId} on ${instanceId}`);
 
-      return true;
-    } else {
-      console.log(`Could not find instance ${instanceId}`);
-
-      return false;
-    }
+    return true;
   }
 
-  public async stop(instanceId: string): Promise<boolean> {
-    if (this.instances[instanceId]) {
-      console.log(`Stopping instance ${instanceId}`);
+  public async dequeue(instanceId: string, jobId: string): Promise<boolean> {
+    console.log(`Dequeued job ${jobId} on ${instanceId}`);
 
-      return true;
-    } else {
-      console.log(`Could not find instance ${instanceId}`);
-
-      return false;
-    }
+    return true;
   }
 
   public async terminate(instanceId: string): Promise<boolean> {
-    if (this.instances[instanceId]) {
-      console.log(`Terminating instance ${instanceId}`);
+    console.log(`Terminating instance ${instanceId}`);
 
-      delete this.instances[instanceId];
-
-      return true;
-    } else {
-      console.log(`Could not find instance ${instanceId}`);
-
-      return false;
-    }
+    return true;
   }
 }

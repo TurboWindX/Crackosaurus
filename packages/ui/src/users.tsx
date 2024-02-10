@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
 import {
-  ApiError,
   GetUserListResponse,
   GetUserResponse,
   GetUsersResponse,
@@ -21,7 +20,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
-import { useToast } from "@repo/shadcn/components/ui/use-toast";
+
+import { useAuth } from "./auth";
+import { useRequests } from "./requests";
+
+const DEFAULT_ONE: GetUserResponse["response"] = {
+  ID: "",
+  username: "username",
+  permissions: "",
+};
 
 export interface UserSelectProps {
   value?: string | null;
@@ -58,7 +65,7 @@ export const UserSelect = ({
         {users
           .filter((user) => filter?.(user) ?? true)
           .map(({ ID, username }) => (
-            <SelectItem key={username} value={ID.toString()}>
+            <SelectItem key={username} value={ID}>
               {username}
             </SelectItem>
           ))}
@@ -118,15 +125,11 @@ export interface UsersInterface {
 
 const UsersContext = createContext<UsersInterface>({
   isLoading: true,
+  one: DEFAULT_ONE,
+  list: [],
   add: async () => false,
   remove: async () => false,
-  one: {
-    ID: "",
-    username: "username",
-    permissions: "",
-  },
   loadOne: async () => {},
-  list: [],
   loadList: async () => {},
 });
 
@@ -135,12 +138,15 @@ export function useUsers() {
 }
 
 export const UsersProvider = ({ children }: { children: any }) => {
-  const { toast } = useToast();
+  const { invalidate } = useAuth();
+  const { handleRequests } = useRequests();
+
   const [isLoading, setLoading] = useState(false);
-  const [id, setID] = useState<string>("");
   const [cache, setCache] = useState<
     Record<string, GetUserResponse["response"]>
   >({});
+
+  const [id, setID] = useState<string>("");
   const [list, setList] = useState<GetUsersResponse["response"]>([]);
   const [listLoaded, setListLoaded] = useState(false);
 
@@ -148,65 +154,27 @@ export const UsersProvider = ({ children }: { children: any }) => {
     setLoading(true);
 
     const { response, error } = await getUser(id);
-    if (!error) {
+    if (response) {
       setCache({
         ...cache,
         [id]: response,
       });
       setID(id);
-    }
+    } else if (error.code === 401) invalidate();
 
     setLoading(false);
 
-    return error !== undefined;
+    return response !== undefined;
   }
 
   async function reloadList() {
     setLoading(true);
 
     const { response, error } = await getUsers();
-    if (!error) setList(response);
+    if (response) setList(response);
+    else if (error.code === 401) invalidate();
 
     setLoading(false);
-  }
-
-  async function handleRequests<T, R extends ApiError>(
-    message: string,
-    values: T[],
-    callback: (value: T) => Promise<R>
-  ): Promise<(readonly [T, R])[]> {
-    const results = await Promise.all(
-      values.map(async (value) => [value, await callback(value)] as const)
-    );
-    if (!handleErrors(results)) return results;
-
-    handleSuccess(message);
-
-    return results;
-  }
-
-  function handleSuccess(message: string) {
-    toast({
-      variant: "default",
-      title: "Success",
-      description: message,
-    });
-  }
-
-  function handleErrors(results: (readonly [any, ApiError])[]): boolean {
-    const errors = results
-      .map(([_, { error }]) => error)
-      .filter((error) => error != null);
-
-    if (errors.length === 0) return true;
-
-    toast({
-      variant: "destructive",
-      title: "Error",
-      description: errors.join(", "),
-    });
-
-    return false;
   }
 
   const value: UsersInterface = {

@@ -1,4 +1,4 @@
-import { PrismaClient, Project } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 
 import { APIError } from "../plugins/errors";
@@ -104,6 +104,7 @@ export async function getUserProjects(
       select: {
         PID: true,
         name: true,
+        updatedAt: true,
         members: {
           select: {
             ID: true,
@@ -137,6 +138,7 @@ export async function getUserProject(
       select: {
         PID: true,
         name: true,
+        updatedAt: true,
         members: {
           select: {
             ID: true,
@@ -153,6 +155,13 @@ export async function getUserProject(
               select: {
                 JID: true,
                 status: true,
+                updatedAt: true,
+                instance: {
+                  select: {
+                    IID: true,
+                    name: true,
+                  },
+                },
               },
             },
           },

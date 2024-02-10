@@ -1,14 +1,21 @@
 import {
+  APIError,
   AddHashRequest,
   AddHashResponse,
   AddUserToProjectResponse,
-  ApiError,
   AuthUserResponse,
+  CreateInstanceRequest,
+  CreateInstanceResponse,
   CreateProjectJobsResponse,
   CreateProjectRequest,
   CreateProjectResponse,
+  DeleteInstanceResponse,
+  DeleteProjectJobResponse,
   DeleteProjectResponse,
   DeleteUserResponse,
+  GetInstanceListResponse,
+  GetInstanceResponse,
+  GetInstancesResponse,
   GetProjectResponse,
   GetProjectsResponse,
   GetUserListResponse,
@@ -25,7 +32,19 @@ import {
 
 const API_URL = "http://localhost:8000/api";
 
-type ApiResponse<T> = Promise<T & ApiError>;
+type APIResponse<T> = Promise<T & APIError>;
+
+async function handleRes<Res>(res: Response): Promise<Res> {
+  let json = await res.json();
+  if (json.error) {
+    json.error = {
+      code: res.status,
+      message: json.error,
+    };
+  }
+
+  return json as APIResponse<Res>;
+}
 
 async function apiMethod<Req, Res>(
   method: string,
@@ -44,116 +63,146 @@ async function apiMethod<Req, Res>(
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  return res.json() as ApiResponse<Res>;
+  return handleRes(res);
 }
 
-async function apiGet<Res>(path: string): ApiResponse<Res> {
+async function apiGet<Res>(path: string): APIResponse<Res> {
   const res = await fetch(`${API_URL}${path}`, {
     credentials: "include",
   });
 
-  return res.json() as ApiResponse<Res>;
+  return handleRes(res);
 }
 
-async function apiPost<Req, Res>(path: string, body?: Req): ApiResponse<Res> {
+async function apiPost<Req, Res>(path: string, body?: Req): APIResponse<Res> {
   return apiMethod("POST", path, body);
 }
 
-async function apiDelete<Req, Res>(path: string, body?: Req): ApiResponse<Res> {
+async function apiDelete<Req, Res>(path: string, body?: Req): APIResponse<Res> {
   return apiMethod("DELETE", path, body);
 }
 
 export async function login(
   req: LoginRequest["Body"]
-): ApiResponse<LoginResponse> {
+): APIResponse<LoginResponse> {
   return apiPost("/auth/login", req);
 }
 
-export async function logout(): ApiResponse<LogoutResponse> {
+export async function logout(): APIResponse<LogoutResponse> {
   return apiGet("/auth/logout");
 }
 
-export async function authUser(): ApiResponse<AuthUserResponse> {
+export async function authUser(): APIResponse<AuthUserResponse> {
   return apiGet("/auth/user");
 }
 
-export async function getUser(id: string): ApiResponse<GetUserResponse> {
+export async function getUser(id: string): APIResponse<GetUserResponse> {
   return apiGet(`/users/${id}`);
 }
 
-export async function getUsers(): ApiResponse<GetUsersResponse> {
+export async function getUsers(): APIResponse<GetUsersResponse> {
   return apiGet("/users");
 }
 
-export async function getUserList(): ApiResponse<GetUserListResponse> {
+export async function getUserList(): APIResponse<GetUserListResponse> {
   return apiGet("/users/list");
 }
 
 export async function registerUser(
   req: RegisterRequest["Body"]
-): ApiResponse<RegisterResponse> {
+): APIResponse<RegisterResponse> {
   return apiPost("/users", req);
+}
+
+export async function getInstance(
+  instanceID: string
+): APIResponse<GetInstanceResponse> {
+  return apiGet(`/instances/${instanceID}`);
+}
+
+export async function getInstances(): APIResponse<GetInstancesResponse> {
+  return apiGet("/instances");
+}
+
+export async function getInstanceList(): APIResponse<GetInstanceListResponse> {
+  return apiGet("/instances/list");
+}
+
+export async function createInstance(
+  req: CreateInstanceRequest["Body"]
+): APIResponse<CreateInstanceResponse> {
+  return apiPost("/instances", req);
+}
+
+export async function deleteInstance(
+  instanceID: string
+): APIResponse<DeleteInstanceResponse> {
+  return apiDelete(`/instances/${instanceID}`);
 }
 
 export async function addProjectJobs(
   id: string,
-  provider: string,
-  instanceType?: string
-): ApiResponse<CreateProjectJobsResponse> {
+  instanceID: string
+): APIResponse<CreateProjectJobsResponse> {
   return apiPost(`/projects/${id}/jobs`, {
-    provider,
-    instanceType,
+    instanceID,
   });
 }
 
-export async function deleteUser(id: string): ApiResponse<DeleteUserResponse> {
+export async function deleteProjectJobs(
+  id: string
+): APIResponse<DeleteProjectJobResponse> {
+  return apiDelete(`/projects/${id}/jobs`);
+}
+
+export async function deleteUser(id: string): APIResponse<DeleteUserResponse> {
   return apiDelete(`/users/${id}`);
 }
 
-export async function getProject(id: string): ApiResponse<GetProjectResponse> {
+export async function getProject(id: string): APIResponse<GetProjectResponse> {
   return apiGet(`/projects/${id}`);
 }
 
-export async function getProjects(): ApiResponse<GetProjectsResponse> {
+export async function getProjects(): APIResponse<GetProjectsResponse> {
   return apiGet("/projects");
 }
 
 export async function createProject(
   req: CreateProjectRequest["Body"]
-): ApiResponse<CreateProjectResponse> {
+): APIResponse<CreateProjectResponse> {
   return apiPost("/projects", req);
 }
 
 export async function deleteProject(
   id: string
-): ApiResponse<DeleteProjectResponse> {
+): APIResponse<DeleteProjectResponse> {
   return apiDelete(`/projects/${id}`);
 }
 
 export async function addHashToProject(
   projectID: string,
   req: AddHashRequest["Body"]
-): ApiResponse<AddHashResponse> {
+): APIResponse<AddHashResponse> {
   return apiPost(`/projects/${projectID}/hashes`, req);
 }
 
 export async function removeHashFromProject(
   projectID: string,
   hashID: string
-): ApiResponse<RemoveHashResponse> {
+): APIResponse<RemoveHashResponse> {
   return apiDelete(`/projects/${projectID}/hashes/${hashID}`);
 }
 
 export async function addUserToProject(
   projectID: string,
   userID: string
-): ApiResponse<AddUserToProjectResponse> {
+): APIResponse<AddUserToProjectResponse> {
   return apiPost(`/projects/${projectID}/users/${userID}`);
 }
 
 export async function removeUserFromProject(
   projectID: string,
   userID: string
-): ApiResponse<RemoveUserFromProjectResponse> {
+): APIResponse<RemoveUserFromProjectResponse> {
   return apiDelete(`/projects/${projectID}/users/${userID}`);
 }

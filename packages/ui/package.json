@@ -11,7 +11,9 @@
     "./data": "./src/data.tsx",
     "./dialog": "./src/dialog.tsx",
     "./header": "./src/header.tsx",
+    "./instances": "./src/instances.tsx",
     "./projects": "./src/projects.tsx",
+    "./status": "./src/status.tsx",
     "./time": "./src/time.tsx",
     "./users": "./src/users.tsx"
   },

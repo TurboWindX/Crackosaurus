@@ -3,6 +3,9 @@ import { Outlet, createBrowserRouter } from "react-router-dom";
 import { AuthRoute, PermissionRoute } from "@repo/ui/auth";
 import { Header } from "@repo/ui/header";
 
+import { HomePage } from "./HomePage.tsx";
+import { InstancePage } from "./InstancePage.tsx";
+import { InstancesPage } from "./InstancesPage.tsx";
 import { LoginPage } from "./LoginPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
 import { ProjectsPage } from "./ProjectsPage.tsx";
@@ -30,7 +33,7 @@ export const router = createBrowserRouter([
             path: "",
             element: (
               <AuthRoute>
-                <ProjectsPage />
+                <HomePage />
               </AuthRoute>
             ),
           },
@@ -63,6 +66,22 @@ export const router = createBrowserRouter([
             element: (
               <PermissionRoute permission="users:get">
                 <UsersPage />
+              </PermissionRoute>
+            ),
+          },
+          {
+            path: "instances",
+            element: (
+              <PermissionRoute permission="instances:get">
+                <InstancesPage />
+              </PermissionRoute>
+            ),
+          },
+          {
+            path: "instances/:instanceID",
+            element: (
+              <PermissionRoute permission="instances:get">
+                <InstancePage />
               </PermissionRoute>
             ),
           },

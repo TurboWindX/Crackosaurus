@@ -41,6 +41,7 @@ model Hash {
 
 model Instance {
   IID       String   @id @default(uuid())
+  name      String?
   provider  String
   tag       String
   type      String?

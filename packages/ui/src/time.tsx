@@ -2,15 +2,23 @@ import moment from "moment";
 import { useEffect, useState } from "react";
 
 export interface RelativeTimeProps {
-  epoch: number;
+  time: moment.MomentInput;
 }
 
-export const RelativeTime = ({ epoch }: RelativeTimeProps) => {
+export const RelativeTime = ({ time }: RelativeTimeProps) => {
   const [value, setValue] = useState("");
 
   useEffect(() => {
-    setValue(moment(epoch).fromNow());
-  }, [epoch]);
+    setValue(moment(time).fromNow());
+
+    const interval = setInterval(() => {
+      setValue(moment(time).fromNow());
+    }, 60000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [time]);
 
   return <span>{value}</span>;
 };

@@ -1,75 +1,61 @@
-import { LogOutIcon, TrashIcon } from "lucide-react";
+import { TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { GetUserResponse } from "@repo/api";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
-import { useUsers } from "@repo/ui/users";
+import { useInstances } from "@repo/ui/instances";
+import { StatusBadge } from "@repo/ui/status";
+import { RelativeTime } from "@repo/ui/time";
 
-interface ProjectDataTableProps {
-  values: GetUserResponse["response"]["projects"];
+import { GetInstanceResponse } from "../../../../packages/api/src/types.ts";
+
+interface JobDataTableProps {
+  values: GetInstanceResponse["response"]["jobs"];
 }
 
-const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
-  const navigate = useNavigate();
-
+const InstanceDataTable = ({ values }: JobDataTableProps) => {
   return (
     <DataTable
-      type="Project"
+      type="Job"
       values={values ?? []}
-      head={["Project"]}
-      rowClick={({ PID }) => navigate(`/projects/${PID}`)}
-      row={({ name }) => [name]}
-      valueKey={({ PID }) => PID}
-      searchFilter={({ name }, search) =>
-        name.toLowerCase().includes(search.toLowerCase())
-      }
+      head={["Job", "Status", "Last Updated"]}
+      sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
+      row={({ JID, status, updatedAt }) => [
+        JID,
+        <StatusBadge status={status as any} />,
+        <RelativeTime time={updatedAt} />,
+      ]}
+      valueKey={({ JID }) => JID}
     />
   );
 };
 
-export const UserPage = () => {
-  const { userID } = useParams();
-  const { uid, hasPermission, logout } = useAuth();
-  const { one, loadOne, remove } = useUsers();
+export const InstancePage = () => {
+  const { instanceID } = useParams();
+  const { hasPermission } = useAuth();
   const navigate = useNavigate();
+  const { one, loadOne, remove } = useInstances();
 
   const [removeOpen, setRemoveOpen] = useState(false);
 
   useEffect(() => {
-    loadOne(userID ?? "");
+    loadOne(instanceID ?? "");
   }, []);
 
   return (
     <div className="grid gap-8 p-4">
       <div className="grid grid-cols-2 gap-4">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-          {one.username}
+          {one.name || one.IID}
         </span>
         <div className="grid grid-flow-col justify-end gap-4">
-          {uid.toString() === userID && (
-            <div className="w-max">
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  await logout();
-                  navigate("/");
-                }}
-              >
-                <div className="grid grid-flow-col items-center gap-2">
-                  <LogOutIcon />
-                  <span>Logout</span>
-                </div>
-              </Button>
-            </div>
-          )}
-          {(hasPermission("users:remove") || uid.toString() === userID) && (
+          {hasPermission("instances:remove") && (
             <div className="w-max">
               <DrawerDialog
-                title="Remove User"
+                title="Remove Instance"
                 open={removeOpen}
                 setOpen={setRemoveOpen}
                 trigger={
@@ -86,7 +72,7 @@ export const UserPage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await remove(userID ?? "")) navigate("/users");
+                    if (await remove(instanceID ?? "")) navigate("/instances");
                   }}
                 >
                   <span>Do you want to permanently remove this user?</span>
@@ -97,7 +83,7 @@ export const UserPage = () => {
           )}
         </div>
       </div>
-      <ProjectDataTable values={one?.projects} />
+      <InstanceDataTable values={one.jobs} />
     </div>
   );
 };

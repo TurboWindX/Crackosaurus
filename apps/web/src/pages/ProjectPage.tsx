@@ -1,12 +1,14 @@
-import { PlayIcon, TrashIcon } from "lucide-react";
+import { PlayIcon, SquareIcon, TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import {
+  ACTIVE_STATUSES,
   AddHashRequest,
   GetProjectJob,
   GetProjectResponse,
   HASH_TYPES,
+  Status,
 } from "@repo/api";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
@@ -18,11 +20,13 @@ import {
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 import { Separator } from "@repo/shadcn/components/ui/separator";
-import { TableCell } from "@repo/shadcn/components/ui/table";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
+import { InstanceSelect } from "@repo/ui/instances";
 import { useProjects } from "@repo/ui/projects";
+import { StatusBadge } from "@repo/ui/status";
+import { RelativeTime } from "@repo/ui/time";
 import { UserSelect } from "@repo/ui/users";
 
 interface HashDataTableProps {
@@ -46,10 +50,7 @@ const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
       values={values ?? []}
       head={["Hash", "Type"]}
       valueKey={({ HID }) => HID}
-      row={({ hash, hashType }) => [
-        <TableCell>{hash}</TableCell>,
-        <TableCell>{hashType}</TableCell>,
-      ]}
+      row={({ hash, hashType }) => [hash, hashType]}
       noAdd={!hasPermission("hashes:add")}
       onAdd={() => addHashes(projectID, addHash)}
       noRemove={!hasPermission("hashes:remove")}
@@ -104,17 +105,22 @@ interface JobDataTableProps {
 }
 
 const JobDataTable = ({ values }: JobDataTableProps) => {
+  const navigate = useNavigate();
+
   return (
     <DataTable
       type="Job"
       values={values ?? []}
-      head={["Job", "Status"]}
+      head={["Job", "Instance", "Status", "Last Updated"]}
       valueKey={({ JID }) => JID}
-      row={({ JID, status }) => [
-        <TableCell>{JID}</TableCell>,
-        <TableCell>{status}</TableCell>,
+      rowClick={({ instance }) => navigate(`/instances/${instance.IID}`)}
+      sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
+      row={({ JID, status, updatedAt, instance }) => [
+        JID,
+        instance.name || instance.IID,
+        <StatusBadge status={status as any} />,
+        <RelativeTime time={updatedAt} />,
       ]}
-      searchFilter={({ JID }, search) => JID.toLowerCase().includes(search)}
       noAdd
       noRemove
     />
@@ -138,7 +144,7 @@ const UserDataTable = ({ projectID, values }: UserDataTableProps) => {
       values={values ?? []}
       head={["User"]}
       valueKey={({ ID }) => ID}
-      row={({ username }) => [<TableCell>{username}</TableCell>]}
+      row={({ username }) => [username]}
       searchFilter={({ username }, search) =>
         username.toLowerCase().includes(search)
       }
@@ -167,7 +173,13 @@ export const ProjectPage = () => {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
-  const { one, loadOne, remove, addJobs } = useProjects();
+  const { one, loadOne, remove, addJobs, deleteJobs } = useProjects();
+
+  const [startOpen, setStartOpen] = useState(false);
+  const [startInstanceID, setStartInstanceID] = useState("");
+
+  const [stopOpen, setStopOpen] = useState(false);
+
   const [removeOpen, setRemoveOpen] = useState(false);
 
   const hashes = useMemo(() => one?.hashes ?? [], [one]);
@@ -188,15 +200,22 @@ export const ProjectPage = () => {
     });
   }, [one]);
 
+  const activeJobs = useMemo(
+    () => jobs.filter((job) => ACTIVE_STATUSES[job.status as Status]),
+    [jobs]
+  );
+
   useEffect(() => {
     loadOne(projectID ?? "");
   }, []);
 
   const tables = [
+    hasPermission("jobs:get") && activeJobs.length > 0 && (
+      <JobDataTable key="jobs" values={activeJobs} />
+    ),
     hasPermission("hashes:get") && (
       <HashDataTable key="hashes" projectID={projectID ?? ""} values={hashes} />
     ),
-    hasPermission("jobs:get") && <JobDataTable key="jobs" values={jobs} />,
     hasPermission("projects:users:get") && (
       <UserDataTable key="users" projectID={projectID ?? ""} values={members} />
     ),
@@ -216,15 +235,65 @@ export const ProjectPage = () => {
         <div className="grid grid-flow-col justify-end gap-4">
           {hasPermission("jobs:add") && (
             <div className="w-max">
-              <Button
-                variant="outline"
-                onClick={() => addJobs(projectID as string, "debug")}
+              <DrawerDialog
+                title="Start Cracking"
+                open={startOpen}
+                setOpen={setStartOpen}
+                trigger={
+                  <Button variant="outline">
+                    <div className="grid grid-flow-col items-center gap-2">
+                      <PlayIcon />
+                      <span>Start</span>
+                    </div>
+                  </Button>
+                }
               >
-                <div className="grid grid-flow-col items-center gap-2">
-                  <PlayIcon />
-                  <span>Start</span>
-                </div>
-              </Button>
+                <form
+                  className="grid gap-4"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+
+                    await addJobs(projectID as string, startInstanceID);
+
+                    setStartOpen(false);
+                  }}
+                >
+                  <InstanceSelect
+                    value={startInstanceID}
+                    onValueChange={setStartInstanceID}
+                  />
+                  <Button disabled={startInstanceID.length === 0}>Start</Button>
+                </form>
+              </DrawerDialog>
+            </div>
+          )}
+          {hasPermission("jobs:remove") && (
+            <div className="w-max">
+              <DrawerDialog
+                title="Stop Cracking"
+                open={stopOpen}
+                setOpen={setStopOpen}
+                trigger={
+                  <Button variant="outline">
+                    <div className="grid grid-flow-col items-center gap-2">
+                      <SquareIcon />
+                      <span>Stop</span>
+                    </div>
+                  </Button>
+                }
+              >
+                <form
+                  className="grid gap-4"
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+
+                    if (await deleteJobs(projectID ?? "")) setStopOpen(false);
+                  }}
+                >
+                  <span>Do you want to stop cracking?</span>
+                  <Button>Stop</Button>
+                </form>
+              </DrawerDialog>
             </div>
           )}
           {hasPermission("projects:remove") && (

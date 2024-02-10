@@ -4,10 +4,10 @@ import { useNavigate } from "react-router-dom";
 import { CreateProjectRequest } from "@repo/api";
 import { Badge } from "@repo/shadcn/components/ui/badge";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { TableCell } from "@repo/shadcn/components/ui/table";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useProjects } from "@repo/ui/projects";
+import { RelativeTime } from "@repo/ui/time";
 
 export const ProjectsPage = () => {
   const navigate = useNavigate();
@@ -29,29 +29,26 @@ export const ProjectsPage = () => {
       <DataTable
         type="Project"
         values={list}
-        head={["Project", hasCollaborators ? "Collaborators" : null]}
+        head={[
+          "Project",
+          hasCollaborators ? "Collaborators" : null,
+          "Last Updated",
+        ]}
         valueKey={({ PID }) => PID}
-        row={({ PID, name, members }) => [
-          <TableCell
-            className="cursor-pointer font-medium"
-            onClick={() => navigate(`/projects/${PID}`)}
-          >
-            {name}
-          </TableCell>,
+        sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
+        rowClick={({ PID }) => navigate(`/projects/${PID}`)}
+        row={({ name, members, updatedAt }) => [
+          name,
           hasCollaborators ? (
-            <TableCell
-              className="cursor-pointer"
-              onClick={() => navigate(`/projects/${PID}`)}
-            >
-              <div className="grid max-w-max grid-flow-col gap-2">
-                {(members ?? []).map((member) => (
-                  <Badge key={member.ID} variant="secondary">
-                    {member.username}
-                  </Badge>
-                ))}
-              </div>
-            </TableCell>
+            <div className="grid max-w-max grid-flow-col gap-2">
+              {(members ?? []).map((member) => (
+                <Badge key={member.ID} variant="secondary">
+                  {member.username}
+                </Badge>
+              ))}
+            </div>
           ) : null,
+          <RelativeTime time={updatedAt} />,
         ]}
         searchFilter={(project, search) =>
           project.name.toLowerCase().includes(search.toLowerCase()) ||

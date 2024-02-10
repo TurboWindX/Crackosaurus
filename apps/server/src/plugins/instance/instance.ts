@@ -8,12 +8,13 @@ export abstract class InstanceAPI<TConfig = undefined> {
   }
 
   public abstract load(): Promise<boolean>;
-  public abstract create(
+  public abstract create(instanceType?: string): Promise<string | null>;
+  public abstract queue(
+    instanceId: string,
+    jobId: string,
     hashType: HashType,
-    hashes: string[],
-    instanceType?: string
-  ): Promise<string | null>;
-  public abstract start(instanceId: string): Promise<boolean>;
-  public abstract stop(instanceId: string): Promise<boolean>;
+    hashes: string[]
+  ): Promise<boolean>;
+  public abstract dequeue(instanceId: string, jobId: string): Promise<boolean>;
   public abstract terminate(instanceId: string): Promise<boolean>;
 }

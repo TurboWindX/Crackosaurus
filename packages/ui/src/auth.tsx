@@ -18,6 +18,7 @@ export interface AuthInterface {
   readonly username: string;
   readonly login: (username: string, password: string) => Promise<void>;
   readonly logout: () => Promise<void>;
+  readonly invalidate: () => void;
   readonly hasPermission: (permission: PermissionType) => boolean;
 }
 
@@ -28,14 +29,15 @@ const AuthContext = createContext<AuthInterface>({
   username: "",
   login: async () => {},
   logout: async () => {},
+  invalidate: () => {},
   hasPermission: () => false,
 });
 
 export function AuthProvider({ children }: { children: any }) {
+  const { toast } = useToast();
+
   const [isLoading, setLoading] = useState(true);
   const [data, setData] = useState<AuthUserResponse | null>(null);
-
-  const { toast } = useToast();
 
   useEffect(() => {
     setLoading(true);
@@ -57,7 +59,7 @@ export function AuthProvider({ children }: { children: any }) {
       toast({
         variant: "destructive",
         title: "Error",
-        description: error,
+        description: error.message,
       });
 
       setData(null);
@@ -83,7 +85,7 @@ export function AuthProvider({ children }: { children: any }) {
       toast({
         variant: "destructive",
         title: "Failed",
-        description: error,
+        description: error.message,
       });
     } else {
       toast({
@@ -101,6 +103,10 @@ export function AuthProvider({ children }: { children: any }) {
   const value: AuthInterface = {
     login: authLogin,
     logout: authLogout,
+    invalidate: () => {
+      setData(null);
+      setLoading(false);
+    },
     uid: data?.uid ?? "",
     username: data?.username ?? "username",
     isLoading,

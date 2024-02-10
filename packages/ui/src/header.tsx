@@ -1,4 +1,10 @@
-import { HardHatIcon, UserIcon, UsersIcon } from "lucide-react";
+import {
+  CpuIcon,
+  FolderIcon,
+  HardHatIcon,
+  UserIcon,
+  UsersIcon,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { PermissionType } from "@repo/api";
@@ -35,6 +41,17 @@ const LINKS: readonly HeaderLinkProps[] = [
     text: "Crackosaurus",
     path: "/",
     icon: HardHatIcon,
+  },
+  {
+    text: "Projects",
+    path: "/projects",
+    icon: FolderIcon,
+  },
+  {
+    text: "Instances",
+    path: "/instances",
+    icon: CpuIcon,
+    permission: "instances:get",
   },
   {
     text: "Users",

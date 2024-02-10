@@ -1,19 +1,38 @@
 import { PrismaClient } from "@prisma/client";
 
+import { type HashType } from "@repo/api";
+
 import { APIError } from "../plugins/errors";
-import { InstanceAPIProviders } from "../plugins/instance";
+import { type InstanceAPIProviders } from "../plugins/instance";
 
 export async function createJob(
   prisma: PrismaClient,
   instanceAPIs: InstanceAPIProviders,
-  provider: string,
+  instanceID: string,
   hashIds: string[],
   currentUserID: string,
-  bypassCheck?: boolean,
-  instanceType?: string
+  bypassCheck?: boolean
 ): Promise<string> {
-  const instanceAPI = instanceAPIs[provider as keyof InstanceAPIProviders];
-  if (!instanceAPI) throw new Error("Instance API not found");
+  let instance;
+  try {
+    instance = await prisma.instance.update({
+      select: {
+        provider: true,
+      },
+      where: {
+        IID: instanceID,
+      },
+      data: {
+        updatedAt: new Date(),
+      },
+    });
+  } catch (e) {
+    throw new APIError("Instance error");
+  }
+
+  const instanceAPI =
+    instanceAPIs[instance.provider as keyof InstanceAPIProviders];
+  if (!instanceAPI) throw new APIError("Instance API not found");
 
   let hashes;
   try {
@@ -27,9 +46,8 @@ export async function createJob(
         HID: {
           in: hashIds,
         },
-        jobId: {
-          equals: null,
-        },
+        jobId: null,
+        cracked: null,
         project: bypassCheck
           ? undefined
           : {
@@ -48,72 +66,107 @@ export async function createJob(
   if (hashes.length === 0)
     throw new APIError("Cannot create a job without any valid hashes");
 
-  const hashType = hashes[0]?.hashType;
+  const hashType = hashes[0]?.hashType as HashType;
   if (hashes.some((hash) => hash.hashType !== hashType))
     throw new APIError("Cannot create jobs with different types of hashes");
 
-  const instanceTag = await instanceAPI.create(
-    hashType as any,
-    hashes.map((hash) => hash.hash),
-    instanceType
-  );
-  if (!instanceTag) throw new APIError("Instance not created");
+  const jobID = crypto.randomUUID();
 
-  let instanceId: string;
+  if (
+    !(await instanceAPI.queue(
+      instanceID,
+      jobID,
+      hashType,
+      hashes.map(({ hash }) => hash)
+    ))
+  )
+    throw new APIError("Cannot queue job");
+
   try {
-    const instance = await prisma.instance.create({
-      select: {
-        IID: true,
-      },
-      data: {
-        provider,
-        tag: instanceTag,
-        type: instanceType,
-      },
-    });
-
-    instanceId = instance.IID;
-  } catch (e) {
-    throw new APIError("Instance not created");
-  }
-
-  let jobId: string;
-  try {
-    const job = await prisma.job.create({
+    await prisma.job.create({
       select: {
         JID: true,
       },
       data: {
-        instanceId: instanceId,
+        JID: jobID,
+        instanceId: instanceID,
         hashes: {
           connect: hashes.map(({ HID }) => ({ HID })),
         },
       },
     });
-
-    jobId = job.JID;
   } catch (e) {
-    throw new APIError("Job not created");
+    throw new APIError("Job error");
   }
 
-  return jobId;
+  return jobID;
+}
+
+export async function deleteJob(
+  prisma: PrismaClient,
+  instanceAPIs: InstanceAPIProviders,
+  jobID: string
+): Promise<void> {
+  let job;
+  try {
+    job = await prisma.job.findUniqueOrThrow({
+      select: {
+        instance: {
+          select: {
+            IID: true,
+            tag: true,
+            provider: true,
+          },
+        },
+      },
+      where: {
+        JID: jobID,
+      },
+    });
+  } catch (e) {
+    throw new APIError("Job error");
+  }
+
+  const instanceAPI =
+    instanceAPIs[job.instance.provider as keyof InstanceAPIProviders];
+  if (!instanceAPI) throw new APIError("Instance API not found");
+
+  if (!(await instanceAPI.dequeue(job.instance.tag, jobID)))
+    throw new APIError("Could not dequeue job");
+
+  try {
+    await prisma.job.delete({
+      where: {
+        JID: jobID,
+      },
+    });
+  } catch (e) {
+    throw new APIError("Job error");
+  }
+
+  try {
+    await prisma.instance.update({
+      where: {
+        IID: job.instance.IID,
+      },
+      data: {
+        updatedAt: new Date(),
+      },
+    });
+  } catch (e) {}
 }
 
 export async function createProjectJobs(
   prisma: PrismaClient,
   instanceAPIs: InstanceAPIProviders,
-  provider: string,
   projectID: string,
+  instanceID: string,
   currentUserID: string,
-  bypassCheck?: boolean,
-  instanceType?: string
+  bypassCheck?: boolean
 ): Promise<string[]> {
-  const instanceAPI = instanceAPIs[provider as keyof InstanceAPIProviders];
-  if (!instanceAPI) throw new Error("Instance API not found");
-
   let project;
   try {
-    project = await prisma.project.findUniqueOrThrow({
+    project = await prisma.project.update({
       select: {
         hashes: {
           select: {
@@ -132,6 +185,9 @@ export async function createProjectJobs(
               },
             },
       },
+      data: {
+        updatedAt: new Date(),
+      },
     });
   } catch (e) {
     throw new APIError("Project error");
@@ -143,141 +199,74 @@ export async function createProjectJobs(
     else hashByType[hashType] = [HID];
   });
 
-  let nullJobIds = await Promise.all(
-    Object.entries(hashByType)
-      .map(async ([_hashType, hashIds]) => {
-        try {
-          return await createJob(
-            prisma,
-            instanceAPIs,
-            provider,
-            hashIds,
-            currentUserID,
-            bypassCheck,
-            instanceType
-          );
-        } catch (e) {
-          return null;
-        }
-      })
-  );
-  const jobIds = nullJobIds.filter((job) => job) as string[];
+  const jobIDs: string[] = [];
+  for (const [_hashType, hashIDs] of Object.entries(hashByType)) {
+    try {
+      jobIDs.push(
+        await createJob(
+          prisma,
+          instanceAPIs,
+          instanceID,
+          hashIDs,
+          currentUserID,
+          bypassCheck
+        )
+      );
+    } catch (e) {}
+  }
 
-  if (jobIds.length === 0) throw new APIError("No jobs created");
+  if (jobIDs.length === 0) throw new APIError("No jobs created");
 
-  return jobIds;
+  return jobIDs;
 }
 
-export async function startJob(
+export async function deleteProjectJobs(
   prisma: PrismaClient,
   instanceAPIs: InstanceAPIProviders,
-  jobId: string
+  projectID: string,
+  currentUserID: string,
+  bypassCheck?: boolean
 ): Promise<void> {
-  let job;
+  let project;
   try {
-    job = await prisma.job.findUniqueOrThrow({
+    project = await prisma.project.update({
       select: {
-        JID: true,
-        status: true,
-        instance: {
+        hashes: {
           select: {
-            tag: true,
-            provider: true,
-            status: true,
+            job: {
+              select: {
+                JID: true,
+              },
+            },
           },
         },
       },
       where: {
-        JID: jobId,
-      },
-    });
-  } catch (e) {
-    throw new APIError("Job error");
-  }
-
-  const instanceAPI =
-    instanceAPIs[job.instance.provider as keyof InstanceAPIProviders];
-  if (!instanceAPI) throw new Error("Instance API not found");
-
-  if (job.status === "STARTED") throw new APIError("Job already started");
-  if (job.instance.status === "STARTED")
-    throw new APIError("Instance already started");
-
-  if (!(await instanceAPI.start(job.instance.tag)))
-    throw new APIError("Instance could not start");
-
-  try {
-    await prisma.job.update({
-      where: {
-        JID: job.JID,
+        PID: projectID,
+        members: bypassCheck
+          ? undefined
+          : {
+              some: {
+                ID: currentUserID,
+              },
+            },
       },
       data: {
-        status: "STARTED",
-        instance: {
-          update: {
-            status: "STARTED",
-          },
-        },
+        updatedAt: new Date(),
       },
     });
   } catch (e) {
-    throw new APIError("Job error");
-  }
-}
-
-export async function stopJob(
-  prisma: PrismaClient,
-  instanceAPIs: InstanceAPIProviders,
-  jobId: string
-): Promise<void> {
-  let job;
-  try {
-    job = await prisma.job.findUniqueOrThrow({
-      select: {
-        JID: true,
-        status: true,
-        instance: {
-          select: {
-            tag: true,
-            provider: true,
-            status: true,
-          },
-        },
-      },
-      where: {
-        JID: jobId,
-      },
-    });
-  } catch (e) {
-    throw new APIError("Job error");
+    throw new APIError("Project error");
   }
 
-  const instanceAPI =
-    instanceAPIs[job.instance.provider as keyof InstanceAPIProviders];
-  if (!instanceAPI) throw new Error("Instance API not found");
+  const jobInstances: Record<string, boolean> = {};
+  project.hashes.forEach((hash) => {
+    if (hash.job) jobInstances[hash.job.JID] = true;
+  });
 
-  if (job.status !== "STARTED") throw new APIError("Job already not running");
-  if (job.instance.status !== "STARTED")
-    throw new APIError("Instance already not running");
-
-  if (!(await instanceAPI.stop(job.instance.tag)))
-    throw new APIError("Instance could not start");
-
-  try {
-    await prisma.job.update({
-      where: {
-        JID: job.JID,
-      },
-      data: {
-        status: "STOPPED",
-        instance: {
-          update: {
-            status: "STOPPED",
-          },
-        },
-      },
-    });
-  } catch (e) {
-    throw new APIError("Job error");
+  for (const jobID of Object.keys(jobInstances)) {
+    try {
+      await deleteJob(prisma, instanceAPIs, jobID);
+    } catch (e) {}
   }
 }
