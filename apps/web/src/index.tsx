@@ -17,8 +17,8 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <ThemeProvider defaultTheme="dark" storageKey="ui-theme">
       <APIProvider>
         <RouterProvider router={router} />
-        <Toaster />
       </APIProvider>
+      <Toaster />
     </ThemeProvider>
   </React.StrictMode>
 );
