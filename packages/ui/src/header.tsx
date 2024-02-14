@@ -73,7 +73,7 @@ export const Header = () => {
               {LINKS.map(
                 (link) =>
                   (!link.permission || hasPermission(link.permission)) && (
-                    <NavigationMenuItem>
+                    <NavigationMenuItem key={link.path}>
                       <Link to={link.path}>
                         <NavigationMenuLink
                           className={navigationMenuTriggerStyle()}
@@ -116,7 +116,7 @@ export const Header = () => {
                         (link) =>
                           (!link.permission ||
                             hasPermission(link.permission)) && (
-                            <SheetClose asChild>
+                            <SheetClose key={link.path} asChild>
                               <Link to={link.path}>
                                 {link.text === "Crackosaurus"
                                   ? "Home"

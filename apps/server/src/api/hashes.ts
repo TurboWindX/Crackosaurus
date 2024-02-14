@@ -12,7 +12,7 @@ export async function addHash(
   hashValue: string,
   hashType: string,
   bypassCheck: boolean
-): Promise<Hash> {
+) {
   if (!HASH_TYPES.includes(hashType as any))
     throw new APIError(`Invalid hash type: ${hashType}`);
 
@@ -58,27 +58,6 @@ export async function removeHash(
   userID: string,
   bypassCheck: boolean
 ): Promise<void> {
-  let hash;
-  try {
-    hash = await prisma.hash.findUniqueOrThrow({
-      select: {
-        job: {
-          select: {
-            status: true,
-          },
-        },
-      },
-      where: {
-        HID: hashID,
-      },
-    });
-  } catch (err) {
-    throw new APIError("Hash error");
-  }
-
-  if (hash.job && hash.job.status === "STARTED")
-    throw new APIError("Cannot remove hash in a running job");
-
   try {
     await prisma.project.update({
       where: {

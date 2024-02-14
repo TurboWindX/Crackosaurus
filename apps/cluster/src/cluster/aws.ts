@@ -1,14 +1,15 @@
 import * as AWS from "aws-sdk";
+import crypto from "node:crypto";
 
-import { type HashType } from "@repo/api";
+import { type ClusterStatus, type HashType } from "@repo/api";
 
-import { InstanceAPI } from "./instance";
+import { Cluster } from "./cluster";
 
-export interface AWSInstanceAPIConfig {
+export interface AWSClusterConfig {
   imageId: string;
 }
 
-export class AWSInstanceAPI extends InstanceAPI<AWSInstanceAPIConfig> {
+export class AWSCluster extends Cluster<AWSClusterConfig> {
   private ec2!: AWS.EC2;
 
   private loadCredentials(): Promise<boolean> {
@@ -28,7 +29,7 @@ export class AWSInstanceAPI extends InstanceAPI<AWSInstanceAPIConfig> {
     return true;
   }
 
-  public async create(instanceType?: string): Promise<string | null> {
+  public async createInstance(instanceType?: string): Promise<string | null> {
     try {
       const res = await this.ec2
         .runInstances({
@@ -48,26 +49,25 @@ export class AWSInstanceAPI extends InstanceAPI<AWSInstanceAPIConfig> {
     }
   }
 
-  public async queue(
-    instanceId: string,
-    _jobId: string,
+  public async createJob(
+    instanceID: string,
     _hashType: HashType,
     _hashes: string[]
-  ): Promise<boolean> {
+  ): Promise<string | null> {
     try {
       await this.ec2
         .startInstances({
-          InstanceIds: [instanceId],
+          InstanceIds: [instanceID],
         })
         .promise();
 
-      return true;
+      return crypto.randomUUID();
     } catch (e) {
-      return false;
+      return null;
     }
   }
 
-  public async dequeue(instanceId: string, _jobId: string): Promise<boolean> {
+  public async deleteJob(instanceId: string, _jobId: string): Promise<boolean> {
     try {
       await this.ec2
         .stopInstances({
@@ -81,7 +81,13 @@ export class AWSInstanceAPI extends InstanceAPI<AWSInstanceAPIConfig> {
     }
   }
 
-  public async terminate(instanceId: string): Promise<boolean> {
+  public async getStatus(): Promise<ClusterStatus> {
+    return {
+      instances: {},
+    };
+  }
+
+  public async deleteInstance(instanceId: string): Promise<boolean> {
     try {
       await this.ec2
         .terminateInstances({

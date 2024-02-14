@@ -45,7 +45,6 @@ import {
   LogoutRequest,
   LogoutResponse,
   PermissionType,
-  Provider,
   RegisterRequest,
   RegisterResponse,
   RemoveHashRequest,
@@ -342,7 +341,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         !hasPermission(request.session.permissions, "instances:jobs:get")
       )
         response.hashes = response.hashes?.map((hash) => {
-          delete hash.job;
+          hash.jobs = [];
           return hash;
         });
 
@@ -499,14 +498,11 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       preHandler: [checkPermission("instances:add")],
     },
     async (request) => {
-      const { name, provider, type } = request.body;
-
-      if (provider === undefined) throw new APIError("Invalid instance config");
+      const { name, type } = request.body;
 
       const instanceID = await createInstance(
         request.server.prisma,
-        request.server.instances,
-        provider,
+        request.server.cluster,
         name,
         type
       );
@@ -541,7 +537,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
       await deleteInstance(
         request.server.prisma,
-        request.server.instances,
+        request.server.cluster,
         instanceID
       );
 
@@ -565,7 +561,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
       const jobIDs = await createProjectJobs(
         request.server.prisma,
-        request.server.instances,
+        request.server.cluster,
         projectID,
         instanceID,
         request.session.uid,
@@ -586,7 +582,7 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
       await deleteProjectJobs(
         request.server.prisma,
-        request.server.instances,
+        request.server.cluster,
         projectID,
         request.session.uid,
         hasPermission(request.session.permissions, "root")

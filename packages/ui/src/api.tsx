@@ -1,7 +1,7 @@
 import { Spinner } from "@repo/shadcn/components/ui/spinner";
 
 import { AuthProvider, useAuth } from "./auth";
-import { InstancesProvider } from "./instances";
+import { ClusterProvider } from "./clusters";
 import { ProjectsProvider, useProjects } from "./projects";
 import { UsersProvider, useUsers } from "./users";
 
@@ -29,9 +29,9 @@ export const APIProvider = ({ children }: { children: any }) => {
     <AuthProvider>
       <UsersProvider>
         <ProjectsProvider>
-          <InstancesProvider>
+          <ClusterProvider>
             <LoadingProvider>{children}</LoadingProvider>
-          </InstancesProvider>
+          </ClusterProvider>
         </ProjectsProvider>
       </UsersProvider>
     </AuthProvider>

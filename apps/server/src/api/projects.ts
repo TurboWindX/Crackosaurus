@@ -150,8 +150,8 @@ export async function getUserProject(
             HID: true,
             hash: true,
             hashType: true,
-            cracked: true,
-            job: {
+            status: true,
+            jobs: {
               select: {
                 JID: true,
                 status: true,

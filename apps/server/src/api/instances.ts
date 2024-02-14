@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
+import { type ClusterConnector } from "../plugins/cluster/connectors/connector";
 import { APIError } from "../plugins/errors";
-import { InstanceAPIProviders } from "../plugins/instance";
 
 export async function getInstance(prisma: PrismaClient, instanceID: string) {
   try {
@@ -24,7 +24,6 @@ export async function getInstances(prisma: PrismaClient) {
       select: {
         IID: true,
         name: true,
-        provider: true,
         status: true,
         updatedAt: true,
       },
@@ -49,15 +48,11 @@ export async function getInstanceList(prisma: PrismaClient) {
 
 export async function createInstance(
   prisma: PrismaClient,
-  instanceAPIs: InstanceAPIProviders,
-  provider: string,
+  cluster: ClusterConnector,
   name?: string,
   instanceType?: string
 ): Promise<string> {
-  const instanceAPI = instanceAPIs[provider as keyof InstanceAPIProviders];
-  if (!instanceAPI) throw new APIError("Instance API not found");
-
-  const instanceTag = await instanceAPI.create(instanceType);
+  const instanceTag = await cluster.createInstance(instanceType);
   if (!instanceTag) throw new APIError("Instance not created");
 
   let instanceId: string;
@@ -68,7 +63,6 @@ export async function createInstance(
       },
       data: {
         name,
-        provider,
         tag: instanceTag,
         type: instanceType,
       },
@@ -84,28 +78,10 @@ export async function createInstance(
 
 export async function deleteInstance(
   prisma: PrismaClient,
-  instanceAPIs: InstanceAPIProviders,
+  cluster: ClusterConnector,
   instanceID: string
 ): Promise<void> {
-  let instance;
-  try {
-    instance = await prisma.instance.findUniqueOrThrow({
-      select: {
-        provider: true,
-      },
-      where: {
-        IID: instanceID,
-      },
-    });
-  } catch (e) {
-    throw new APIError("Instance error");
-  }
-
-  const instanceAPI =
-    instanceAPIs[instance.provider as keyof InstanceAPIProviders];
-  if (!instanceAPI) throw new APIError("Instance API not found");
-
-  if (!(await instanceAPI.terminate(instanceID)))
+  if (!(await cluster.deleteInstance(instanceID)))
     throw new APIError("Could not terminate instance");
 
   try {

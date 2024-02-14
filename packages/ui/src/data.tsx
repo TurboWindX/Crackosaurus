@@ -177,6 +177,7 @@ export function DataTable<T>({
     <div className="ui-grid ui-gap-4">
       {searchFilter !== undefined && (
         <Input
+          key="search"
           placeholder={`Search ${plural}`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -219,7 +220,7 @@ export function DataTable<T>({
           <TableHeader>
             <TableRow>
               {hasSelect && (
-                <TableHead className="ui-w-[50px]">
+                <TableHead key="select" className="ui-w-[50px]">
                   <Checkbox
                     checked={
                       searchValues.length === selectedValues.length &&
@@ -243,7 +244,7 @@ export function DataTable<T>({
               {head
                 .filter((label) => label)
                 .map((label) => (
-                  <TableHead>{label}</TableHead>
+                  <TableHead key={label}>{label}</TableHead>
                 ))}
             </TableRow>
           </TableHeader>
@@ -262,7 +263,7 @@ export function DataTable<T>({
               searchValues.map((value) => (
                 <TableRow key={valueKey(value)}>
                   {hasSelect && (
-                    <TableCell>
+                    <TableCell key="select">
                       <Checkbox
                         checked={selects[valueKey(value)]}
                         onCheckedChange={(state) =>
@@ -277,6 +278,7 @@ export function DataTable<T>({
                   {row(value).map((column, index) =>
                     column ? (
                       <TableCell
+                        key={column}
                         className={`${index === 0 ? "ui-font-medium" : ""} ${
                           rowClick ? "ui-cursor-pointer" : ""
                         }`}

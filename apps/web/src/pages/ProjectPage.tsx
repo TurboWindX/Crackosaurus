@@ -21,9 +21,9 @@ import {
 } from "@repo/shadcn/components/ui/select";
 import { Separator } from "@repo/shadcn/components/ui/separator";
 import { useAuth } from "@repo/ui/auth";
+import { InstanceSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
-import { InstanceSelect } from "@repo/ui/instances";
 import { useProjects } from "@repo/ui/projects";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
@@ -48,9 +48,13 @@ const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
       type="Hash"
       pluralSuffix="es"
       values={values ?? []}
-      head={["Hash", "Type"]}
+      head={["Hash", "Type", "Status"]}
       valueKey={({ HID }) => HID}
-      row={({ hash, hashType }) => [hash, hashType]}
+      row={({ hash, hashType, status }) => [
+        hash,
+        hashType,
+        <StatusBadge status={status as any} />,
+      ]}
       noAdd={!hasPermission("hashes:add")}
       onAdd={() => addHashes(projectID, addHash)}
       noRemove={!hasPermission("hashes:remove")}
@@ -188,7 +192,7 @@ export const ProjectPage = () => {
 
   const jobs = useMemo(() => {
     const unfilteredJobs = (one?.hashes ?? [])
-      .map((hash) => hash.job)
+      .flatMap((hash) => hash.jobs)
       .filter((job) => job) as GetProjectJob[];
     const seenJobs: Record<string, boolean> = {};
 
@@ -233,69 +237,6 @@ export const ProjectPage = () => {
           {one.name}
         </span>
         <div className="grid grid-flow-col justify-end gap-4">
-          {hasPermission("jobs:add") && (
-            <div className="w-max">
-              <DrawerDialog
-                title="Start Cracking"
-                open={startOpen}
-                setOpen={setStartOpen}
-                trigger={
-                  <Button variant="outline">
-                    <div className="grid grid-flow-col items-center gap-2">
-                      <PlayIcon />
-                      <span>Start</span>
-                    </div>
-                  </Button>
-                }
-              >
-                <form
-                  className="grid gap-4"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-
-                    await addJobs(projectID as string, startInstanceID);
-
-                    setStartOpen(false);
-                  }}
-                >
-                  <InstanceSelect
-                    value={startInstanceID}
-                    onValueChange={setStartInstanceID}
-                  />
-                  <Button disabled={startInstanceID.length === 0}>Start</Button>
-                </form>
-              </DrawerDialog>
-            </div>
-          )}
-          {hasPermission("jobs:remove") && (
-            <div className="w-max">
-              <DrawerDialog
-                title="Stop Cracking"
-                open={stopOpen}
-                setOpen={setStopOpen}
-                trigger={
-                  <Button variant="outline">
-                    <div className="grid grid-flow-col items-center gap-2">
-                      <SquareIcon />
-                      <span>Stop</span>
-                    </div>
-                  </Button>
-                }
-              >
-                <form
-                  className="grid gap-4"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-
-                    if (await deleteJobs(projectID ?? "")) setStopOpen(false);
-                  }}
-                >
-                  <span>Do you want to stop cracking?</span>
-                  <Button>Stop</Button>
-                </form>
-              </DrawerDialog>
-            </div>
-          )}
           {hasPermission("projects:remove") && (
             <div className="w-max">
               <DrawerDialog

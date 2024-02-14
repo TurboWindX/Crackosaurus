@@ -5,8 +5,6 @@ import {
   GetInstanceListResponse,
   GetInstanceResponse,
   GetInstancesResponse,
-  PROVIDERS,
-  Provider,
   createInstance,
   deleteInstance,
   getInstance,
@@ -24,43 +22,44 @@ import {
 import { useAuth } from "./auth";
 import { useRequests } from "./requests";
 
-const DEFAULT_ONE: GetInstanceResponse["response"] = {
+const DEFAULT_ONE_INSTANCE: GetInstanceResponse["response"] = {
   IID: "",
-  provider: "debug",
   tag: "",
   status: "PENDING",
   updatedAt: new Date(),
   jobs: [],
 };
 
-export interface InstanceInterface {
+export interface ClusterInterface {
   readonly isLoading: boolean;
 
-  readonly add: (...reqs: CreateInstanceRequest["Body"][]) => Promise<boolean>;
-  readonly remove: (...ids: string[]) => Promise<boolean>;
+  readonly addInstance: (
+    ...reqs: CreateInstanceRequest["Body"][]
+  ) => Promise<boolean>;
+  readonly removeInstance: (...ids: string[]) => Promise<boolean>;
 
-  readonly one: GetInstanceResponse["response"];
-  readonly loadOne: (id: string) => Promise<void>;
+  readonly oneInstance: GetInstanceResponse["response"];
+  readonly loadOneInstance: (id: string) => Promise<void>;
 
-  readonly list: GetInstancesResponse["response"];
-  readonly loadList: () => Promise<void>;
+  readonly listInstances: GetInstancesResponse["response"];
+  readonly loadListInstances: () => Promise<void>;
 }
 
-const InstancesContext = createContext<InstanceInterface>({
+const ClusterContext = createContext<ClusterInterface>({
   isLoading: true,
-  one: DEFAULT_ONE,
-  list: [],
-  add: async () => false,
-  remove: async () => false,
-  loadOne: async () => {},
-  loadList: async () => {},
+  oneInstance: DEFAULT_ONE_INSTANCE,
+  listInstances: [],
+  addInstance: async () => false,
+  removeInstance: async () => false,
+  loadOneInstance: async () => {},
+  loadListInstances: async () => {},
 });
 
-export function useInstances() {
-  return useContext(InstancesContext);
+export function useCluster() {
+  return useContext(ClusterContext);
 }
 
-export const InstancesProvider = ({ children }: { children: any }) => {
+export const ClusterProvider = ({ children }: { children: any }) => {
   const { invalidate } = useAuth();
   const { handleRequests } = useRequests();
 
@@ -100,11 +99,11 @@ export const InstancesProvider = ({ children }: { children: any }) => {
     setLoading(false);
   }
 
-  const value: InstanceInterface = {
+  const value: ClusterInterface = {
     isLoading,
-    one: cache[id] ?? DEFAULT_ONE,
-    list,
-    add: async (...reqs) => {
+    oneInstance: cache[id] ?? DEFAULT_ONE_INSTANCE,
+    listInstances: list,
+    addInstance: async (...reqs) => {
       const _results = await handleRequests("Instance(s) added", reqs, (req) =>
         createInstance(req)
       );
@@ -113,7 +112,7 @@ export const InstancesProvider = ({ children }: { children: any }) => {
 
       return true;
     },
-    remove: async (...ids) => {
+    removeInstance: async (...ids) => {
       const results = await handleRequests("Instance(s) removed", ids, (id) =>
         deleteInstance(id)
       );
@@ -126,14 +125,14 @@ export const InstancesProvider = ({ children }: { children: any }) => {
 
       return true;
     },
-    loadOne: async (id: string) => {
+    loadOneInstance: async (id: string) => {
       setLoading(true);
 
       if (cache[id] || (await reloadOne(id))) setID(id);
 
       setLoading(false);
     },
-    loadList: async () => {
+    loadListInstances: async () => {
       setLoading(true);
 
       if (!listLoaded) await reloadList();
@@ -144,9 +143,7 @@ export const InstancesProvider = ({ children }: { children: any }) => {
   };
 
   return (
-    <InstancesContext.Provider value={value}>
-      {children}
-    </InstancesContext.Provider>
+    <ClusterContext.Provider value={value}>{children}</ClusterContext.Provider>
   );
 };
 
@@ -191,34 +188,6 @@ export const InstanceSelect = ({
               {name || IID}
             </SelectItem>
           ))}
-      </SelectContent>
-    </Select>
-  );
-};
-
-export interface ProviderSelectProps {
-  value?: Provider;
-  onValueChange?: (value: Provider) => void;
-}
-
-export const ProviderSelect = ({
-  value,
-  onValueChange,
-}: ProviderSelectProps) => {
-  return (
-    <Select
-      value={value}
-      onValueChange={(value) => onValueChange?.(value as Provider)}
-    >
-      <SelectTrigger>
-        <SelectValue placeholder="Provider" />
-      </SelectTrigger>
-      <SelectContent>
-        {PROVIDERS.map((key) => (
-          <SelectItem key={key} value={key}>
-            {key}
-          </SelectItem>
-        ))}
       </SelectContent>
     </Select>
   );

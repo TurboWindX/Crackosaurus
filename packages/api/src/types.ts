@@ -40,6 +40,7 @@ export const PERMISSION_PROFILES = {
   admin: ["*"],
   contributor: [
     "hashes:*",
+    "instances:get",
     "instances:jobs:*",
     "projects:add",
     "projects:remove",
@@ -58,16 +59,34 @@ export const STATUSES = [
   "STOPPED",
   "COMPLETE",
   "ERROR",
+  "UNKNOWN",
 ] as const;
 export type Status = (typeof STATUSES)[number];
 
 export const ACTIVE_STATUSES: { [key in Status]?: boolean } = {
   PENDING: true,
   STARTED: true,
+  UNKNOWN: true,
 } as const;
 
-export const PROVIDERS = ["aws", "debug", "local"] as const;
-export type Provider = (typeof PROVIDERS)[number];
+export interface ClusterStatus {
+  instances: {
+    [key: string]: {
+      status: string;
+      jobs: {
+        [key: string]: {
+          status: string;
+          hashes: {
+            [key: string]: {
+              status: string;
+              value?: string;
+            };
+          };
+        };
+      };
+    };
+  };
+}
 
 export interface APIError {
   error: {
@@ -198,7 +217,6 @@ export interface GetInstanceResponse {
   response: {
     IID: string;
     name?: string | null;
-    provider: string;
     tag: string;
     status: string;
     updatedAt: Date;
@@ -216,7 +234,6 @@ export interface GetInstancesResponse {
   response: {
     IID: string;
     name?: string | null;
-    provider: string;
     status: string;
     updatedAt: Date;
   }[];
@@ -244,7 +261,6 @@ export interface DeleteInstanceResponse {
 export interface CreateInstanceRequest {
   Body: {
     name?: string;
-    provider: Provider;
     type?: string;
   };
 }
@@ -305,8 +321,8 @@ export interface GetProjectResponse {
       HID: string;
       hash: string;
       hashType: string;
-      cracked: string | null;
-      job?: GetProjectJob | null;
+      status: string;
+      jobs: GetProjectJob[];
     }[];
   };
 }

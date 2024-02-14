@@ -2,38 +2,17 @@ import { PrismaClient } from "@prisma/client";
 
 import { type HashType } from "@repo/api";
 
+import { type ClusterConnector } from "../plugins/cluster/connectors/connector";
 import { APIError } from "../plugins/errors";
-import { type InstanceAPIProviders } from "../plugins/instance";
 
 export async function createJob(
   prisma: PrismaClient,
-  instanceAPIs: InstanceAPIProviders,
+  cluster: ClusterConnector,
   instanceID: string,
   hashIds: string[],
   currentUserID: string,
   bypassCheck?: boolean
 ): Promise<string> {
-  let instance;
-  try {
-    instance = await prisma.instance.update({
-      select: {
-        provider: true,
-      },
-      where: {
-        IID: instanceID,
-      },
-      data: {
-        updatedAt: new Date(),
-      },
-    });
-  } catch (e) {
-    throw new APIError("Instance error");
-  }
-
-  const instanceAPI =
-    instanceAPIs[instance.provider as keyof InstanceAPIProviders];
-  if (!instanceAPI) throw new APIError("Instance API not found");
-
   let hashes;
   try {
     hashes = await prisma.hash.findMany({
@@ -46,8 +25,7 @@ export async function createJob(
         HID: {
           in: hashIds,
         },
-        jobId: null,
-        cracked: null,
+        status: "NOT_FOUND",
         project: bypassCheck
           ? undefined
           : {
@@ -70,17 +48,12 @@ export async function createJob(
   if (hashes.some((hash) => hash.hashType !== hashType))
     throw new APIError("Cannot create jobs with different types of hashes");
 
-  const jobID = crypto.randomUUID();
-
-  if (
-    !(await instanceAPI.queue(
-      instanceID,
-      jobID,
-      hashType,
-      hashes.map(({ hash }) => hash)
-    ))
-  )
-    throw new APIError("Cannot queue job");
+  const jobID = await cluster.createJob(
+    instanceID,
+    hashType,
+    hashes.map(({ hash }) => hash)
+  );
+  if (!jobID) throw new APIError("Cannot queue job");
 
   try {
     await prisma.job.create({
@@ -104,7 +77,7 @@ export async function createJob(
 
 export async function deleteJob(
   prisma: PrismaClient,
-  instanceAPIs: InstanceAPIProviders,
+  cluster: ClusterConnector,
   jobID: string
 ): Promise<void> {
   let job;
@@ -115,7 +88,6 @@ export async function deleteJob(
           select: {
             IID: true,
             tag: true,
-            provider: true,
           },
         },
       },
@@ -127,11 +99,7 @@ export async function deleteJob(
     throw new APIError("Job error");
   }
 
-  const instanceAPI =
-    instanceAPIs[job.instance.provider as keyof InstanceAPIProviders];
-  if (!instanceAPI) throw new APIError("Instance API not found");
-
-  if (!(await instanceAPI.dequeue(job.instance.tag, jobID)))
+  if (!(await cluster.deleteJob(job.instance.tag, jobID)))
     throw new APIError("Could not dequeue job");
 
   try {
@@ -158,7 +126,7 @@ export async function deleteJob(
 
 export async function createProjectJobs(
   prisma: PrismaClient,
-  instanceAPIs: InstanceAPIProviders,
+  cluster: ClusterConnector,
   projectID: string,
   instanceID: string,
   currentUserID: string,
@@ -205,7 +173,7 @@ export async function createProjectJobs(
       jobIDs.push(
         await createJob(
           prisma,
-          instanceAPIs,
+          cluster,
           instanceID,
           hashIDs,
           currentUserID,
@@ -222,7 +190,7 @@ export async function createProjectJobs(
 
 export async function deleteProjectJobs(
   prisma: PrismaClient,
-  instanceAPIs: InstanceAPIProviders,
+  cluster: ClusterConnector,
   projectID: string,
   currentUserID: string,
   bypassCheck?: boolean
@@ -233,7 +201,7 @@ export async function deleteProjectJobs(
       select: {
         hashes: {
           select: {
-            job: {
+            jobs: {
               select: {
                 JID: true,
               },
@@ -260,13 +228,17 @@ export async function deleteProjectJobs(
   }
 
   const jobInstances: Record<string, boolean> = {};
-  project.hashes.forEach((hash) => {
-    if (hash.job) jobInstances[hash.job.JID] = true;
-  });
+  for (const hash of project.hashes) {
+    for (const job of hash.jobs) {
+      if (!job) continue;
+
+      jobInstances[job.JID] = true;
+    }
+  }
 
   for (const jobID of Object.keys(jobInstances)) {
     try {
-      await deleteJob(prisma, instanceAPIs, jobID);
+      await deleteJob(prisma, cluster, jobID);
     } catch (e) {}
   }
 }

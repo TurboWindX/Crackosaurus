@@ -28,13 +28,13 @@ model Project {
 
 model Hash {
   HID       String   @id @default(uuid())
-  projectId String?
-  project   Project? @relation(fields: [projectId], references: [PID])
-  jobId     String?
-  job       Job?     @relation(fields: [jobId], references: [JID])
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [PID])
+  jobs      Job[]
   hash      String
   hashType  String
-  cracked   String?
+  status    String   @default("NOT_FOUND")
+  value     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 }
@@ -42,7 +42,6 @@ model Hash {
 model Instance {
   IID       String   @id @default(uuid())
   name      String?
-  provider  String
   tag       String
   type      String?
   jobs      Job[]

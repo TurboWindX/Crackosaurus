@@ -4,9 +4,9 @@ import { useNavigate, useParams } from "react-router-dom";
 
 import { Button } from "@repo/shadcn/components/ui/button";
 import { useAuth } from "@repo/ui/auth";
+import { useCluster } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
-import { useInstances } from "@repo/ui/instances";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 
@@ -16,7 +16,7 @@ interface JobDataTableProps {
   values: GetInstanceResponse["response"]["jobs"];
 }
 
-const InstanceDataTable = ({ values }: JobDataTableProps) => {
+const JobDataTable = ({ values }: JobDataTableProps) => {
   return (
     <DataTable
       type="Job"
@@ -37,19 +37,19 @@ export const InstancePage = () => {
   const { instanceID } = useParams();
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
-  const { one, loadOne, remove } = useInstances();
+  const { oneInstance, loadOneInstance, removeInstance } = useCluster();
 
   const [removeOpen, setRemoveOpen] = useState(false);
 
   useEffect(() => {
-    loadOne(instanceID ?? "");
+    loadOneInstance(instanceID ?? "");
   }, []);
 
   return (
     <div className="grid gap-8 p-4">
       <div className="grid grid-cols-2 gap-4">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-          {one.name || one.IID}
+          {oneInstance.name || oneInstance.IID}
         </span>
         <div className="grid grid-flow-col justify-end gap-4">
           {hasPermission("instances:remove") && (
@@ -72,7 +72,8 @@ export const InstancePage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await remove(instanceID ?? "")) navigate("/instances");
+                    if (await removeInstance(instanceID ?? ""))
+                      navigate("/instances");
                   }}
                 >
                   <span>Do you want to permanently remove this user?</span>
@@ -83,7 +84,7 @@ export const InstancePage = () => {
           )}
         </div>
       </div>
-      <InstanceDataTable values={one.jobs} />
+      <JobDataTable values={oneInstance.jobs} />
     </div>
   );
 };

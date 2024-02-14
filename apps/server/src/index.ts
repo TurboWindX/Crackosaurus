@@ -5,7 +5,8 @@ import Fastify from "fastify";
 import fs from "node:fs";
 
 import { api } from "./api";
-import instancePlugin from "./plugins/instance";
+import { HTTPClusterConnector } from "./plugins/cluster/connectors/http";
+import { clusterPlugin } from "./plugins/cluster/plugin";
 import prismaPlugin from "./plugins/prisma";
 
 const fastify = Fastify({
@@ -27,8 +28,13 @@ fastify.register(fastifySession, {
 });
 
 fastify.register(prismaPlugin);
-fastify.register(instancePlugin, {
-  debug: true,
+
+fastify.register(clusterPlugin, {
+  http: {
+    host: "localhost",
+    port: 8001,
+  },
+  pollingRateMs: 1000,
 });
 
 fastify.register(cors, {

@@ -3,18 +3,18 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
-import { type HashType } from "@repo/api";
+import { type ClusterStatus, type HashType } from "@repo/api";
 
+import { Cluster } from "./cluster";
 import { getHashcatMode } from "./hashcat";
-import { InstanceAPI } from "./instance";
 
-export interface LocalInstanceAPIConfig {
+export interface LocalClusterConfig {
   exePath: string;
   rootFolder: string;
   wordlistPath: string;
 }
 
-export class LocalInstanceAPI extends InstanceAPI<LocalInstanceAPIConfig> {
+export class LocalCluster extends Cluster<LocalClusterConfig> {
   private readonly instances: Record<
     string,
     Record<string, child_process.ChildProcessWithoutNullStreams>
@@ -31,7 +31,7 @@ export class LocalInstanceAPI extends InstanceAPI<LocalInstanceAPIConfig> {
     return true;
   }
 
-  public async create(_instanceType?: string): Promise<string | null> {
+  public async createInstance(_instanceType?: string): Promise<string | null> {
     const uuid = crypto.randomUUID();
 
     const instanceFolder = path.join(this.config.rootFolder, "instances", uuid);
@@ -42,14 +42,15 @@ export class LocalInstanceAPI extends InstanceAPI<LocalInstanceAPIConfig> {
     return uuid;
   }
 
-  public async queue(
-    instanceId: string,
-    jobId: string,
+  public async createJob(
+    instanceID: string,
     hashType: HashType,
     hashes: string[]
-  ): Promise<boolean> {
-    const instance = this.instances[instanceId];
-    if (instance === undefined) return false;
+  ): Promise<string | null> {
+    const instance = this.instances[instanceID];
+    if (instance === undefined) return null;
+
+    const jobID = crypto.randomUUID();
 
     const exe = path.basename(this.config.exePath);
     const exeCwd = path.dirname(this.config.exePath);
@@ -57,9 +58,9 @@ export class LocalInstanceAPI extends InstanceAPI<LocalInstanceAPIConfig> {
     const instanceFolder = path.join(
       this.config.rootFolder,
       "instances",
-      instanceId
+      instanceID
     );
-    const jobFolder = path.join(instanceFolder, jobId);
+    const jobFolder = path.join(instanceFolder, jobID);
 
     const hashesFile = path.join(jobFolder, "hashes.txt");
     fs.writeFileSync(hashesFile, hashes.join("\n"));
@@ -82,12 +83,12 @@ export class LocalInstanceAPI extends InstanceAPI<LocalInstanceAPIConfig> {
       }
     );
 
-    instance[jobId] = process;
+    instance[jobID] = process;
 
-    return true;
+    return jobID;
   }
 
-  public async dequeue(instanceId: string, jobId: string): Promise<boolean> {
+  public async deleteJob(instanceId: string, jobId: string): Promise<boolean> {
     const instance = this.instances[instanceId];
     if (instance === undefined) return false;
 
@@ -101,7 +102,13 @@ export class LocalInstanceAPI extends InstanceAPI<LocalInstanceAPIConfig> {
     return true;
   }
 
-  public async terminate(instanceId: string): Promise<boolean> {
+  public async getStatus(): Promise<ClusterStatus> {
+    return {
+      instances: {},
+    };
+  }
+
+  public async deleteInstance(instanceId: string): Promise<boolean> {
     const instance = this.instances[instanceId];
     if (instance === undefined) return false;
 
