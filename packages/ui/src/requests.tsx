@@ -55,21 +55,23 @@ export const useRequests = () => {
   };
 };
 
-export const useLoader = <
-  TOne extends { response: any },
-  TList extends { response: any[] },
->(
-  loadOne: (id: string) => APIResponse<TOne>,
-  loadList: () => APIResponse<TList>
-) => {
+export const useLoader = <TOne, TList, TID = string>({
+  getID,
+  loadOne,
+  loadList,
+}: {
+  getID: (record: TOne | TList) => TID;
+  loadOne: (id: TID) => APIResponse<{ response: TOne }>;
+  loadList: () => APIResponse<{ response: TList[] }>;
+}) => {
   const { invalidate } = useAuth();
 
   const [isLoading, setLoading] = useState(false);
 
-  const [one, setOne] = useState<TOne["response"] | null>(null);
-  const [list, setList] = useState<TList["response"]>([]);
+  const [one, setOne] = useState<TOne | null>(null);
+  const [list, setList] = useState<TList[]>([]);
 
-  async function loadOneInner(id: string) {
+  async function loadOneInner(id: TID) {
     setLoading(true);
 
     const { response, error } = await loadOne(id);
@@ -89,12 +91,40 @@ export const useLoader = <
     setLoading(false);
   }
 
-  async function refreshOne(id: string) {
-    await loadOneInner(id);
-  }
+  async function refresh({
+    add,
+    update,
+    remove,
+  }: {
+    add?: TID[];
+    update?: TID[];
+    remove?: TID[];
+  }) {
+    if (add !== undefined && add.length > 0) {
+      await loadListInner();
+    }
 
-  async function refreshList() {
-    await loadListInner();
+    if (update !== undefined && update.length > 0) {
+      if (one) {
+        const oneID = getID(one);
+
+        if (one && update.some((ID) => ID === oneID)) await loadOneInner(oneID);
+      }
+
+      await loadListInner();
+    }
+
+    if (remove !== undefined && remove.length > 0) {
+      if (one) {
+        const oneID = getID(one);
+
+        if (one && remove.some((ID) => ID === oneID)) setOne(null);
+      }
+
+      setList(
+        list.filter((entry) => remove.every((ID) => ID !== getID(entry)))
+      );
+    }
   }
 
   return {
@@ -103,7 +133,6 @@ export const useLoader = <
     list,
     loadOne: loadOneInner,
     loadList: loadListInner,
-    refreshOne,
-    refreshList,
+    refresh,
   };
 };

@@ -81,9 +81,12 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
     list: projects,
     loadOne: loadProject,
     loadList: loadProjects,
-    refreshOne,
-    refreshList,
-  } = useLoader(getProject, getProjects);
+    refresh: refreshProjects,
+  } = useLoader({
+    getID: ({ PID }) => PID,
+    loadOne: getProject,
+    loadList: getProjects,
+  });
 
   const value: ProjectsInterface = {
     isLoading,
@@ -96,76 +99,102 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
         createProject(req)
       );
 
-      await refreshList();
+      await refreshProjects({
+        add: [],
+      });
 
       return true;
     },
     removeProjects: async (...ids) => {
-      const _results = await handleRequests("Project(s) removed", ids, (id) =>
+      const results = await handleRequests("Project(s) removed", ids, (id) =>
         deleteProject(id)
       );
 
-      await refreshList();
+      await refreshProjects({
+        remove: results.filter(([_, res]) => !res.error).map(([id]) => id),
+      });
 
       return true;
     },
     addHashes: async (projectID, ...reqs) => {
-      const _results = await handleRequests("Hash(es) added", reqs, (req) =>
+      const results = await handleRequests("Hash(es) added", reqs, (req) =>
         addHashToProject(projectID, req)
       );
 
-      await refreshOne(projectID);
+      await refreshProjects({
+        update: results.some(([_, res]) => !res.error)
+          ? [projectID]
+          : undefined,
+      });
 
       return true;
     },
     removeHashes: async (projectID, ...ids) => {
-      const _results = await handleRequests("Hash(es) removed", ids, (id) =>
+      const results = await handleRequests("Hash(es) removed", ids, (id) =>
         removeHashFromProject(projectID, id)
       );
 
-      await refreshOne(projectID);
+      await refreshProjects({
+        update: results.some(([_, res]) => !res.error)
+          ? [projectID]
+          : undefined,
+      });
 
       return true;
     },
     addUsers: async (projectID, ...ids) => {
-      const _results = await handleRequests("User(s) added", ids, (id) =>
+      const results = await handleRequests("User(s) added", ids, (id) =>
         addUserToProject(projectID, id)
       );
 
-      await refreshList();
-      await refreshOne(projectID);
+      await refreshProjects({
+        update: results.some(([_, res]) => !res.error)
+          ? [projectID]
+          : undefined,
+      });
 
       return true;
     },
     removeUsers: async (projectID, ...ids) => {
-      const _results = await handleRequests("User(s) removed", ids, (id) =>
+      const results = await handleRequests("User(s) removed", ids, (id) =>
         removeUserFromProject(projectID, id)
       );
 
-      await refreshList();
-      await refreshOne(projectID);
+      await refreshProjects({
+        update: results.some(([_, res]) => !res.error)
+          ? [projectID]
+          : undefined,
+      });
 
       return true;
     },
     addJobs: async (projectID, instanceID) => {
-      const _results = await handleRequests(
+      const results = await handleRequests(
         "Jobs(s) added",
         [instanceID],
         (instanceID) => addProjectJobs(projectID, instanceID)
       );
 
-      await refreshOne(projectID);
+      await refreshProjects({
+        update: results.some(([_, res]) => !res.error)
+          ? [projectID]
+          : undefined,
+      });
 
       return true;
     },
     deleteJobs: async (projectID) => {
-      const _results = await handleRequests(
+      const results = await handleRequests(
         "Jobs(s) deleted",
         [projectID],
         (projectID) => deleteProjectJobs(projectID)
       );
 
-      await refreshOne(projectID);
+      await refreshProjects({
+        update: results.some(([_, res]) => !res.error)
+          ? [projectID]
+          : undefined,
+      });
 
       return true;
     },

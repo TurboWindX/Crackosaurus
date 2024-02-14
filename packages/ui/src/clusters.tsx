@@ -59,8 +59,12 @@ export const ClusterProvider = ({ children }: { children: any }) => {
     list: instances,
     loadOne: loadInstance,
     loadList: loadInstances,
-    refreshList: refreshInstances,
-  } = useLoader(getInstance, getInstances);
+    refresh: refreshInstances,
+  } = useLoader({
+    getID: ({ IID }) => IID,
+    loadOne: getInstance,
+    loadList: getInstances,
+  });
 
   const value: ClusterInterface = {
     isLoading,
@@ -73,7 +77,9 @@ export const ClusterProvider = ({ children }: { children: any }) => {
         createInstance(req)
       );
 
-      await refreshInstances();
+      await refreshInstances({
+        add: [],
+      });
 
       return true;
     },
@@ -82,7 +88,9 @@ export const ClusterProvider = ({ children }: { children: any }) => {
         deleteInstance(id)
       );
 
-      await refreshInstances();
+      await refreshInstances({
+        remove: results.filter(([_, res]) => !res.error).map(([id]) => id),
+      });
 
       return true;
     },

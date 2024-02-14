@@ -139,8 +139,12 @@ export const UsersProvider = ({ children }: { children: any }) => {
     list: users,
     loadOne: loadUser,
     loadList: loadUsers,
-    refreshList,
-  } = useLoader(getUser, getUsers);
+    refresh: refreshUsers,
+  } = useLoader({
+    getID: ({ ID }) => ID,
+    loadOne: getUser,
+    loadList: getUsers,
+  });
 
   const value: UsersInterface = {
     isLoading,
@@ -153,16 +157,20 @@ export const UsersProvider = ({ children }: { children: any }) => {
         registerUser(req)
       );
 
-      await refreshList();
+      await refreshUsers({
+        add: [],
+      });
 
       return true;
     },
     removeUsers: async (...ids) => {
-      const _results = await handleRequests("User(s) removed", ids, (id) =>
+      const results = await handleRequests("User(s) removed", ids, (id) =>
         deleteUser(id)
       );
 
-      await refreshList();
+      await refreshUsers({
+        remove: results.filter(([_, res]) => !res.error).map(([id]) => id),
+      });
 
       return true;
     },
