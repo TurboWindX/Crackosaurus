@@ -12,7 +12,12 @@ import { RelativeTime } from "@repo/ui/time";
 export const ProjectsPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const { list, loadList, add, remove } = useProjects();
+  const {
+    projects: list,
+    loadProjects: loadList,
+    addProjects: add,
+    removeProjects: remove,
+  } = useProjects();
 
   const [addProject, setAddProject] = useState<CreateProjectRequest["Body"]>({
     projectName: "",

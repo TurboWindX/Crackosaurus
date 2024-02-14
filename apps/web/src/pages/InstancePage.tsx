@@ -2,6 +2,7 @@ import { TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { GetInstanceResponse } from "@repo/api";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { useAuth } from "@repo/ui/auth";
 import { useCluster } from "@repo/ui/clusters";
@@ -9,8 +10,6 @@ import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
-
-import { GetInstanceResponse } from "../../../../packages/api/src/types.ts";
 
 interface JobDataTableProps {
   values: GetInstanceResponse["response"]["jobs"];
@@ -37,7 +36,11 @@ export const InstancePage = () => {
   const { instanceID } = useParams();
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
-  const { oneInstance, loadOneInstance, removeInstance } = useCluster();
+  const {
+    instance: oneInstance,
+    loadInstance: loadOneInstance,
+    removeInstance,
+  } = useCluster();
 
   const [removeOpen, setRemoveOpen] = useState(false);
 
@@ -49,7 +52,7 @@ export const InstancePage = () => {
     <div className="grid gap-8 p-4">
       <div className="grid grid-cols-2 gap-4">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-          {oneInstance.name || oneInstance.IID}
+          {oneInstance?.name || oneInstance?.IID || "Instance"}
         </span>
         <div className="grid grid-flow-col justify-end gap-4">
           {hasPermission("instances:remove") && (
@@ -84,7 +87,7 @@ export const InstancePage = () => {
           )}
         </div>
       </div>
-      <JobDataTable values={oneInstance.jobs} />
+      <JobDataTable values={oneInstance?.jobs ?? []} />
     </div>
   );
 };

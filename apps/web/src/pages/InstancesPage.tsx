@@ -12,8 +12,12 @@ import { RelativeTime } from "@repo/ui/time";
 export const InstancesPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const { listInstances, loadListInstances, addInstance, removeInstance } =
-    useCluster();
+  const {
+    instances: listInstances,
+    loadInstances: loadListInstances,
+    addInstance,
+    removeInstance,
+  } = useCluster();
 
   const [newInstance, setNewInstance] = useState<CreateInstanceRequest["Body"]>(
     {

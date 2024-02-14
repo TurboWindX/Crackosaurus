@@ -34,7 +34,7 @@ const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
 export const UserPage = () => {
   const { userID } = useParams();
   const { uid, hasPermission, logout } = useAuth();
-  const { one, loadOne, remove } = useUsers();
+  const { user: one, loadUser: loadOne, removeUsers: remove } = useUsers();
   const navigate = useNavigate();
 
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -47,7 +47,7 @@ export const UserPage = () => {
     <div className="grid gap-8 p-4">
       <div className="grid grid-cols-2 gap-4">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-          {one.username}
+          {one?.username ?? "Username"}
         </span>
         <div className="grid grid-flow-col justify-end gap-4">
           {uid.toString() === userID && (

@@ -32,7 +32,7 @@ import {
 
 const API_URL = "http://localhost:8000/api";
 
-type APIResponse<T> = Promise<T & APIError>;
+export type APIResponse<T> = Promise<T & APIError>;
 
 async function handleRes<Res>(res: Response): Promise<Res> {
   let json = await res.json();

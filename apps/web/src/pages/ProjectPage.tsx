@@ -1,4 +1,4 @@
-import { PlayIcon, SquareIcon, TrashIcon } from "lucide-react";
+import { TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -21,7 +21,6 @@ import {
 } from "@repo/shadcn/components/ui/select";
 import { Separator } from "@repo/shadcn/components/ui/separator";
 import { useAuth } from "@repo/ui/auth";
-import { InstanceSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useProjects } from "@repo/ui/projects";
@@ -177,12 +176,11 @@ export const ProjectPage = () => {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
-  const { one, loadOne, remove, addJobs, deleteJobs } = useProjects();
-
-  const [startOpen, setStartOpen] = useState(false);
-  const [startInstanceID, setStartInstanceID] = useState("");
-
-  const [stopOpen, setStopOpen] = useState(false);
+  const {
+    project: one,
+    loadProject: loadOne,
+    removeProjects: remove,
+  } = useProjects();
 
   const [removeOpen, setRemoveOpen] = useState(false);
 
@@ -234,7 +232,7 @@ export const ProjectPage = () => {
     <div className="grid gap-8 p-4">
       <div className="grid grid-cols-2 gap-4">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-          {one.name}
+          {one?.name ?? "Project"}
         </span>
         <div className="grid grid-flow-col justify-end gap-4">
           {hasPermission("projects:remove") && (

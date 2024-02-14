@@ -19,16 +19,7 @@ import {
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 
-import { useAuth } from "./auth";
-import { useRequests } from "./requests";
-
-const DEFAULT_ONE_INSTANCE: GetInstanceResponse["response"] = {
-  IID: "",
-  tag: "",
-  status: "PENDING",
-  updatedAt: new Date(),
-  jobs: [],
-};
+import { useLoader, useRequests } from "./requests";
 
 export interface ClusterInterface {
   readonly isLoading: boolean;
@@ -38,21 +29,21 @@ export interface ClusterInterface {
   ) => Promise<boolean>;
   readonly removeInstance: (...ids: string[]) => Promise<boolean>;
 
-  readonly oneInstance: GetInstanceResponse["response"];
-  readonly loadOneInstance: (id: string) => Promise<void>;
+  readonly instance: GetInstanceResponse["response"] | null;
+  readonly loadInstance: (id: string) => Promise<void>;
 
-  readonly listInstances: GetInstancesResponse["response"];
-  readonly loadListInstances: () => Promise<void>;
+  readonly instances: GetInstancesResponse["response"];
+  readonly loadInstances: () => Promise<void>;
 }
 
 const ClusterContext = createContext<ClusterInterface>({
   isLoading: true,
-  oneInstance: DEFAULT_ONE_INSTANCE,
-  listInstances: [],
+  instance: null,
+  instances: [],
   addInstance: async () => false,
   removeInstance: async () => false,
-  loadOneInstance: async () => {},
-  loadListInstances: async () => {},
+  loadInstance: async () => {},
+  loadInstances: async () => {},
 });
 
 export function useCluster() {
@@ -60,55 +51,29 @@ export function useCluster() {
 }
 
 export const ClusterProvider = ({ children }: { children: any }) => {
-  const { invalidate } = useAuth();
   const { handleRequests } = useRequests();
 
-  const [isLoading, setLoading] = useState(false);
-  const [cache, setCache] = useState<
-    Record<string, GetInstanceResponse["response"]>
-  >({});
-
-  const [id, setID] = useState<string>("");
-  const [list, setList] = useState<GetInstancesResponse["response"]>([]);
-  const [listLoaded, setListLoaded] = useState(false);
-
-  async function reloadOne(id: string): Promise<boolean> {
-    setLoading(true);
-
-    const { response, error } = await getInstance(id);
-    if (response) {
-      setCache({
-        ...cache,
-        [id]: response,
-      });
-      setID(id);
-    } else if (error.code === 401) invalidate();
-
-    setLoading(false);
-
-    return response !== undefined;
-  }
-
-  async function reloadList() {
-    setLoading(true);
-
-    const { response, error } = await getInstances();
-    if (response) setList(response);
-    else if (error.code === 401) invalidate();
-
-    setLoading(false);
-  }
+  const {
+    isLoading,
+    one: instance,
+    list: instances,
+    loadOne: loadInstance,
+    loadList: loadInstances,
+    refreshList: refreshInstances,
+  } = useLoader(getInstance, getInstances);
 
   const value: ClusterInterface = {
     isLoading,
-    oneInstance: cache[id] ?? DEFAULT_ONE_INSTANCE,
-    listInstances: list,
+    instance,
+    loadInstance,
+    instances,
+    loadInstances,
     addInstance: async (...reqs) => {
       const _results = await handleRequests("Instance(s) added", reqs, (req) =>
         createInstance(req)
       );
 
-      await reloadList();
+      await refreshInstances();
 
       return true;
     },
@@ -117,28 +82,9 @@ export const ClusterProvider = ({ children }: { children: any }) => {
         deleteInstance(id)
       );
 
-      setList(
-        list.filter(({ IID }) =>
-          results.every(([id, { error }]) => IID !== id || error)
-        )
-      );
+      await refreshInstances();
 
       return true;
-    },
-    loadOneInstance: async (id: string) => {
-      setLoading(true);
-
-      if (cache[id] || (await reloadOne(id))) setID(id);
-
-      setLoading(false);
-    },
-    loadListInstances: async () => {
-      setLoading(true);
-
-      if (!listLoaded) await reloadList();
-      setListLoaded(true);
-
-      setLoading(false);
     },
   };
 

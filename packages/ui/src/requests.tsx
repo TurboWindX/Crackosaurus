@@ -1,4 +1,6 @@
-import { APIError } from "@repo/api";
+import { useState } from "react";
+
+import { APIError, APIResponse } from "@repo/api";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
 
 import { useAuth } from "./auth";
@@ -50,5 +52,58 @@ export const useRequests = () => {
 
   return {
     handleRequests,
+  };
+};
+
+export const useLoader = <
+  TOne extends { response: any },
+  TList extends { response: any[] },
+>(
+  loadOne: (id: string) => APIResponse<TOne>,
+  loadList: () => APIResponse<TList>
+) => {
+  const { invalidate } = useAuth();
+
+  const [isLoading, setLoading] = useState(false);
+
+  const [one, setOne] = useState<TOne["response"] | null>(null);
+  const [list, setList] = useState<TList["response"]>([]);
+
+  async function loadOneInner(id: string) {
+    setLoading(true);
+
+    const { response, error } = await loadOne(id);
+    if (response) setOne(response);
+    else if (error.code === 401) invalidate();
+
+    setLoading(false);
+  }
+
+  async function loadListInner() {
+    setLoading(true);
+
+    const { response, error } = await loadList();
+    if (response) setList(response);
+    else if (error.code === 401) invalidate();
+
+    setLoading(false);
+  }
+
+  async function refreshOne(id: string) {
+    await loadOneInner(id);
+  }
+
+  async function refreshList() {
+    await loadListInner();
+  }
+
+  return {
+    isLoading,
+    one,
+    list,
+    loadOne: loadOneInner,
+    loadList: loadListInner,
+    refreshOne,
+    refreshList,
   };
 };

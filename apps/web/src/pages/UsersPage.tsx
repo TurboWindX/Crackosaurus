@@ -14,7 +14,12 @@ import { PermissionProfileSelect, useUsers } from "@repo/ui/users";
 export const UsersPage = () => {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
-  const { list, loadList, add, remove } = useUsers();
+  const {
+    users: list,
+    loadUsers: loadList,
+    addUsers: add,
+    removeUsers: remove,
+  } = useUsers();
 
   const [addUserProfile, setAddUserProfile] = useState(
     DEFAULT_PERMISSION_PROFILE
