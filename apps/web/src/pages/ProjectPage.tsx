@@ -26,7 +26,6 @@ import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useProjects } from "@repo/ui/projects";
-import { useLoading } from "@repo/ui/requests";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 import { UserSelect } from "@repo/ui/users";
@@ -190,6 +189,7 @@ export const ProjectPage = () => {
   const navigate = useNavigate();
 
   const {
+    loading,
     project: one,
     loadProject: loadOne,
     removeProjects: remove,
@@ -219,9 +219,6 @@ export const ProjectPage = () => {
     () => jobs.filter((job) => ACTIVE_STATUSES[job.status as Status]),
     [jobs]
   );
-
-  const { getLoading } = useLoading();
-  const loading = getLoading("project-one");
 
   useEffect(() => {
     loadOne(projectID ?? "");

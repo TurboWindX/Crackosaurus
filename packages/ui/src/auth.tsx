@@ -12,9 +12,8 @@ import {
 } from "@repo/api";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
 
-import { useLoading } from "./requests";
-
 export interface AuthInterface {
+  readonly loading: boolean;
   readonly isAuthenticated: boolean;
   readonly uid: string;
   readonly username: string;
@@ -26,6 +25,7 @@ export interface AuthInterface {
 }
 
 const AuthContext = createContext<AuthInterface>({
+  loading: true,
   isAuthenticated: false,
   uid: "",
   username: "",
@@ -39,22 +39,22 @@ const AuthContext = createContext<AuthInterface>({
 export function AuthProvider({ children }: { children: any }) {
   const { toast } = useToast();
 
-  const { setLoading } = useLoading();
+  const [loading, setLoading] = useState(true);
   const [data, setData] = useState<AuthUserResponse | null>(null);
 
   useEffect(() => {
-    setLoading("auth", true);
+    setLoading(true);
 
     (async () => {
       const data = await authUser();
       setData(data);
 
-      setLoading("auth", false);
+      setLoading(false);
     })();
   }, []);
 
   async function authInit(username: string, password: string) {
-    setLoading("auth", true);
+    setLoading(true);
 
     const { response, error } = await init({ username, password });
 
@@ -72,13 +72,13 @@ export function AuthProvider({ children }: { children: any }) {
       });
     }
 
-    setLoading("auth", false);
+    setLoading(false);
 
     return error === undefined;
   }
 
   async function authLogin(username: string, password: string) {
-    setLoading("auth", true);
+    setLoading(true);
 
     const { response, error } = await login({ username, password });
 
@@ -101,11 +101,11 @@ export function AuthProvider({ children }: { children: any }) {
       setData(data);
     }
 
-    setLoading("auth", false);
+    setLoading(false);
   }
 
   async function authLogout() {
-    setLoading("auth", true);
+    setLoading(true);
 
     const { response, error } = await logout();
 
@@ -125,16 +125,17 @@ export function AuthProvider({ children }: { children: any }) {
       setData(null);
     }
 
-    setLoading("auth", false);
+    setLoading(false);
   }
 
   const value: AuthInterface = {
+    loading,
     init: authInit,
     login: authLogin,
     logout: authLogout,
     invalidate: () => {
       setData(null);
-      setLoading("auth", false);
+      setLoading(false);
     },
     uid: data?.uid ?? "",
     username: data?.username ?? "username",
@@ -157,21 +158,18 @@ export function PermissionRoute({
   permission: PermissionType;
   children: any;
 }) {
-  const { getLoading } = useLoading();
-  const { hasPermission } = useAuth();
+  const { loading, hasPermission } = useAuth();
 
-  if (!getLoading("auth") && !hasPermission(permission))
+  if (!loading && !hasPermission(permission))
     return <Navigate to="/" replace />;
 
   return children;
 }
 
 export function AuthRoute({ children }: { children: any }) {
-  const { getLoading } = useLoading();
-  const { isAuthenticated } = useAuth();
+  const { loading, isAuthenticated } = useAuth();
 
-  if (!getLoading("auth") && !isAuthenticated)
-    return <Navigate to="/login" replace />;
+  if (!loading && !isAuthenticated) return <Navigate to="/login" replace />;
 
   return children;
 }

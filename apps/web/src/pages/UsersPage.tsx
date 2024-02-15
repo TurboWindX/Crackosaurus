@@ -9,13 +9,13 @@ import {
 import { Input } from "@repo/shadcn/components/ui/input";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
-import { useLoading } from "@repo/ui/requests";
 import { PermissionProfileSelect, useUsers } from "@repo/ui/users";
 
 export const UsersPage = () => {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
   const {
+    loading,
     users: list,
     loadUsers: loadList,
     addUsers: add,
@@ -30,9 +30,6 @@ export const UsersPage = () => {
     password: "",
     permissions: PERMISSION_PROFILES[DEFAULT_PERMISSION_PROFILE],
   });
-
-  const { getLoading } = useLoading();
-  const loading = getLoading("user-many");
 
   useEffect(() => {
     loadList();

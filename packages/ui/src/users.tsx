@@ -109,6 +109,8 @@ export const PermissionProfileSelect = ({
 };
 
 export interface UsersInterface {
+  readonly loading: boolean;
+
   readonly addUsers: (...reqs: RegisterRequest["Body"][]) => Promise<boolean>;
   readonly removeUsers: (...ids: string[]) => Promise<boolean>;
 
@@ -123,6 +125,7 @@ export interface UsersInterface {
 }
 
 const UsersContext = createContext<UsersInterface>({
+  loading: true,
   user: null,
   users: [],
   userList: [],
@@ -141,6 +144,7 @@ export const UsersProvider = ({ children }: { children: any }) => {
   const { handleRequests } = useRequests();
 
   const {
+    loading,
     one: user,
     many: users,
     list: userList,
@@ -149,7 +153,6 @@ export const UsersProvider = ({ children }: { children: any }) => {
     loadList: loadUserList,
     refresh: refreshUsers,
   } = useLoader({
-    key: "user",
     getID: ({ ID }) => ID,
     loadOne: getUser,
     loadMany: getUsers,
@@ -157,6 +160,7 @@ export const UsersProvider = ({ children }: { children: any }) => {
   });
 
   const value: UsersInterface = {
+    loading,
     user,
     loadUser,
     users,

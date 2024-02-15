@@ -339,7 +339,7 @@ const DataTableBody = <T,>({
       {row(value).map((column, index) =>
         column ? (
           <TableCell
-            key={column}
+            key={index}
             className={`${index === 0 ? "ui-font-medium" : ""} ${
               rowClick ? "ui-cursor-pointer" : ""
             }`}

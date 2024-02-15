@@ -18,7 +18,7 @@ import { useAuth } from "@repo/ui/auth";
 import { useCluster } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
-import { useLoading } from "@repo/ui/requests";
+import { useProjects } from "@repo/ui/projects";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 
@@ -30,6 +30,11 @@ interface JobDataTableProps {
 
 const JobDataTable = ({ instanceID, values, loading }: JobDataTableProps) => {
   const { addJobs, removeJobs } = useCluster();
+  const { projectList, loadProjectList } = useProjects();
+
+  useEffect(() => {
+    loadProjectList();
+  });
 
   const [addJob, setAddJob] = useState<{
     hashType: HashType;
@@ -73,7 +78,7 @@ const JobDataTable = ({ instanceID, values, loading }: JobDataTableProps) => {
           </Select>
           <MultiSelect
             label="Project"
-            values={[["123", "Name"]]}
+            values={projectList.map(({ PID, name }) => [PID, name])}
             selectedValues={addJob.projectIDs}
             onValueChange={(ids) => {
               setAddJob({ ...addJob, projectIDs: ids });
@@ -82,7 +87,10 @@ const JobDataTable = ({ instanceID, values, loading }: JobDataTableProps) => {
         </>
       }
       addValidate={() => addJob.hashType?.length > 0}
-      onAdd={async () => false}
+      onAdd={async () => {
+        await addJobs(instanceID, addJob);
+        return true;
+      }}
       onRemove={async (jobs) =>
         await removeJobs(instanceID, ...jobs.map(({ JID }) => JID))
       }
@@ -96,14 +104,11 @@ export const InstancePage = () => {
   const { instanceID } = useParams();
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
-  const { instance, loadInstance, removeInstances } = useCluster();
+  const { instance, loadInstance, removeInstances, loading } = useCluster();
 
   const [startOpen, setStartOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
-
-  const { getLoading } = useLoading();
-  const loading = getLoading("instance-one");
 
   useEffect(() => {
     loadInstance(instanceID ?? "");

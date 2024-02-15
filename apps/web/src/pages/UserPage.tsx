@@ -7,7 +7,6 @@ import { Button } from "@repo/shadcn/components/ui/button";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
-import { useLoading } from "@repo/ui/requests";
 import { useUsers } from "@repo/ui/users";
 
 interface ProjectDataTableProps {
@@ -37,16 +36,13 @@ const ProjectDataTable = ({ values, loading }: ProjectDataTableProps) => {
 export const UserPage = () => {
   const { userID } = useParams();
   const { uid, hasPermission, logout } = useAuth();
-  const { user: one, loadUser: loadOne, removeUsers: remove } = useUsers();
+  const { user: one, loadUser, removeUsers, loading } = useUsers();
   const navigate = useNavigate();
 
   const [removeOpen, setRemoveOpen] = useState(false);
 
-  const { getLoading } = useLoading();
-  const loading = getLoading("user-one");
-
   useEffect(() => {
-    loadOne(userID ?? "");
+    loadUser(userID ?? "");
   }, [userID]);
 
   return (
@@ -92,7 +88,7 @@ export const UserPage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await remove(userID ?? "")) navigate("/users");
+                    if (await removeUsers(userID ?? "")) navigate("/users");
                   }}
                 >
                   <span>Do you want to permanently remove this user?</span>

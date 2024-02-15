@@ -27,6 +27,8 @@ import {
 import { useLoader, useRequests } from "./requests";
 
 export interface ClusterInterface {
+  readonly loading: boolean;
+
   readonly addInstances: (
     ...reqs: CreateInstanceRequest["Body"][]
   ) => Promise<boolean>;
@@ -49,6 +51,7 @@ export interface ClusterInterface {
 }
 
 const ClusterContext = createContext<ClusterInterface>({
+  loading: true,
   instance: null,
   instances: [],
   addInstances: async () => false,
@@ -67,13 +70,13 @@ export const ClusterProvider = ({ children }: { children: any }) => {
   const { handleRequests } = useRequests();
 
   const {
+    loading,
     one: instance,
     many: instances,
     loadOne: loadInstance,
     loadMany: loadInstances,
     refresh: refreshInstances,
   } = useLoader({
-    key: "instance",
     getID: ({ IID }) => IID,
     loadOne: getInstance,
     loadMany: getInstances,
@@ -81,6 +84,7 @@ export const ClusterProvider = ({ children }: { children: any }) => {
   });
 
   const value: ClusterInterface = {
+    loading,
     instance,
     loadInstance,
     instances,

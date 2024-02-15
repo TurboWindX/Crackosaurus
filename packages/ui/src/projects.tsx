@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 import {
   AddHashRequest,
   CreateProjectRequest,
+  GetProjectListResponse,
   GetProjectResponse,
   GetProjectsResponse,
   addHashToProject,
@@ -19,6 +20,8 @@ import {
 import { useLoader, useRequests } from "./requests";
 
 export interface ProjectsInterface {
+  readonly loading: boolean;
+
   readonly addProjects: (
     ...reqs: CreateProjectRequest["Body"][]
   ) => Promise<boolean>;
@@ -44,11 +47,16 @@ export interface ProjectsInterface {
 
   readonly projects: GetProjectsResponse["response"];
   readonly loadProjects: () => Promise<void>;
+
+  readonly projectList: GetProjectListResponse["response"];
+  readonly loadProjectList: () => Promise<void>;
 }
 
 const ProjectsContext = createContext<ProjectsInterface>({
+  loading: true,
   project: null,
   projects: [],
+  projectList: [],
   addProjects: async () => false,
   removeProjects: async () => false,
   addHashes: async () => false,
@@ -57,6 +65,7 @@ const ProjectsContext = createContext<ProjectsInterface>({
   removeUsers: async () => false,
   loadProject: async () => {},
   loadProjects: async () => {},
+  loadProjectList: async () => {},
 });
 
 export function useProjects() {
@@ -67,13 +76,15 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
   const { handleRequests } = useRequests();
 
   const {
+    loading,
     one: project,
     many: projects,
+    list: projectList,
     loadOne: loadProject,
     loadMany: loadProjects,
+    loadList: loadProjectList,
     refresh: refreshProjects,
   } = useLoader({
-    key: "project",
     getID: ({ PID }) => PID,
     loadOne: getProject,
     loadMany: getProjects,
@@ -81,10 +92,13 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
   });
 
   const value: ProjectsInterface = {
+    loading,
     project,
     loadProject,
     projects,
     loadProjects,
+    projectList,
+    loadProjectList,
     addProjects: async (...reqs) => {
       const _results = await handleRequests("Project(s) added", reqs, (req) =>
         createProject(req)

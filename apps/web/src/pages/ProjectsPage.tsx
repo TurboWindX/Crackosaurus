@@ -7,22 +7,19 @@ import { Input } from "@repo/shadcn/components/ui/input";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useProjects } from "@repo/ui/projects";
-import { useLoading } from "@repo/ui/requests";
 import { RelativeTime } from "@repo/ui/time";
 
 export const ProjectsPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const { projects, loadProjects, addProjects, removeProjects } = useProjects();
+  const { projects, loadProjects, addProjects, removeProjects, loading } =
+    useProjects();
 
   const [addProject, setAddProject] = useState<CreateProjectRequest["Body"]>({
     projectName: "",
   });
 
   const hasCollaborators = hasPermission("projects:users:get");
-
-  const { getLoading } = useLoading();
-  const loading = getLoading("project-many");
 
   useEffect(() => {
     loadProjects();

@@ -5,40 +5,6 @@ import { useToast } from "@repo/shadcn/components/ui/use-toast";
 
 import { useAuth } from "./auth";
 
-export interface LoadingInterface {
-  readonly setLoading: (key: string, value: boolean) => void;
-  readonly getLoading: (key: string) => boolean;
-}
-
-const LoadingContext = createContext<LoadingInterface>({
-  setLoading: () => {},
-  getLoading: () => true,
-});
-
-export function useLoading() {
-  return useContext(LoadingContext);
-}
-
-export const LoadingProvider = ({ children }: { children: any }) => {
-  const [state, setState] = useState<Record<string, boolean>>({});
-
-  const value: LoadingInterface = {
-    setLoading: (key, value) => {
-      console.log(key, value);
-
-      setState({
-        ...state,
-        [key]: value,
-      });
-    },
-    getLoading: (key) => state[key] ?? true,
-  };
-
-  return (
-    <LoadingContext.Provider value={value}>{children}</LoadingContext.Provider>
-  );
-};
-
 export const useRequests = () => {
   const { toast } = useToast();
   const { invalidate } = useAuth();
@@ -92,23 +58,22 @@ export const useRequests = () => {
 type TID = string;
 
 export const useLoader = <TOne, TMany, TList>({
-  key,
   getID,
   loadOne,
   loadMany,
   loadList,
 }: {
-  key: string;
   getID: (record: TOne | TMany | TList) => TID;
   loadOne: (id: TID) => APIResponse<{ response: TOne }>;
   loadMany: () => APIResponse<{ response: TMany[] }>;
   loadList: () => APIResponse<{ response: TList[] }>;
 }) => {
-  const { setLoading } = useLoading();
   const { invalidate, isAuthenticated } = useAuth();
 
   const [ID, setID] = useState<TID>("");
   const [cache, setCache] = useState<Record<string, TOne>>({});
+
+  const [loading, setLoading] = useState(true);
 
   const [many, setMany] = useState<TMany[]>([]);
   const [manyLoaded, setManyLoaded] = useState(false);
@@ -141,7 +106,7 @@ export const useLoader = <TOne, TMany, TList>({
   }
 
   async function refreshOneInner(id: TID): Promise<boolean> {
-    setLoading(`${key}-one`, true);
+    setLoading(true);
 
     const { response, error } = await loadOne(id);
 
@@ -153,13 +118,13 @@ export const useLoader = <TOne, TMany, TList>({
       setID(id);
     } else if (error.code === 401) invalidate();
 
-    setLoading(`${key}-one`, false);
+    setLoading(false);
 
     return error === undefined;
   }
 
   async function refreshManyInner(): Promise<boolean> {
-    setLoading(`${key}-many`, true);
+    setLoading(true);
 
     const { response, error } = await loadMany();
     if (response) {
@@ -167,13 +132,13 @@ export const useLoader = <TOne, TMany, TList>({
       setManyLoaded(true);
     } else if (error.code === 401) invalidate();
 
-    setLoading(`${key}-many`, false);
+    setLoading(false);
 
     return error === undefined;
   }
 
   async function refreshListInner(): Promise<boolean> {
-    setLoading(`${key}-list`, true);
+    setLoading(true);
 
     const { response, error } = await loadList();
     if (response) {
@@ -181,7 +146,7 @@ export const useLoader = <TOne, TMany, TList>({
       setListLoaded(true);
     } else if (error.code === 401) invalidate();
 
-    setLoading(`${key}-list`, false);
+    setLoading(false);
 
     return error === undefined;
   }
@@ -220,6 +185,7 @@ export const useLoader = <TOne, TMany, TList>({
   }
 
   return {
+    loading,
     one: cache[ID] ?? null,
     loadOne: loadOneInner,
     many,

@@ -6,7 +6,6 @@ import { Input } from "@repo/shadcn/components/ui/input";
 import { useAuth } from "@repo/ui/auth";
 import { useCluster } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
-import { useLoading } from "@repo/ui/requests";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 
@@ -14,6 +13,7 @@ export const InstancesPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
   const {
+    loading,
     instances,
     loadInstances,
     addInstances: addInstance,
@@ -26,9 +26,6 @@ export const InstancesPage = () => {
       type: "",
     }
   );
-
-  const { getLoading } = useLoading();
-  const loading = getLoading("instance-many");
 
   useEffect(() => {
     loadInstances();
