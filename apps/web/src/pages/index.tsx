@@ -11,11 +11,16 @@ import { ProjectPage } from "./ProjectPage.tsx";
 import { ProjectsPage } from "./ProjectsPage.tsx";
 import { UserPage } from "./UserPage.tsx";
 import { UsersPage } from "./UsersPage.tsx";
+import { SetupPage } from "./SetupPage.tsx";
 
 export const router = createBrowserRouter([
   {
     errorElement: <h1>Something went wrong...</h1>,
     children: [
+      {
+        path: "/setup",
+        element: <SetupPage />
+      },
       {
         path: "/login",
         element: <LoginPage />,

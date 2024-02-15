@@ -6,16 +6,19 @@ import {
   PermissionType,
   authUser,
   hasPermission,
+  init,
   login,
   logout,
 } from "@repo/api";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
+import { useRequests } from "./requests";
 
 export interface AuthInterface {
   readonly isLoading: boolean;
   readonly isAuthenticated: boolean;
   readonly uid: string;
   readonly username: string;
+  readonly init: (username: string, password: string) => Promise<boolean>;
   readonly login: (username: string, password: string) => Promise<void>;
   readonly logout: () => Promise<void>;
   readonly invalidate: () => void;
@@ -27,6 +30,7 @@ const AuthContext = createContext<AuthInterface>({
   isAuthenticated: false,
   uid: "",
   username: "",
+  init: async () => false,
   login: async () => {},
   logout: async () => {},
   invalidate: () => {},
@@ -49,6 +53,30 @@ export function AuthProvider({ children }: { children: any }) {
       setLoading(false);
     })();
   }, []);
+
+  async function authInit(username: string, password: string) {
+    setLoading(true);
+
+    const { response, error } = await init({ username, password });
+
+    if (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message,
+      });
+    } else {
+      toast({
+        variant: "default",
+        title: "Success",
+        description: response,
+      });
+    }
+
+    setLoading(false);
+
+    return error === undefined;
+  }
 
   async function authLogin(username: string, password: string) {
     setLoading(true);
@@ -101,6 +129,7 @@ export function AuthProvider({ children }: { children: any }) {
   }
 
   const value: AuthInterface = {
+    init: authInit,
     login: authLogin,
     logout: authLogout,
     invalidate: () => {

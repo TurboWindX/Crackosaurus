@@ -21,6 +21,8 @@ import {
   GetUserListResponse,
   GetUserResponse,
   GetUsersResponse,
+  InitRequest,
+  InitResponse,
   LoginRequest,
   LoginResponse,
   LogoutResponse,
@@ -80,6 +82,12 @@ async function apiPost<Req, Res>(path: string, body?: Req): APIResponse<Res> {
 
 async function apiDelete<Req, Res>(path: string, body?: Req): APIResponse<Res> {
   return apiMethod("DELETE", path, body);
+}
+
+export async function init(
+  req: InitRequest["Body"]
+): APIResponse<InitResponse> {
+  return apiPost("/init", req);
 }
 
 export async function login(
