@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { APIError, APIResponse } from "@repo/api";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
@@ -55,7 +55,9 @@ export const useRequests = () => {
   };
 };
 
-export const useLoader = <TOne, TList, TID = string>({
+type TID = string;
+
+export const useLoader = <TOne, TList>({
   getID,
   loadOne,
   loadList,
@@ -64,31 +66,62 @@ export const useLoader = <TOne, TList, TID = string>({
   loadOne: (id: TID) => APIResponse<{ response: TOne }>;
   loadList: () => APIResponse<{ response: TList[] }>;
 }) => {
-  const { invalidate } = useAuth();
+  const { invalidate, isAuthenticated } = useAuth();
 
   const [isLoading, setLoading] = useState(false);
 
-  const [one, setOne] = useState<TOne | null>(null);
+  const [ID, setID] = useState<TID>("");
+  const [cache, setCache] = useState<Record<string, TOne>>({});
+
   const [list, setList] = useState<TList[]>([]);
+  const [listLoaded, setListLoaded] = useState(false);
+
+  useEffect(() => {
+    if (isAuthenticated) return;
+
+    setCache({});
+    setList([]);
+    setListLoaded(false);
+  }, [isAuthenticated]);
 
   async function loadOneInner(id: TID) {
-    setLoading(true);
-
-    const { response, error } = await loadOne(id);
-    if (response) setOne(response);
-    else if (error.code === 401) invalidate();
-
-    setLoading(false);
+    if (!cache[id]) await refreshOneInner(id);
   }
 
   async function loadListInner() {
+    if (!listLoaded) await refreshListInner();
+  }
+
+  async function refreshOneInner(id: TID): Promise<boolean> {
+    setLoading(true);
+
+    const { response, error } = await loadOne(id);
+
+    if (response) {
+      setCache({
+        ...cache,
+        [id]: response,
+      });
+      setID(id);
+    } else if (error.code === 401) invalidate();
+
+    setLoading(false);
+
+    return error === undefined;
+  }
+
+  async function refreshListInner(): Promise<boolean> {
     setLoading(true);
 
     const { response, error } = await loadList();
-    if (response) setList(response);
-    else if (error.code === 401) invalidate();
+    if (response) {
+      setList(response);
+      setListLoaded(true);
+    } else if (error.code === 401) invalidate();
 
     setLoading(false);
+
+    return error === undefined;
   }
 
   async function refresh({
@@ -100,26 +133,18 @@ export const useLoader = <TOne, TList, TID = string>({
     update?: TID[];
     remove?: TID[];
   }) {
-    if (add !== undefined && add.length > 0) {
-      await loadListInner();
+    if (add !== undefined) {
+      await refreshListInner();
     }
 
     if (update !== undefined && update.length > 0) {
-      if (one) {
-        const oneID = getID(one);
+      if (ID && update.some((oID) => ID === oID)) await refreshOneInner(ID);
 
-        if (one && update.some((ID) => ID === oneID)) await loadOneInner(oneID);
-      }
-
-      await loadListInner();
+      await refreshListInner();
     }
 
     if (remove !== undefined && remove.length > 0) {
-      if (one) {
-        const oneID = getID(one);
-
-        if (one && remove.some((ID) => ID === oneID)) setOne(null);
-      }
+      if (ID && remove.some((oID) => ID === oID)) setID("");
 
       setList(
         list.filter((entry) => remove.every((ID) => ID !== getID(entry)))
@@ -129,7 +154,7 @@ export const useLoader = <TOne, TList, TID = string>({
 
   return {
     isLoading,
-    one,
+    one: cache[ID] ?? null,
     list,
     loadOne: loadOneInner,
     loadList: loadListInner,

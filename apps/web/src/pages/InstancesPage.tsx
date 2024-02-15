@@ -12,12 +12,8 @@ import { RelativeTime } from "@repo/ui/time";
 export const InstancesPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const {
-    instances: listInstances,
-    loadInstances: loadListInstances,
-    addInstance,
-    removeInstance,
-  } = useCluster();
+  const { instances, loadInstances, addInstance, removeInstance } =
+    useCluster();
 
   const [newInstance, setNewInstance] = useState<CreateInstanceRequest["Body"]>(
     {
@@ -27,14 +23,14 @@ export const InstancesPage = () => {
   );
 
   useEffect(() => {
-    loadListInstances();
+    loadInstances();
   }, []);
 
   return (
     <div className="p-4">
       <DataTable
         type="Instance"
-        values={listInstances}
+        values={instances}
         head={["Instance", "Status", "Last Updated"]}
         valueKey={({ IID }) => IID}
         rowClick={({ IID }) => navigate(`/instances/${IID}`)}

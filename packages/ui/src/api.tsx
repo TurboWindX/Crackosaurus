@@ -1,7 +1,7 @@
 import { Spinner } from "@repo/shadcn/components/ui/spinner";
 
 import { AuthProvider, useAuth } from "./auth";
-import { ClusterProvider } from "./clusters";
+import { ClusterProvider, useCluster } from "./clusters";
 import { ProjectsProvider, useProjects } from "./projects";
 import { UsersProvider, useUsers } from "./users";
 
@@ -9,8 +9,10 @@ export const LoadingProvider = ({ children }: { children: any }) => {
   const { isLoading: authLoading } = useAuth();
   const { isLoading: usersLoading } = useUsers();
   const { isLoading: projectsLoading } = useProjects();
+  const { isLoading: clusterLoading } = useCluster();
 
-  const isLoading = authLoading || usersLoading || projectsLoading;
+  const isLoading =
+    authLoading || usersLoading || projectsLoading || clusterLoading;
 
   if (isLoading)
     return (

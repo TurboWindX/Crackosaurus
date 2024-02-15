@@ -41,7 +41,7 @@ export const UserPage = () => {
 
   useEffect(() => {
     loadOne(userID ?? "");
-  }, []);
+  }, [userID]);
 
   return (
     <div className="grid gap-8 p-4">

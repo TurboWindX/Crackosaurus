@@ -9,9 +9,9 @@ import { InstancesPage } from "./InstancesPage.tsx";
 import { LoginPage } from "./LoginPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
 import { ProjectsPage } from "./ProjectsPage.tsx";
+import { SetupPage } from "./SetupPage.tsx";
 import { UserPage } from "./UserPage.tsx";
 import { UsersPage } from "./UsersPage.tsx";
-import { SetupPage } from "./SetupPage.tsx";
 
 export const router = createBrowserRouter([
   {
@@ -19,7 +19,7 @@ export const router = createBrowserRouter([
     children: [
       {
         path: "/setup",
-        element: <SetupPage />
+        element: <SetupPage />,
       },
       {
         path: "/login",

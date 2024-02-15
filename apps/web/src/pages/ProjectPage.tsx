@@ -209,7 +209,7 @@ export const ProjectPage = () => {
 
   useEffect(() => {
     loadOne(projectID ?? "");
-  }, []);
+  }, [projectID]);
 
   const tables = [
     hasPermission("jobs:get") && activeJobs.length > 0 && (

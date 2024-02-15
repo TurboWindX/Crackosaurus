@@ -12,12 +12,7 @@ import { RelativeTime } from "@repo/ui/time";
 export const ProjectsPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const {
-    projects: list,
-    loadProjects: loadList,
-    addProjects: add,
-    removeProjects: remove,
-  } = useProjects();
+  const { projects, loadProjects, addProjects, removeProjects } = useProjects();
 
   const [addProject, setAddProject] = useState<CreateProjectRequest["Body"]>({
     projectName: "",
@@ -26,14 +21,14 @@ export const ProjectsPage = () => {
   const hasCollaborators = hasPermission("projects:users:get");
 
   useEffect(() => {
-    loadList();
+    loadProjects();
   }, []);
 
   return (
     <div className="p-4">
       <DataTable
         type="Project"
-        values={list}
+        values={projects}
         head={[
           "Project",
           hasCollaborators ? "Collaborators" : null,
@@ -72,9 +67,11 @@ export const ProjectsPage = () => {
           />
         }
         noAdd={!hasPermission("projects:add")}
-        onAdd={() => add(addProject)}
+        onAdd={() => addProjects(addProject)}
         noRemove
-        onRemove={(projects) => remove(...projects.map(({ PID }) => PID))}
+        onRemove={(projects) =>
+          removeProjects(...projects.map(({ PID }) => PID))
+        }
       />
     </div>
   );

@@ -46,7 +46,7 @@ export const InstancePage = () => {
 
   useEffect(() => {
     loadOneInstance(instanceID ?? "");
-  }, []);
+  }, [instanceID]);
 
   return (
     <div className="grid gap-8 p-4">
