@@ -8,16 +8,14 @@ import {
   AddUserToProjectResponse,
   ChangePasswordRequest,
   ChangePasswordResponse,
+  CreateInstanceJobRequest,
   CreateInstanceRequest,
   CreateInstanceResponse,
-  CreateProjectJobsRequest,
-  CreateProjectJobsResponse,
   CreateProjectRequest,
   CreateProjectResponse,
+  DeleteInstanceJobRequest,
   DeleteInstanceRequest,
   DeleteInstanceResponse,
-  DeleteProjectJobRequest,
-  DeleteProjectJobResponse,
   DeleteProjectRequest,
   DeleteProjectResponse,
   DeleteUserRequest,
@@ -28,6 +26,8 @@ import {
   GetInstanceResponse,
   GetInstancesRequest,
   GetInstancesResponse,
+  GetProjectListRequest,
+  GetProjectListResponse,
   GetProjectRequest,
   GetProjectResponse,
   GetProjectsRequest,
@@ -62,12 +62,12 @@ import {
   getInstanceList,
   getInstances,
 } from "./instances";
-import { createProjectJobs, deleteProjectJobs } from "./jobs";
 import {
   addUserToProject,
   createProject,
   deleteProject,
   getUserProject,
+  getUserProjectList,
   getUserProjects,
   removeUserFromProject,
 } from "./projects";
@@ -318,6 +318,21 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     }
   );
 
+  instance.get<GetProjectListRequest>(
+    "/projects/list",
+    { preHandler: [checkAuth] },
+    async (request) => {
+      let response: GetProjectListResponse["response"] =
+        await getUserProjectList(
+          request.server.prisma,
+          request.session.uid,
+          hasPermission(request.session.permissions, "projects:get")
+        );
+
+      return { response } satisfies GetProjectListResponse;
+    }
+  );
+
   instance.get<GetProjectRequest>(
     "/projects/:projectID",
     { preHandler: [checkAuth] },
@@ -547,50 +562,27 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
     }
   );
 
-  instance.post<CreateProjectJobsRequest>(
-    "/projects/:projectID/jobs",
+  instance.post<CreateInstanceJobRequest>(
+    "/instances/:instanceID/jobs",
     {
-      preHandler: [checkPermission("hashes:get"), checkPermission("jobs:add")],
+      preHandler: [checkPermission("instances:jobs:add")],
     },
     async (request) => {
-      const { projectID } = request.params;
+      const { instanceID } = request.params;
 
-      const { instanceID } = request.body;
-      if (instanceID === undefined)
-        throw new APIError("Invalid project jobs config");
-
-      const jobIDs = await createProjectJobs(
-        request.server.prisma,
-        request.server.cluster,
-        projectID,
-        instanceID,
-        request.session.uid,
-        hasPermission(request.session.permissions, "root")
-      );
-
-      return { response: jobIDs } satisfies CreateProjectJobsResponse;
+      return "";
     }
   );
 
-  instance.delete<DeleteProjectJobRequest>(
-    "/projects/:projectID/jobs",
+  instance.delete<DeleteInstanceJobRequest>(
+    "/instances/:instanceID/jobs/:jobID",
     {
-      preHandler: [checkPermission("jobs:remove")],
+      preHandler: [checkPermission("instances:jobs:remove")],
     },
     async (request) => {
-      const { projectID } = request.params;
+      const { instanceID, jobID } = request.params;
 
-      await deleteProjectJobs(
-        request.server.prisma,
-        request.server.cluster,
-        projectID,
-        request.session.uid,
-        hasPermission(request.session.permissions, "root")
-      );
-
-      return {
-        response: "Deleted project jobs",
-      } satisfies DeleteProjectJobResponse;
+      return "";
     }
   );
 

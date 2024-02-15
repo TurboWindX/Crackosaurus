@@ -9,6 +9,7 @@ import {
 import { Input } from "@repo/shadcn/components/ui/input";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
+import { useLoading } from "@repo/ui/requests";
 import { PermissionProfileSelect, useUsers } from "@repo/ui/users";
 
 export const UsersPage = () => {
@@ -30,6 +31,9 @@ export const UsersPage = () => {
     permissions: PERMISSION_PROFILES[DEFAULT_PERMISSION_PROFILE],
   });
 
+  const { getLoading } = useLoading();
+  const loading = getLoading("user-many");
+
   useEffect(() => {
     loadList();
   }, []);
@@ -42,10 +46,12 @@ export const UsersPage = () => {
         values={list}
         rowClick={({ ID }) => navigate(`/users/${ID}`)}
         row={({ username }) => [username]}
+        loading={loading}
         valueKey={({ ID }) => ID}
         searchFilter={({ username }, search) =>
           username.toLowerCase().includes(search.toLowerCase())
         }
+        sort={(a, b) => a.username.localeCompare(b.username)}
         addValidate={() =>
           addUser.username.trim().length > 0 &&
           addUser.password.trim().length > 0

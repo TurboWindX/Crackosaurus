@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useMemo } from "react";
 
 import {
   GetUserListResponse,
@@ -16,7 +16,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
@@ -34,17 +36,16 @@ export const UserSelect = ({
   onValueChange,
   filter,
 }: UserSelectProps) => {
-  const [users, setUsers] = useState<GetUserListResponse["response"]>([]);
-
-  async function refreshUsers() {
-    const { response } = await getUserList();
-
-    if (response) setUsers(response);
-  }
+  const { userList, loadUserList } = useUsers();
 
   useEffect(() => {
-    refreshUsers();
+    loadUserList();
   }, []);
+
+  const filteredUserList = useMemo(
+    () => userList.filter((user) => filter?.(user) ?? true),
+    [userList, filter]
+  );
 
   return (
     <Select
@@ -55,13 +56,14 @@ export const UserSelect = ({
         <SelectValue placeholder="User" />
       </SelectTrigger>
       <SelectContent>
-        {users
-          .filter((user) => filter?.(user) ?? true)
-          .map(({ ID, username }) => (
+        <SelectGroup>
+          <SelectLabel>User</SelectLabel>
+          {filteredUserList.map(({ ID, username }) => (
             <SelectItem key={username} value={ID}>
               {username}
             </SelectItem>
           ))}
+        </SelectGroup>
       </SelectContent>
     </Select>
   );
@@ -93,19 +95,20 @@ export const PermissionProfileSelect = ({
         <SelectValue placeholder="User" />
       </SelectTrigger>
       <SelectContent>
-        {Object.keys(PERMISSION_PROFILES).map((key) => (
-          <SelectItem key={key} value={key}>
-            {key}
-          </SelectItem>
-        ))}
+        <SelectGroup>
+          <SelectLabel>User</SelectLabel>
+          {Object.keys(PERMISSION_PROFILES).map((key) => (
+            <SelectItem key={key} value={key}>
+              {key}
+            </SelectItem>
+          ))}
+        </SelectGroup>
       </SelectContent>
     </Select>
   );
 };
 
 export interface UsersInterface {
-  readonly isLoading: boolean;
-
   readonly addUsers: (...reqs: RegisterRequest["Body"][]) => Promise<boolean>;
   readonly removeUsers: (...ids: string[]) => Promise<boolean>;
 
@@ -114,16 +117,20 @@ export interface UsersInterface {
 
   readonly users: GetUsersResponse["response"];
   readonly loadUsers: () => Promise<void>;
+
+  readonly userList: GetUserListResponse["response"];
+  readonly loadUserList: () => Promise<void>;
 }
 
 const UsersContext = createContext<UsersInterface>({
-  isLoading: true,
   user: null,
   users: [],
+  userList: [],
   addUsers: async () => false,
   removeUsers: async () => false,
   loadUser: async () => {},
   loadUsers: async () => {},
+  loadUserList: async () => {},
 });
 
 export function useUsers() {
@@ -134,24 +141,28 @@ export const UsersProvider = ({ children }: { children: any }) => {
   const { handleRequests } = useRequests();
 
   const {
-    isLoading,
     one: user,
-    list: users,
+    many: users,
+    list: userList,
     loadOne: loadUser,
-    loadList: loadUsers,
+    loadMany: loadUsers,
+    loadList: loadUserList,
     refresh: refreshUsers,
   } = useLoader({
+    key: "user",
     getID: ({ ID }) => ID,
     loadOne: getUser,
-    loadList: getUsers,
+    loadMany: getUsers,
+    loadList: getUserList,
   });
 
   const value: UsersInterface = {
-    isLoading,
     user,
     loadUser,
     users,
     loadUsers,
+    userList,
+    loadUserList,
     addUsers: async (...reqs) => {
       const _results = await handleRequests("User(s) added", reqs, (req) =>
         registerUser(req)

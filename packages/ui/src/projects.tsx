@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext } from "react";
 
 import {
   AddHashRequest,
@@ -6,12 +6,11 @@ import {
   GetProjectResponse,
   GetProjectsResponse,
   addHashToProject,
-  addProjectJobs,
   addUserToProject,
   createProject,
   deleteProject,
-  deleteProjectJobs,
   getProject,
+  getProjectList,
   getProjects,
   removeHashFromProject,
   removeUserFromProject,
@@ -20,8 +19,6 @@ import {
 import { useLoader, useRequests } from "./requests";
 
 export interface ProjectsInterface {
-  readonly isLoading: boolean;
-
   readonly addProjects: (
     ...reqs: CreateProjectRequest["Body"][]
   ) => Promise<boolean>;
@@ -42,9 +39,6 @@ export interface ProjectsInterface {
     ...ids: string[]
   ) => Promise<boolean>;
 
-  readonly addJobs: (projectID: string, instanceID: string) => Promise<boolean>;
-  readonly deleteJobs: (projectID: string) => Promise<boolean>;
-
   readonly project: GetProjectResponse["response"] | null;
   readonly loadProject: (id: string) => Promise<void>;
 
@@ -53,7 +47,6 @@ export interface ProjectsInterface {
 }
 
 const ProjectsContext = createContext<ProjectsInterface>({
-  isLoading: true,
   project: null,
   projects: [],
   addProjects: async () => false,
@@ -62,8 +55,6 @@ const ProjectsContext = createContext<ProjectsInterface>({
   removeHashes: async () => false,
   addUsers: async () => false,
   removeUsers: async () => false,
-  addJobs: async () => false,
-  deleteJobs: async () => false,
   loadProject: async () => {},
   loadProjects: async () => {},
 });
@@ -76,20 +67,20 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
   const { handleRequests } = useRequests();
 
   const {
-    isLoading,
     one: project,
-    list: projects,
+    many: projects,
     loadOne: loadProject,
-    loadList: loadProjects,
+    loadMany: loadProjects,
     refresh: refreshProjects,
   } = useLoader({
+    key: "project",
     getID: ({ PID }) => PID,
     loadOne: getProject,
-    loadList: getProjects,
+    loadMany: getProjects,
+    loadList: getProjectList,
   });
 
   const value: ProjectsInterface = {
-    isLoading,
     project,
     loadProject,
     projects,
@@ -158,36 +149,6 @@ export const ProjectsProvider = ({ children }: { children: any }) => {
     removeUsers: async (projectID, ...ids) => {
       const results = await handleRequests("User(s) removed", ids, (id) =>
         removeUserFromProject(projectID, id)
-      );
-
-      await refreshProjects({
-        update: results.some(([_, res]) => !res.error)
-          ? [projectID]
-          : undefined,
-      });
-
-      return true;
-    },
-    addJobs: async (projectID, instanceID) => {
-      const results = await handleRequests(
-        "Jobs(s) added",
-        [instanceID],
-        (instanceID) => addProjectJobs(projectID, instanceID)
-      );
-
-      await refreshProjects({
-        update: results.some(([_, res]) => !res.error)
-          ? [projectID]
-          : undefined,
-      });
-
-      return true;
-    },
-    deleteJobs: async (projectID) => {
-      const results = await handleRequests(
-        "Jobs(s) deleted",
-        [projectID],
-        (projectID) => deleteProjectJobs(projectID)
       );
 
       await refreshProjects({

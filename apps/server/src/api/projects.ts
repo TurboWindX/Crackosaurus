@@ -94,6 +94,32 @@ export async function createProject(
   }
 }
 
+export async function getUserProjectList(
+  prisma: PrismaClient,
+  userID: string,
+  bypassCheck: boolean
+) {
+  try {
+    return await prisma.project.findMany({
+      select: {
+        PID: true,
+        name: true,
+      },
+      where: bypassCheck
+        ? undefined
+        : {
+            members: {
+              some: {
+                ID: userID,
+              },
+            },
+          },
+    });
+  } catch (err) {
+    throw new APIError("Project error");
+  }
+}
+
 export async function getUserProjects(
   prisma: PrismaClient,
   userID: string,

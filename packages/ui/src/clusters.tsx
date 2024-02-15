@@ -1,12 +1,15 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
 import {
+  CreateInstanceJobRequest,
   CreateInstanceRequest,
   GetInstanceListResponse,
   GetInstanceResponse,
   GetInstancesResponse,
   createInstance,
+  createInstanceJob,
   deleteInstance,
+  deleteInstanceJob,
   getInstance,
   getInstanceList,
   getInstances,
@@ -14,7 +17,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
@@ -22,12 +27,19 @@ import {
 import { useLoader, useRequests } from "./requests";
 
 export interface ClusterInterface {
-  readonly isLoading: boolean;
-
-  readonly addInstance: (
+  readonly addInstances: (
     ...reqs: CreateInstanceRequest["Body"][]
   ) => Promise<boolean>;
-  readonly removeInstance: (...ids: string[]) => Promise<boolean>;
+  readonly removeInstances: (...ids: string[]) => Promise<boolean>;
+
+  readonly addJobs: (
+    instanceID: string,
+    ...req: CreateInstanceJobRequest["Body"][]
+  ) => Promise<boolean>;
+  readonly removeJobs: (
+    instanceID: string,
+    ...ids: string[]
+  ) => Promise<boolean>;
 
   readonly instance: GetInstanceResponse["response"] | null;
   readonly loadInstance: (id: string) => Promise<void>;
@@ -37,11 +49,12 @@ export interface ClusterInterface {
 }
 
 const ClusterContext = createContext<ClusterInterface>({
-  isLoading: true,
   instance: null,
   instances: [],
-  addInstance: async () => false,
-  removeInstance: async () => false,
+  addInstances: async () => false,
+  removeInstances: async () => false,
+  addJobs: async () => false,
+  removeJobs: async () => false,
   loadInstance: async () => {},
   loadInstances: async () => {},
 });
@@ -54,25 +67,25 @@ export const ClusterProvider = ({ children }: { children: any }) => {
   const { handleRequests } = useRequests();
 
   const {
-    isLoading,
     one: instance,
-    list: instances,
+    many: instances,
     loadOne: loadInstance,
-    loadList: loadInstances,
+    loadMany: loadInstances,
     refresh: refreshInstances,
   } = useLoader({
+    key: "instance",
     getID: ({ IID }) => IID,
     loadOne: getInstance,
-    loadList: getInstances,
+    loadMany: getInstances,
+    loadList: getInstanceList,
   });
 
   const value: ClusterInterface = {
-    isLoading,
     instance,
     loadInstance,
     instances,
     loadInstances,
-    addInstance: async (...reqs) => {
+    addInstances: async (...reqs) => {
       const _results = await handleRequests("Instance(s) added", reqs, (req) =>
         createInstance(req)
       );
@@ -83,13 +96,35 @@ export const ClusterProvider = ({ children }: { children: any }) => {
 
       return true;
     },
-    removeInstance: async (...ids) => {
+    removeInstances: async (...ids) => {
       const results = await handleRequests("Instance(s) removed", ids, (id) =>
         deleteInstance(id)
       );
 
       await refreshInstances({
         remove: results.filter(([_, res]) => !res.error).map(([id]) => id),
+      });
+
+      return true;
+    },
+    addJobs: async (instanceID, ...reqs) => {
+      const _results = await handleRequests("Job(s) added", reqs, (req) =>
+        createInstanceJob(instanceID, req)
+      );
+
+      await refreshInstances({
+        update: [instanceID],
+      });
+
+      return true;
+    },
+    removeJobs: async (instanceID, ...ids) => {
+      const _results = await handleRequests("Job(s) added", ids, (id) =>
+        deleteInstanceJob(instanceID, id)
+      );
+
+      await refreshInstances({
+        update: [instanceID],
       });
 
       return true;
@@ -135,13 +170,16 @@ export const InstanceSelect = ({
         <SelectValue placeholder="Instance" />
       </SelectTrigger>
       <SelectContent>
-        {instances
-          .filter((instance) => filter?.(instance) ?? true)
-          .map(({ IID, name }) => (
-            <SelectItem key={IID} value={IID}>
-              {name || IID}
-            </SelectItem>
-          ))}
+        <SelectGroup>
+          <SelectLabel>Instance</SelectLabel>
+          {instances
+            .filter((instance) => filter?.(instance) ?? true)
+            .map(({ IID, name }) => (
+              <SelectItem key={IID} value={IID}>
+                {name || IID}
+              </SelectItem>
+            ))}
+        </SelectGroup>
       </SelectContent>
     </Select>
   );

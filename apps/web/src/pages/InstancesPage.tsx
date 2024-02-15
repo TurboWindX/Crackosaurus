@@ -6,14 +6,19 @@ import { Input } from "@repo/shadcn/components/ui/input";
 import { useAuth } from "@repo/ui/auth";
 import { useCluster } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
+import { useLoading } from "@repo/ui/requests";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 
 export const InstancesPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const { instances, loadInstances, addInstance, removeInstance } =
-    useCluster();
+  const {
+    instances,
+    loadInstances,
+    addInstances: addInstance,
+    removeInstances: removeInstance,
+  } = useCluster();
 
   const [newInstance, setNewInstance] = useState<CreateInstanceRequest["Body"]>(
     {
@@ -21,6 +26,9 @@ export const InstancesPage = () => {
       type: "",
     }
   );
+
+  const { getLoading } = useLoading();
+  const loading = getLoading("instance-many");
 
   useEffect(() => {
     loadInstances();
@@ -34,6 +42,7 @@ export const InstancesPage = () => {
         head={["Instance", "Status", "Last Updated"]}
         valueKey={({ IID }) => IID}
         rowClick={({ IID }) => navigate(`/instances/${IID}`)}
+        loading={loading}
         sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
         row={({ IID, name, status, updatedAt }) => [
           name || IID,

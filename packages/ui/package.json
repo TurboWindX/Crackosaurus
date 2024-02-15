@@ -13,6 +13,7 @@
     "./dialog": "./src/dialog.tsx",
     "./header": "./src/header.tsx",
     "./projects": "./src/projects.tsx",
+    "./requests": "./src/requests.tsx",
     "./status": "./src/status.tsx",
     "./time": "./src/time.tsx",
     "./users": "./src/users.tsx"

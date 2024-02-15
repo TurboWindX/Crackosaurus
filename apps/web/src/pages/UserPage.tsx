@@ -7,13 +7,15 @@ import { Button } from "@repo/shadcn/components/ui/button";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
+import { useLoading } from "@repo/ui/requests";
 import { useUsers } from "@repo/ui/users";
 
 interface ProjectDataTableProps {
   values: GetUserResponse["response"]["projects"];
+  loading?: boolean;
 }
 
-const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
+const ProjectDataTable = ({ values, loading }: ProjectDataTableProps) => {
   const navigate = useNavigate();
 
   return (
@@ -23,6 +25,7 @@ const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
       head={["Project"]}
       rowClick={({ PID }) => navigate(`/projects/${PID}`)}
       row={({ name }) => [name]}
+      loading={loading}
       valueKey={({ PID }) => PID}
       searchFilter={({ name }, search) =>
         name.toLowerCase().includes(search.toLowerCase())
@@ -38,6 +41,9 @@ export const UserPage = () => {
   const navigate = useNavigate();
 
   const [removeOpen, setRemoveOpen] = useState(false);
+
+  const { getLoading } = useLoading();
+  const loading = getLoading("user-one");
 
   useEffect(() => {
     loadOne(userID ?? "");
@@ -97,7 +103,7 @@ export const UserPage = () => {
           )}
         </div>
       </div>
-      <ProjectDataTable values={one?.projects} />
+      <ProjectDataTable values={one?.projects} loading={loading} />
     </div>
   );
 };

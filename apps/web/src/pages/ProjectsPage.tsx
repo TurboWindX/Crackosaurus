@@ -7,6 +7,7 @@ import { Input } from "@repo/shadcn/components/ui/input";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useProjects } from "@repo/ui/projects";
+import { useLoading } from "@repo/ui/requests";
 import { RelativeTime } from "@repo/ui/time";
 
 export const ProjectsPage = () => {
@@ -19,6 +20,9 @@ export const ProjectsPage = () => {
   });
 
   const hasCollaborators = hasPermission("projects:users:get");
+
+  const { getLoading } = useLoading();
+  const loading = getLoading("project-many");
 
   useEffect(() => {
     loadProjects();
@@ -36,6 +40,7 @@ export const ProjectsPage = () => {
         ]}
         valueKey={({ PID }) => PID}
         sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
+        loading={loading}
         rowClick={({ PID }) => navigate(`/projects/${PID}`)}
         row={({ name, members, updatedAt }) => [
           name,

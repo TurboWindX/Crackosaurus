@@ -15,7 +15,9 @@ import { Input } from "@repo/shadcn/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
@@ -24,6 +26,7 @@ import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useProjects } from "@repo/ui/projects";
+import { useLoading } from "@repo/ui/requests";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 import { UserSelect } from "@repo/ui/users";
@@ -31,9 +34,10 @@ import { UserSelect } from "@repo/ui/users";
 interface HashDataTableProps {
   projectID: string;
   values: GetProjectResponse["response"]["hashes"];
+  loading?: boolean;
 }
 
-const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
+const HashDataTable = ({ projectID, values, loading }: HashDataTableProps) => {
   const { hasPermission } = useAuth();
   const { addHashes, removeHashes } = useProjects();
 
@@ -49,6 +53,7 @@ const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
       values={values ?? []}
       head={["Hash", "Type", "Status"]}
       valueKey={({ HID }) => HID}
+      loading={loading}
       row={({ hash, hashType, status }) => [
         hash,
         hashType,
@@ -92,9 +97,12 @@ const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
               <SelectValue placeholder="Type" />
             </SelectTrigger>
             <SelectContent>
-              {HASH_TYPES.map((type) => (
-                <SelectItem value={type}>{type}</SelectItem>
-              ))}
+              <SelectGroup>
+                <SelectLabel>Type</SelectLabel>
+                {HASH_TYPES.map((type) => (
+                  <SelectItem value={type}>{type}</SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
         </>
@@ -105,9 +113,10 @@ const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
 
 interface JobDataTableProps {
   values: GetProjectJob[];
+  loading?: boolean;
 }
 
-const JobDataTable = ({ values }: JobDataTableProps) => {
+const JobDataTable = ({ values, loading }: JobDataTableProps) => {
   const navigate = useNavigate();
 
   return (
@@ -117,6 +126,7 @@ const JobDataTable = ({ values }: JobDataTableProps) => {
       head={["Job", "Instance", "Status", "Last Updated"]}
       valueKey={({ JID }) => JID}
       rowClick={({ instance }) => navigate(`/instances/${instance.IID}`)}
+      loading={loading}
       sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
       row={({ JID, status, updatedAt, instance }) => [
         JID,
@@ -133,9 +143,10 @@ const JobDataTable = ({ values }: JobDataTableProps) => {
 interface UserDataTableProps {
   projectID: string;
   values: GetProjectResponse["response"]["members"];
+  loading?: boolean;
 }
 
-const UserDataTable = ({ projectID, values }: UserDataTableProps) => {
+const UserDataTable = ({ projectID, values, loading }: UserDataTableProps) => {
   const { hasPermission } = useAuth();
   const { addUsers, removeUsers } = useProjects();
 
@@ -148,9 +159,11 @@ const UserDataTable = ({ projectID, values }: UserDataTableProps) => {
       head={["User"]}
       valueKey={({ ID }) => ID}
       row={({ username }) => [username]}
+      loading={loading}
       searchFilter={({ username }, search) =>
         username.toLowerCase().includes(search)
       }
+      sort={(a, b) => a.username.localeCompare(b.username)}
       addValidate={() => addUser !== null}
       addDialog={
         <>
@@ -207,19 +220,32 @@ export const ProjectPage = () => {
     [jobs]
   );
 
+  const { getLoading } = useLoading();
+  const loading = getLoading("project-one");
+
   useEffect(() => {
     loadOne(projectID ?? "");
   }, [projectID]);
 
   const tables = [
-    hasPermission("jobs:get") && activeJobs.length > 0 && (
-      <JobDataTable key="jobs" values={activeJobs} />
+    hasPermission("instances:jobs:get") && activeJobs.length > 0 && (
+      <JobDataTable key="jobs" values={activeJobs} loading={loading} />
     ),
     hasPermission("hashes:get") && (
-      <HashDataTable key="hashes" projectID={projectID ?? ""} values={hashes} />
+      <HashDataTable
+        key="hashes"
+        projectID={projectID ?? ""}
+        values={hashes}
+        loading={loading}
+      />
     ),
     hasPermission("projects:users:get") && (
-      <UserDataTable key="users" projectID={projectID ?? ""} values={members} />
+      <UserDataTable
+        key="users"
+        projectID={projectID ?? ""}
+        values={members}
+        loading={loading}
+      />
     ),
   ];
 

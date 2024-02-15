@@ -4,18 +4,19 @@ import {
   AddHashResponse,
   AddUserToProjectResponse,
   AuthUserResponse,
+  CreateInstanceJobRequest,
   CreateInstanceRequest,
   CreateInstanceResponse,
-  CreateProjectJobsResponse,
   CreateProjectRequest,
   CreateProjectResponse,
+  DeleteInstanceJobRequest,
   DeleteInstanceResponse,
-  DeleteProjectJobResponse,
   DeleteProjectResponse,
   DeleteUserResponse,
   GetInstanceListResponse,
   GetInstanceResponse,
   GetInstancesResponse,
+  GetProjectListResponse,
   GetProjectResponse,
   GetProjectsResponse,
   GetUserListResponse,
@@ -148,19 +149,18 @@ export async function deleteInstance(
   return apiDelete(`/instances/${instanceID}`);
 }
 
-export async function addProjectJobs(
-  id: string,
-  instanceID: string
-): APIResponse<CreateProjectJobsResponse> {
-  return apiPost(`/projects/${id}/jobs`, {
-    instanceID,
-  });
+export async function createInstanceJob(
+  instanceID: string,
+  req: CreateInstanceJobRequest["Body"]
+): APIResponse<CreateInstanceJobRequest> {
+  return apiPost(`/instances/${instanceID}/jobs`, req);
 }
 
-export async function deleteProjectJobs(
-  id: string
-): APIResponse<DeleteProjectJobResponse> {
-  return apiDelete(`/projects/${id}/jobs`);
+export async function deleteInstanceJob(
+  instanceID: string,
+  jobID: string
+): APIResponse<DeleteInstanceJobRequest> {
+  return apiDelete(`/instances/${instanceID}/jobs/${jobID}`);
 }
 
 export async function deleteUser(id: string): APIResponse<DeleteUserResponse> {
@@ -173,6 +173,10 @@ export async function getProject(id: string): APIResponse<GetProjectResponse> {
 
 export async function getProjects(): APIResponse<GetProjectsResponse> {
   return apiGet("/projects");
+}
+
+export async function getProjectList(): APIResponse<GetProjectListResponse> {
+  return apiGet("/projects/list");
 }
 
 export async function createProject(

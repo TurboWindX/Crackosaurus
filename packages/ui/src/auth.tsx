@@ -12,10 +12,9 @@ import {
 } from "@repo/api";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
 
-import { useRequests } from "./requests";
+import { useLoading } from "./requests";
 
 export interface AuthInterface {
-  readonly isLoading: boolean;
   readonly isAuthenticated: boolean;
   readonly uid: string;
   readonly username: string;
@@ -27,7 +26,6 @@ export interface AuthInterface {
 }
 
 const AuthContext = createContext<AuthInterface>({
-  isLoading: true,
   isAuthenticated: false,
   uid: "",
   username: "",
@@ -41,22 +39,22 @@ const AuthContext = createContext<AuthInterface>({
 export function AuthProvider({ children }: { children: any }) {
   const { toast } = useToast();
 
-  const [isLoading, setLoading] = useState(true);
+  const { setLoading } = useLoading();
   const [data, setData] = useState<AuthUserResponse | null>(null);
 
   useEffect(() => {
-    setLoading(true);
+    setLoading("auth", true);
 
     (async () => {
       const data = await authUser();
       setData(data);
 
-      setLoading(false);
+      setLoading("auth", false);
     })();
   }, []);
 
   async function authInit(username: string, password: string) {
-    setLoading(true);
+    setLoading("auth", true);
 
     const { response, error } = await init({ username, password });
 
@@ -74,13 +72,13 @@ export function AuthProvider({ children }: { children: any }) {
       });
     }
 
-    setLoading(false);
+    setLoading("auth", false);
 
     return error === undefined;
   }
 
   async function authLogin(username: string, password: string) {
-    setLoading(true);
+    setLoading("auth", true);
 
     const { response, error } = await login({ username, password });
 
@@ -102,11 +100,12 @@ export function AuthProvider({ children }: { children: any }) {
       const data = await authUser();
       setData(data);
     }
-    setLoading(false);
+
+    setLoading("auth", false);
   }
 
   async function authLogout() {
-    setLoading(true);
+    setLoading("auth", true);
 
     const { response, error } = await logout();
 
@@ -126,7 +125,7 @@ export function AuthProvider({ children }: { children: any }) {
       setData(null);
     }
 
-    setLoading(false);
+    setLoading("auth", false);
   }
 
   const value: AuthInterface = {
@@ -135,11 +134,10 @@ export function AuthProvider({ children }: { children: any }) {
     logout: authLogout,
     invalidate: () => {
       setData(null);
-      setLoading(false);
+      setLoading("auth", false);
     },
     uid: data?.uid ?? "",
     username: data?.username ?? "username",
-    isLoading,
     isAuthenticated: data?.uid !== undefined,
     hasPermission: (permission: PermissionType) =>
       hasPermission(data?.permissions ?? "", permission),
@@ -159,18 +157,21 @@ export function PermissionRoute({
   permission: PermissionType;
   children: any;
 }) {
-  const { isLoading, hasPermission } = useAuth();
+  const { getLoading } = useLoading();
+  const { hasPermission } = useAuth();
 
-  if (!isLoading && !hasPermission(permission))
+  if (!getLoading("auth") && !hasPermission(permission))
     return <Navigate to="/" replace />;
 
   return children;
 }
 
 export function AuthRoute({ children }: { children: any }) {
-  const { isLoading, isAuthenticated } = useAuth();
+  const { getLoading } = useLoading();
+  const { isAuthenticated } = useAuth();
 
-  if (!isLoading && !isAuthenticated) return <Navigate to="/login" replace />;
+  if (!getLoading("auth") && !isAuthenticated)
+    return <Navigate to="/login" replace />;
 
   return children;
 }

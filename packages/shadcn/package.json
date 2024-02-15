@@ -18,6 +18,7 @@
     "./components/ui/drawer": "./src/components/ui/drawer.tsx",
     "./components/ui/input": "./src/components/ui/input.tsx",
     "./components/ui/menubar": "./src/components/ui/menubar.tsx",
+    "./components/ui/multi-select": "./src/components/ui/multi-select.tsx",
     "./components/ui/navigation-menu": "./src/components/ui/navigation-menu.tsx",
     "./components/ui/pagination": "./src/components/ui/pagination.tsx",
     "./components/ui/select": "./src/components/ui/select.tsx",

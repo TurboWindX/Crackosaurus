@@ -109,6 +109,7 @@ export interface DataTableProps<T> {
   head: (string | null)[];
   row: (value: T) => any[];
   valueKey: (value: T) => string | number;
+  loading?: boolean;
   sort?: (a: T, b: T) => number;
   rowClick?: (value: T) => void;
   addDialog?: any;
@@ -136,6 +137,7 @@ export function DataTable<T>({
   searchFilter,
   noAdd,
   noRemove,
+  loading,
 }: DataTableProps<T>) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
@@ -249,51 +251,104 @@ export function DataTable<T>({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {searchValues.length === 0 ? (
-              <TableRow key="none">
-                {hasSelect && <TableCell />}
-                <TableCell>No {plural}</TableCell>
-                {new Array(head.filter((label) => label).length - 1)
-                  .fill(0)
-                  .map((_) => (
-                    <TableCell />
-                  ))}
-              </TableRow>
-            ) : (
-              searchValues.map((value) => (
-                <TableRow key={valueKey(value)}>
-                  {hasSelect && (
-                    <TableCell key="select">
-                      <Checkbox
-                        checked={selects[valueKey(value)]}
-                        onCheckedChange={(state) =>
-                          setSelects({
-                            ...selects,
-                            [valueKey(value)]: !!state.valueOf(),
-                          })
-                        }
-                      />
-                    </TableCell>
-                  )}
-                  {row(value).map((column, index) =>
-                    column ? (
-                      <TableCell
-                        key={column}
-                        className={`${index === 0 ? "ui-font-medium" : ""} ${
-                          rowClick ? "ui-cursor-pointer" : ""
-                        }`}
-                        onClick={() => rowClick?.(value)}
-                      >
-                        {column}
-                      </TableCell>
-                    ) : null
-                  )}
-                </TableRow>
-              ))
-            )}
+            <DataTableBody
+              values={searchValues}
+              head={head}
+              row={row}
+              rowClick={rowClick}
+              hasSelect={hasSelect}
+              plural={plural}
+              valueKey={valueKey}
+              selects={selects}
+              setSelects={setSelects}
+              loading={loading}
+            />
           </TableBody>
         </Table>
       </Card>
     </div>
   );
 }
+
+export interface DataTableBodyProps<T> {
+  values: T[];
+  head: (string | null)[];
+  hasSelect: boolean;
+  plural: string;
+  valueKey: (value: T) => string | number;
+  selects: Record<string | number, boolean>;
+  setSelects: (data: Record<string | number, boolean>) => void;
+  row: (value: T) => any[];
+  rowClick?: (value: T) => void;
+  loading?: boolean;
+}
+
+const DataTableBody = <T,>({
+  values,
+  hasSelect,
+  plural,
+  head,
+  valueKey,
+  selects,
+  setSelects,
+  row,
+  rowClick,
+  loading,
+}: DataTableBodyProps<T>) => {
+  if (loading)
+    return (
+      <TableRow key="loading">
+        {hasSelect && <TableCell />}
+        <TableCell>Loading</TableCell>
+        {new Array(head.filter((label) => label).length - 1)
+          .fill(0)
+          .map((_) => (
+            <TableCell />
+          ))}
+      </TableRow>
+    );
+
+  if (values.length === 0)
+    return (
+      <TableRow key="none">
+        {hasSelect && <TableCell />}
+        <TableCell>No {plural}</TableCell>
+        {new Array(head.filter((label) => label).length - 1)
+          .fill(0)
+          .map((_) => (
+            <TableCell />
+          ))}
+      </TableRow>
+    );
+
+  return values.map((value) => (
+    <TableRow key={valueKey(value)}>
+      {hasSelect && (
+        <TableCell key="select">
+          <Checkbox
+            checked={selects[valueKey(value)]}
+            onCheckedChange={(state) =>
+              setSelects({
+                ...selects,
+                [valueKey(value)]: !!state.valueOf(),
+              })
+            }
+          />
+        </TableCell>
+      )}
+      {row(value).map((column, index) =>
+        column ? (
+          <TableCell
+            key={column}
+            className={`${index === 0 ? "ui-font-medium" : ""} ${
+              rowClick ? "ui-cursor-pointer" : ""
+            }`}
+            onClick={() => rowClick?.(value)}
+          >
+            {column}
+          </TableCell>
+        ) : null
+      )}
+    </TableRow>
+  ));
+};
