@@ -1,10 +1,8 @@
-import { Hash, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 
 import { HASH_TYPES } from "@repo/api";
+import { APIError } from "@repo/plugins/error";
 
-import { APIError } from "../plugins/errors";
-
-//takes in a userID+projectID, add a hash to the project if user is part of the project or admin.
 export async function addHash(
   prisma: PrismaClient,
   userID: string,

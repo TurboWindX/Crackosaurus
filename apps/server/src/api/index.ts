@@ -1,59 +1,16 @@
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 
-// Import the checkCreds function
 import {
-  AddHashRequest,
-  AddHashResponse,
-  AddUserToProjectRequest,
-  AddUserToProjectResponse,
-  ChangePasswordRequest,
-  ChangePasswordResponse,
-  CreateInstanceJobRequest,
-  CreateInstanceRequest,
-  CreateInstanceResponse,
-  CreateProjectRequest,
-  CreateProjectResponse,
-  DeleteInstanceJobRequest,
-  DeleteInstanceRequest,
-  DeleteInstanceResponse,
-  DeleteProjectRequest,
-  DeleteProjectResponse,
-  DeleteUserRequest,
-  DeleteUserResponse,
-  GetInstanceListRequest,
-  GetInstanceListResponse,
-  GetInstanceRequest,
-  GetInstanceResponse,
-  GetInstancesRequest,
-  GetInstancesResponse,
-  GetProjectListRequest,
-  GetProjectListResponse,
-  GetProjectRequest,
-  GetProjectResponse,
-  GetProjectsRequest,
-  GetProjectsResponse,
-  GetUserListRequest,
-  GetUserListResponse,
-  GetUserRequest,
-  GetUserResponse,
-  GetUsersRequest,
-  GetUsersResponse,
-  InitRequest,
-  InitResponse,
-  LoginRequest,
-  LoginResponse,
-  LogoutRequest,
-  LogoutResponse,
+  HTTPMethod,
   PermissionType,
-  RegisterRequest,
-  RegisterResponse,
-  RemoveHashRequest,
-  RemoveUserFromProjectRequest,
-  RemoveUserFromProjectResponse,
+  Route,
+  RouteRequest,
+  RouteResponse,
   hasPermission,
 } from "@repo/api";
+import { ROUTES } from "@repo/api/server";
+import { APIError, AuthError, errorHandler } from "@repo/plugins/error";
 
-import { APIError, AuthError, errorHandler } from "../plugins/errors";
 import { addHash, removeHash } from "./hashes";
 import {
   createInstance,
@@ -62,6 +19,7 @@ import {
   getInstanceList,
   getInstances,
 } from "./instances";
+import { createJob, deleteJob } from "./jobs";
 import {
   addUserToProject,
   createProject,
@@ -124,61 +82,91 @@ function checkPermission(permission: PermissionType) {
   };
 }
 
-export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
-  instance.setErrorHandler(errorHandler);
+function validate(validator: { parse?: (data: any) => any }) {
+  return (
+    request: FastifyRequest,
+    _reply: FastifyReply,
+    next: (err?: Error | undefined) => void
+  ) => {
+    try {
+      if (validator.parse) validator.parse(request.body ?? {});
+    } catch (e) {
+      throw new APIError("Invalid input");
+    }
 
-  instance.post<InitRequest>("/init", async (request) => {
-    if (!(await checkNoUsers(request.server.prisma)))
-      throw new APIError("App is already initiated");
+    next();
+  };
+}
 
-    const { username, password } = request.body;
-    if (username === undefined || password === undefined)
-      throw new APIError("Invalid user config");
+type RouteHandler<TRoute> = TRoute extends Route<
+  infer TPath,
+  infer TReq,
+  infer TRes
+>
+  ? {
+      checks?: ((...req: any) => void)[];
+      handler: (
+        request: FastifyRequest<RouteRequest<TRoute>>
+      ) => Promise<RouteResponse<TRoute>["response"]>;
+    }
+  : never;
 
-    await createUser(request.server.prisma, username, password, ["root"]);
+const ROUTER: {
+  [key in keyof typeof ROUTES]: RouteHandler<(typeof ROUTES)[key]>;
+} = {
+  ping: {
+    handler: async () => {
+      return "pong";
+    },
+  },
+  init: {
+    handler: async (request) => {
+      if (!(await checkNoUsers(request.server.prisma)))
+        throw new APIError("App is already initiated");
 
-    return {
-      response: "First admin user has been created",
-    } satisfies InitResponse;
-  });
+      const { username, password } = request.body;
 
-  instance.post<LoginRequest>("/auth/login", async (request) => {
-    const { username, password } = request.body;
-    if (username === undefined || password === undefined)
-      throw new AuthError("Login failed");
+      await createUser(request.server.prisma, username, password, ["root"]);
 
-    const user = await getAuthenticatedUser(
-      request.server.prisma,
-      username,
-      password
-    );
-    if (!user) throw new APIError("Login failed");
+      return "First admin user has been created";
+    },
+  },
+  login: {
+    handler: async (request) => {
+      const { username, password } = request.body;
 
-    setSession(request, user);
+      const user = await getAuthenticatedUser(
+        request.server.prisma,
+        username,
+        password
+      );
+      if (!user) throw new APIError("Login failed");
 
-    return { response: "Login successful" } satisfies LoginResponse;
-  });
+      setSession(request, user);
 
-  instance.get<LogoutRequest>("/auth/logout", async (request) => {
-    await request.session.destroy();
+      return "Login successful";
+    },
+  },
+  logout: {
+    handler: async (request) => {
+      await request.session.destroy();
 
-    return {
-      response: "Logout successful",
-    } satisfies LogoutResponse;
-  });
-
-  instance.get("/auth/user", { preHandler: [checkAuth] }, (request) => {
-    return {
-      uid: request.session.uid,
-      username: request.session.username,
-      permissions: request.session.permissions.split(" "),
-    };
-  });
-
-  instance.get<GetUserRequest>(
-    "/users/:userID",
-    { preHandler: [checkAuth] },
-    async (request) => {
+      return "Logout successful";
+    },
+  },
+  authUser: {
+    checks: [checkAuth],
+    handler: async (request) => {
+      return {
+        uid: request.session.uid,
+        username: request.session.username,
+        permissions: request.session.permissions.split(" ") as PermissionType[],
+      };
+    },
+  },
+  getUser: {
+    checks: [checkAuth],
+    handler: async (request) => {
       const { userID } = request.params;
 
       if (
@@ -187,44 +175,30 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
       )
         throw new APIError("Cannot get user");
 
-      return {
-        response: await getUser(
-          request.server.prisma,
-          userID,
-          request.session.uid,
-          hasPermission(request.session.permissions, "projects:get")
-        ),
-      } satisfies GetUserResponse;
-    }
-  );
-
-  instance.get<GetUsersRequest>(
-    "/users",
-    { preHandler: [checkPermission("users:get")] },
-    async (request) => {
-      return {
-        response: await getUsers(request.server.prisma),
-      } satisfies GetUsersResponse;
-    }
-  );
-
-  instance.get<GetUserListRequest>(
-    "/users/list",
-    { preHandler: [checkPermission("users:list")] },
-    async (request) => {
-      return {
-        response: await getUserList(request.server.prisma),
-      } satisfies GetUserListResponse;
-    }
-  );
-
-  instance.post<RegisterRequest>(
-    "/users",
-    { preHandler: [checkPermission("users:add")] },
-    async (request) => {
+      return await getUser(
+        request.server.prisma,
+        userID,
+        request.session.uid,
+        hasPermission(request.session.permissions, "projects:get")
+      );
+    },
+  },
+  getUsers: {
+    checks: [checkAuth],
+    handler: async (request) => {
+      return await getUsers(request.server.prisma);
+    },
+  },
+  getUserList: {
+    checks: [checkPermission("users:list")],
+    handler: async (request) => {
+      return await getUserList(request.server.prisma);
+    },
+  },
+  register: {
+    checks: [checkPermission("users:add")],
+    handler: async (request) => {
       const { username, password, permissions } = request.body;
-      if (username === undefined || password === undefined)
-        throw new APIError("Invalid user config");
 
       if (
         (permissions ?? []).some(
@@ -243,14 +217,12 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         permissions ?? []
       );
 
-      return { response: "User has been created" } satisfies RegisterResponse;
-    }
-  );
-
-  instance.delete<DeleteUserRequest>(
-    "/users/:userID",
-    { preHandler: [checkAuth] },
-    async (request) => {
+      return "User has been created";
+    },
+  },
+  deleteUser: {
+    checks: [checkAuth],
+    handler: async (request) => {
       const { userID } = request.params;
 
       if (
@@ -261,21 +233,14 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
 
       await deleteUser(request.server.prisma, userID);
 
-      return {
-        response: "User has been obliterated into oblivion",
-      } satisfies DeleteUserResponse;
-    }
-  );
-
-  instance.put<ChangePasswordRequest>(
-    "/users/:userID/password",
-    { preHandler: [checkAuth] },
-    async (request) => {
+      return "User has been obliterated into oblivion";
+    },
+  },
+  changePassword: {
+    checks: [checkAuth],
+    handler: async (request) => {
       const { userID } = request.params;
-
       const { oldPassword, newPassword } = request.body;
-      if (oldPassword === undefined || newPassword === undefined)
-        throw new APIError("Invalid user config");
 
       const bypassCheck = hasPermission(
         request.session.permissions,
@@ -292,84 +257,83 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         bypassCheck
       );
 
-      return {
-        response: "Password has been changed",
-      } satisfies ChangePasswordResponse;
-    }
-  );
-
-  instance.get<GetProjectsRequest>(
-    "/projects",
-    { preHandler: [checkAuth] },
-    async (request) => {
-      let response: GetProjectsResponse["response"] = await getUserProjects(
+      return "Password has been changed";
+    },
+  },
+  getProjects: {
+    checks: [checkAuth],
+    handler: async (request) => {
+      const response = await getUserProjects(
         request.server.prisma,
         request.session.uid,
         hasPermission(request.session.permissions, "projects:get")
       );
 
+      let newResponse;
       if (!hasPermission(request.session.permissions, "projects:users:get"))
-        response = response.map((project) => ({
+        newResponse = response.map((project) => ({
           ...project,
           members: undefined,
         }));
+      else newResponse = response;
 
-      return { response } satisfies GetProjectsResponse;
-    }
-  );
-
-  instance.get<GetProjectListRequest>(
-    "/projects/list",
-    { preHandler: [checkAuth] },
-    async (request) => {
-      let response: GetProjectListResponse["response"] =
-        await getUserProjectList(
-          request.server.prisma,
-          request.session.uid,
-          hasPermission(request.session.permissions, "projects:get")
-        );
-
-      return { response } satisfies GetProjectListResponse;
-    }
-  );
-
-  instance.get<GetProjectRequest>(
-    "/projects/:projectID",
-    { preHandler: [checkAuth] },
-    async (request) => {
+      return newResponse;
+    },
+  },
+  getProjectList: {
+    checks: [checkAuth],
+    handler: async (request) => {
+      return await getUserProjectList(
+        request.server.prisma,
+        request.session.uid,
+        hasPermission(request.session.permissions, "projects:get")
+      );
+    },
+  },
+  getProject: {
+    checks: [checkAuth],
+    handler: async (request) => {
       const { projectID } = request.params;
 
-      let response: GetProjectResponse["response"] = await getUserProject(
+      const response = await getUserProject(
         request.server.prisma,
         projectID,
         request.session.uid,
         hasPermission(request.session.permissions, "projects:get")
       );
 
+      let newResponse;
       if (!hasPermission(request.session.permissions, "projects:users:get"))
-        delete response.members;
+        newResponse = {
+          ...response,
+          users: undefined,
+        };
+      else newResponse = response;
 
       if (!hasPermission(request.session.permissions, "hashes:get"))
-        delete response.hashes;
+        newResponse = {
+          ...newResponse,
+          hashes: undefined,
+        };
       else if (
         !hasPermission(request.session.permissions, "instances:get") &&
         !hasPermission(request.session.permissions, "instances:jobs:get")
       )
-        response.hashes = response.hashes?.map((hash) => {
-          hash.jobs = [];
-          return hash;
-        });
+        newResponse = {
+          ...newResponse,
+          hashes: newResponse.hashes?.map((hash) => ({
+            ...hash,
+            jobs: undefined,
+          })),
+        };
 
-      return { response } satisfies GetProjectResponse;
-    }
-  );
-
-  instance.post<CreateProjectRequest>(
-    "/projects",
-    { preHandler: [checkPermission("projects:add")] },
-    async (request) => {
+      return newResponse;
+    },
+  },
+  createProject: {
+    checks: [checkPermission("projects:add")],
+    handler: async (request) => {
       const { projectName } = request.body;
-      if (projectName === undefined) throw new APIError("Invalid project name");
 
       await createProject(
         request.server.prisma,
@@ -377,16 +341,12 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         request.session.uid
       );
 
-      return {
-        response: "Project has been created",
-      } satisfies CreateProjectResponse;
-    }
-  );
-
-  instance.delete<DeleteProjectRequest>(
-    "/projects/:projectID",
-    { preHandler: [checkAuth] },
-    async (request) => {
+      return "Project has been created";
+    },
+  },
+  deleteProject: {
+    checks: [checkAuth],
+    handler: async (request) => {
       const { projectID } = request.params;
 
       await deleteProject(
@@ -396,16 +356,12 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         hasPermission(request.session.permissions, "projects:remove")
       );
 
-      return {
-        response: "Project has been deleted",
-      } satisfies DeleteProjectResponse;
-    }
-  );
-
-  instance.post<AddUserToProjectRequest>(
-    "/projects/:projectID/users/:userID",
-    { preHandler: [checkPermission("projects:users:add")] },
-    async (request) => {
+      return "Project has been deleted";
+    },
+  },
+  addUserToProject: {
+    checks: [checkPermission("projects:users:add")],
+    handler: async (request) => {
       const { projectID, userID } = request.params;
 
       await addUserToProject(
@@ -416,16 +372,12 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         hasPermission(request.session.permissions, "root")
       );
 
-      return {
-        response: "User has been added to the project",
-      } satisfies AddUserToProjectResponse;
-    }
-  );
-
-  instance.delete<RemoveUserFromProjectRequest>(
-    "/projects/:projectID/users/:userID",
-    { preHandler: [checkPermission("projects:users:remove")] },
-    async (request) => {
+      return "User has been added to the project";
+    },
+  },
+  removeUserFromProject: {
+    checks: [checkPermission("projects:users:remove")],
+    handler: async (request) => {
       const { projectID, userID } = request.params;
 
       await removeUserFromProject(
@@ -436,21 +388,14 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         hasPermission(request.session.permissions, "root")
       );
 
-      return {
-        response: "User has been removed from the project",
-      } satisfies RemoveUserFromProjectResponse;
-    }
-  );
-
-  instance.post<AddHashRequest>(
-    "/projects/:projectID/hashes",
-    { preHandler: [checkPermission("hashes:add")] },
-    async (request) => {
+      return "User has been removed from the project";
+    },
+  },
+  addHash: {
+    checks: [checkPermission("hashes:add")],
+    handler: async (request) => {
       const { projectID } = request.params;
-
       const { hash, hashType } = request.body;
-      if (hash === undefined || hashType === undefined)
-        throw new APIError("Invalid hash config");
 
       await addHash(
         request.server.prisma,
@@ -461,14 +406,12 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         hasPermission(request.session.permissions, "root")
       );
 
-      return { response: "Hash has been added" } satisfies AddHashResponse;
-    }
-  );
-
-  instance.delete<RemoveHashRequest>(
-    "/projects/:projectID/hashes/:hashID",
-    { preHandler: [checkPermission("hashes:remove")] },
-    async (request) => {
+      return "Hash has been added";
+    },
+  },
+  removeHash: {
+    checks: [checkPermission("hashes:remove")],
+    handler: async (request) => {
       const { projectID, hashID } = request.params;
 
       await removeHash(
@@ -479,75 +422,45 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         hasPermission(request.session.permissions, "root")
       );
 
-      return { response: "Hash has been removed" } satisfies AddHashResponse;
-    }
-  );
-
-  instance.get<GetInstancesRequest>(
-    "/instances",
-    {
-      preHandler: [checkPermission("instances:get")],
+      return "Hash has been removed";
     },
-    async (request) => {
-      const response = await getInstances(request.server.prisma);
-
-      return { response } satisfies GetInstancesResponse;
-    }
-  );
-
-  instance.get<GetInstanceListRequest>(
-    "/instances/list",
-    {
-      preHandler: [checkPermission("instances:list")],
+  },
+  getInstances: {
+    checks: [checkPermission("instances:get")],
+    handler: async (request) => {
+      return await getInstances(request.server.prisma);
     },
-    async (request) => {
-      const response = await getInstanceList(request.server.prisma);
-
-      return { response } satisfies GetInstanceListResponse;
-    }
-  );
-
-  instance.post<CreateInstanceRequest>(
-    "/instances",
-    {
-      preHandler: [checkPermission("instances:add")],
+  },
+  getInstanceList: {
+    checks: [checkPermission("instances:list")],
+    handler: async (request) => {
+      return await getInstanceList(request.server.prisma);
     },
-    async (request) => {
+  },
+  createInstance: {
+    checks: [checkPermission("instances:add")],
+    handler: async (request) => {
       const { name, type } = request.body;
 
-      const instanceID = await createInstance(
+      return await createInstance(
         request.server.prisma,
         request.server.cluster,
         name,
         type
       );
-
-      return { response: instanceID } satisfies CreateInstanceResponse;
-    }
-  );
-
-  instance.get<GetInstanceRequest>(
-    "/instances/:instanceID",
-    {
-      preHandler: [checkPermission("instances:get")],
     },
-    async (request) => {
+  },
+  getInstance: {
+    checks: [checkPermission("instances:get")],
+    handler: async (request) => {
       const { instanceID } = request.params;
 
-      const response = await getInstance(request.server.prisma, instanceID);
-
-      return {
-        response,
-      } satisfies GetInstanceResponse;
-    }
-  );
-
-  instance.delete<DeleteInstanceRequest>(
-    "/instances/:instanceID",
-    {
-      preHandler: [checkPermission("instances:remove")],
+      return await getInstance(request.server.prisma, instanceID);
     },
-    async (request) => {
+  },
+  deleteInstance: {
+    checks: [checkPermission("instances:remove")],
+    handler: async (request) => {
       const { instanceID } = request.params;
 
       await deleteInstance(
@@ -556,38 +469,61 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         instanceID
       );
 
-      return {
-        response: "Instance has been destroy",
-      } satisfies DeleteInstanceResponse;
-    }
-  );
-
-  instance.post<CreateInstanceJobRequest>(
-    "/instances/:instanceID/jobs",
-    {
-      preHandler: [checkPermission("instances:jobs:add")],
+      return "Instance has been destroy";
     },
-    async (request) => {
+  },
+  createInstanceJob: {
+    checks: [checkPermission("instances:jobs:add")],
+    handler: async (request) => {
       const { instanceID } = request.params;
+      const { hashType, projectIDs } = request.body;
 
-      return "";
-    }
-  );
+      const jobID = await createJob(
+        request.server.prisma,
+        request.server.cluster,
+        instanceID,
+        hashType,
+        projectIDs,
+        request.session.uid,
+        hasPermission(request.session.permissions, "root")
+      );
 
-  instance.delete<DeleteInstanceJobRequest>(
-    "/instances/:instanceID/jobs/:jobID",
-    {
-      preHandler: [checkPermission("instances:jobs:remove")],
+      return jobID;
     },
-    async (request) => {
+  },
+  deleteInstanceJob: {
+    checks: [checkPermission("instances:jobs:remove")],
+    handler: async (request) => {
       const { instanceID, jobID } = request.params;
 
-      return "";
-    }
-  );
+      await deleteJob(
+        request.server.prisma,
+        request.server.cluster,
+        instanceID,
+        jobID
+      );
 
-  //Epic GigaCHAD route holding the whole app together. Should not be deleted under any circumstance.
-  instance.get("/ping", () => "pong");
+      return "Job destroyed";
+    },
+  },
+} as const;
+
+export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
+  instance.setErrorHandler(errorHandler);
+
+  for (const [key, route] of Object.entries(ROUTES)) {
+    const method = route.method.toLowerCase() as Lowercase<HTTPMethod>;
+    const router = ROUTER[key as keyof typeof ROUTES];
+
+    instance[method](
+      route.path,
+      {
+        preHandler: router.checks,
+        preValidation: [validate(route.request)],
+      },
+      async (request: any) => ({ response: await router.handler(request) })
+    );
+  }
 
   next();
 };

@@ -30,7 +30,7 @@ export class DebugCluster extends Cluster {
 
     console.log(`Queued job ${jobID} on ${instanceID}`);
 
-    return instanceID;
+    return jobID;
   }
 
   public async deleteJob(instanceId: string, jobId: string): Promise<boolean> {

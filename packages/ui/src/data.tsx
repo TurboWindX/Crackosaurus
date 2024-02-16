@@ -109,7 +109,7 @@ export interface DataTableProps<T> {
   head: (string | null)[];
   row: (value: T) => any[];
   valueKey: (value: T) => string | number;
-  loading?: boolean;
+  isLoading?: boolean;
   sort?: (a: T, b: T) => number;
   rowClick?: (value: T) => void;
   addDialog?: any;
@@ -137,7 +137,7 @@ export function DataTable<T>({
   searchFilter,
   noAdd,
   noRemove,
-  loading,
+  isLoading,
 }: DataTableProps<T>) {
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
@@ -261,7 +261,7 @@ export function DataTable<T>({
               valueKey={valueKey}
               selects={selects}
               setSelects={setSelects}
-              loading={loading}
+              isLoading={isLoading}
             />
           </TableBody>
         </Table>
@@ -280,7 +280,7 @@ export interface DataTableBodyProps<T> {
   setSelects: (data: Record<string | number, boolean>) => void;
   row: (value: T) => any[];
   rowClick?: (value: T) => void;
-  loading?: boolean;
+  isLoading?: boolean;
 }
 
 const DataTableBody = <T,>({
@@ -293,9 +293,9 @@ const DataTableBody = <T,>({
   setSelects,
   row,
   rowClick,
-  loading,
+  isLoading,
 }: DataTableBodyProps<T>) => {
-  if (loading)
+  if (isLoading)
     return (
       <TableRow key="loading">
         {hasSelect && <TableCell />}

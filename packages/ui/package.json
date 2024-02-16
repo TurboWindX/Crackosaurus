@@ -12,8 +12,6 @@
     "./data": "./src/data.tsx",
     "./dialog": "./src/dialog.tsx",
     "./header": "./src/header.tsx",
-    "./projects": "./src/projects.tsx",
-    "./requests": "./src/requests.tsx",
     "./status": "./src/status.tsx",
     "./time": "./src/time.tsx",
     "./users": "./src/users.tsx"
@@ -37,6 +35,7 @@
     "typescript": "^5.3.2"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.20.5",
     "moment": "^2.30.1",
     "react-router-dom": "^6.21.1"
   }

@@ -2,9 +2,8 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import bcrypt from "bcrypt";
 
-import { PermissionType } from "@repo/api";
-
-import { APIError } from "../plugins/errors";
+import { type PermissionType } from "@repo/api";
+import { APIError } from "@repo/plugins/error";
 
 export interface AuthenticatedUser {
   ID: string;

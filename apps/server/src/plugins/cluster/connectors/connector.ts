@@ -17,6 +17,7 @@ export abstract class ClusterConnector<TConfig = undefined> {
     hashType: HashType,
     hashes: string[]
   ): Promise<string | null>;
+
   public abstract deleteJob(
     instanceID: string,
     jobID: string

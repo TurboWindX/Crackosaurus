@@ -1,52 +1,53 @@
 import { PrismaClient } from "@prisma/client";
 
 import { type HashType } from "@repo/api";
+import { APIError } from "@repo/plugins/error";
 
 import { type ClusterConnector } from "../plugins/cluster/connectors/connector";
-import { APIError } from "../plugins/errors";
 
 export async function createJob(
   prisma: PrismaClient,
   cluster: ClusterConnector,
   instanceID: string,
-  hashIds: string[],
+  hashType: HashType,
+  projectIDs: string[],
   currentUserID: string,
   bypassCheck?: boolean
 ): Promise<string> {
-  let hashes;
+  let projects;
   try {
-    hashes = await prisma.hash.findMany({
+    projects = await prisma.project.findMany({
       select: {
-        HID: true,
-        hash: true,
-        hashType: true,
+        hashes: {
+          select: {
+            HID: true,
+            hash: true,
+            hashType: true,
+          },
+        },
       },
       where: {
-        HID: {
-          in: hashIds,
+        PID: {
+          in: projectIDs,
         },
-        status: "NOT_FOUND",
-        project: bypassCheck
+        members: bypassCheck
           ? undefined
           : {
-              members: {
-                some: {
-                  ID: currentUserID,
-                },
+              some: {
+                ID: currentUserID,
               },
             },
       },
     });
   } catch (e) {
-    throw new APIError("Hashes error");
+    throw new APIError("Project error");
   }
 
+  const hashes = projects.flatMap((project) =>
+    project.hashes.filter((hash) => hash.hashType === hashType)
+  );
   if (hashes.length === 0)
     throw new APIError("Cannot create a job without any valid hashes");
-
-  const hashType = hashes[0]?.hashType as HashType;
-  if (hashes.some((hash) => hash.hashType !== hashType))
-    throw new APIError("Cannot create jobs with different types of hashes");
 
   const jobID = await cluster.createJob(
     instanceID,
@@ -57,12 +58,13 @@ export async function createJob(
 
   try {
     await prisma.job.create({
-      select: {
-        JID: true,
-      },
       data: {
         JID: jobID,
-        instanceId: instanceID,
+        instance: {
+          connect: {
+            IID: instanceID,
+          },
+        },
         hashes: {
           connect: hashes.map(({ HID }) => ({ HID })),
         },
@@ -78,6 +80,7 @@ export async function createJob(
 export async function deleteJob(
   prisma: PrismaClient,
   cluster: ClusterConnector,
+  instanceID: string,
   jobID: string
 ): Promise<void> {
   let job;
@@ -93,6 +96,9 @@ export async function deleteJob(
       },
       where: {
         JID: jobID,
+        instance: {
+          IID: instanceID,
+        },
       },
     });
   } catch (e) {
@@ -122,123 +128,4 @@ export async function deleteJob(
       },
     });
   } catch (e) {}
-}
-
-export async function createProjectJobs(
-  prisma: PrismaClient,
-  cluster: ClusterConnector,
-  projectID: string,
-  instanceID: string,
-  currentUserID: string,
-  bypassCheck?: boolean
-): Promise<string[]> {
-  let project;
-  try {
-    project = await prisma.project.update({
-      select: {
-        hashes: {
-          select: {
-            HID: true,
-            hashType: true,
-          },
-        },
-      },
-      where: {
-        PID: projectID,
-        members: bypassCheck
-          ? undefined
-          : {
-              some: {
-                ID: currentUserID,
-              },
-            },
-      },
-      data: {
-        updatedAt: new Date(),
-      },
-    });
-  } catch (e) {
-    throw new APIError("Project error");
-  }
-
-  const hashByType: Record<string, string[]> = {};
-  project.hashes.forEach(({ HID, hashType }) => {
-    if (hashByType[hashType]) hashByType[hashType]?.push(HID);
-    else hashByType[hashType] = [HID];
-  });
-
-  const jobIDs: string[] = [];
-  for (const [_hashType, hashIDs] of Object.entries(hashByType)) {
-    try {
-      jobIDs.push(
-        await createJob(
-          prisma,
-          cluster,
-          instanceID,
-          hashIDs,
-          currentUserID,
-          bypassCheck
-        )
-      );
-    } catch (e) {}
-  }
-
-  if (jobIDs.length === 0) throw new APIError("No jobs created");
-
-  return jobIDs;
-}
-
-export async function deleteProjectJobs(
-  prisma: PrismaClient,
-  cluster: ClusterConnector,
-  projectID: string,
-  currentUserID: string,
-  bypassCheck?: boolean
-): Promise<void> {
-  let project;
-  try {
-    project = await prisma.project.update({
-      select: {
-        hashes: {
-          select: {
-            jobs: {
-              select: {
-                JID: true,
-              },
-            },
-          },
-        },
-      },
-      where: {
-        PID: projectID,
-        members: bypassCheck
-          ? undefined
-          : {
-              some: {
-                ID: currentUserID,
-              },
-            },
-      },
-      data: {
-        updatedAt: new Date(),
-      },
-    });
-  } catch (e) {
-    throw new APIError("Project error");
-  }
-
-  const jobInstances: Record<string, boolean> = {};
-  for (const hash of project.hashes) {
-    for (const job of hash.jobs) {
-      if (!job) continue;
-
-      jobInstances[job.JID] = true;
-    }
-  }
-
-  for (const jobID of Object.keys(jobInstances)) {
-    try {
-      await deleteJob(prisma, cluster, jobID);
-    } catch (e) {}
-  }
 }

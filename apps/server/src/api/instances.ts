@@ -1,7 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 
+import { APIError } from "@repo/plugins/error";
+
 import { type ClusterConnector } from "../plugins/cluster/connectors/connector";
-import { APIError } from "../plugins/errors";
 
 export async function getInstance(prisma: PrismaClient, instanceID: string) {
   try {
@@ -49,8 +50,8 @@ export async function getInstanceList(prisma: PrismaClient) {
 export async function createInstance(
   prisma: PrismaClient,
   cluster: ClusterConnector,
-  name?: string,
-  instanceType?: string
+  name?: string | null,
+  instanceType?: string | null
 ): Promise<string> {
   const instanceTag = await cluster.createInstance(instanceType);
   if (!instanceTag) throw new APIError("Instance not created");

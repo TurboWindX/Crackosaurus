@@ -1,35 +1,48 @@
-import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { CreateProjectRequest } from "@repo/api";
+import { type APIType } from "@repo/api/server";
+import { type REQ } from "@repo/api/server/client/web";
 import { Badge } from "@repo/shadcn/components/ui/badge";
 import { Input } from "@repo/shadcn/components/ui/input";
+import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
-import { useProjects } from "@repo/ui/projects";
 import { RelativeTime } from "@repo/ui/time";
 
 export const ProjectsPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const { projects, loadProjects, addProjects, removeProjects, loading } =
-    useProjects();
 
-  const [addProject, setAddProject] = useState<CreateProjectRequest["Body"]>({
+  const [newProject, setNewProject] = useState<REQ<APIType["createProject"]>>({
     projectName: "",
   });
 
   const hasCollaborators = hasPermission("projects:users:get");
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
+  const API = useAPI();
+  const queryClient = useQueryClient();
+
+  const { data: projects, isLoading } = useQuery({
+    queryKey: ["projects", "list", "page"],
+    queryFn: API.getProjects,
+  });
+
+  const { mutateAsync: createProject } = useMutation({
+    mutationFn: API.createProject,
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", "list"],
+      });
+    },
+  });
 
   return (
     <div className="p-4">
       <DataTable
         type="Project"
-        values={projects}
+        values={projects ?? []}
         head={[
           "Project",
           hasCollaborators ? "Collaborators" : null,
@@ -37,7 +50,7 @@ export const ProjectsPage = () => {
         ]}
         valueKey={({ PID }) => PID}
         sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
-        loading={loading}
+        isLoading={isLoading}
         rowClick={({ PID }) => navigate(`/projects/${PID}`)}
         row={({ name, members, updatedAt }) => [
           name,
@@ -58,22 +71,21 @@ export const ProjectsPage = () => {
             member.username.toLowerCase().includes(search.toLowerCase())
           )
         }
-        addValidate={() => addProject.projectName.trim().length > 0}
+        addValidate={() => newProject.projectName.trim().length > 0}
         addDialog={
           <Input
             placeholder="Name"
-            value={addProject.projectName}
+            value={newProject.projectName}
             onChange={(e) =>
-              setAddProject({ ...addProject, projectName: e.target.value })
+              setNewProject({ ...newProject, projectName: e.target.value })
             }
           />
         }
         noAdd={!hasPermission("projects:add")}
-        onAdd={() => addProjects(addProject)}
-        noRemove
-        onRemove={(projects) =>
-          removeProjects(...projects.map(({ PID }) => PID))
-        }
+        onAdd={async () => {
+          await createProject(newProject);
+          return true;
+        }}
       />
     </div>
   );

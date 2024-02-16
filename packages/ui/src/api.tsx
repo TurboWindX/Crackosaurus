@@ -1,16 +1,22 @@
-import { AuthProvider } from "./auth";
-import { ClusterProvider } from "./clusters";
-import { ProjectsProvider } from "./projects";
-import { UsersProvider } from "./users";
+import { createContext, useContext, useMemo } from "react";
 
-export const APIProvider = ({ children }: { children: any }) => {
-  return (
-    <AuthProvider>
-      <UsersProvider>
-        <ProjectsProvider>
-          <ClusterProvider>{children}</ClusterProvider>
-        </ProjectsProvider>
-      </UsersProvider>
-    </AuthProvider>
-  );
+import { type APIType } from "@repo/api/server";
+import { makeAPI } from "@repo/api/server/client/web";
+
+const APIContext = createContext<APIType>(undefined as any);
+
+export const useAPI = () => {
+  return useContext(APIContext);
+};
+
+export const APIProvider = ({
+  url,
+  children,
+}: {
+  url: string;
+  children: any;
+}) => {
+  const API = useMemo(() => makeAPI(url), [url]);
+
+  return <APIContext.Provider value={API}>{children}</APIContext.Provider>;
 };

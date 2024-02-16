@@ -1,18 +1,9 @@
-import { createContext, useContext, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 
-import {
-  GetUserListResponse,
-  GetUserResponse,
-  GetUsersResponse,
-  PERMISSION_PROFILES,
-  PermissionType,
-  RegisterRequest,
-  deleteUser,
-  getUser,
-  getUserList,
-  getUsers,
-  registerUser,
-} from "@repo/api";
+import { PERMISSION_PROFILES, type PermissionType } from "@repo/api";
+import { type APIType } from "@repo/api/server";
+import { type RES } from "@repo/api/server/client/web";
 import {
   Select,
   SelectContent,
@@ -23,12 +14,12 @@ import {
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 
-import { useLoader, useRequests } from "./requests";
+import { useAPI } from "./api";
 
 export interface UserSelectProps {
   value?: string | null;
   onValueChange?: (value: string) => void;
-  filter?: (user: GetUserListResponse["response"][number]) => boolean;
+  filter?: (user: RES<APIType["getUserList"]>[number]) => boolean;
 }
 
 export const UserSelect = ({
@@ -36,14 +27,15 @@ export const UserSelect = ({
   onValueChange,
   filter,
 }: UserSelectProps) => {
-  const { userList, loadUserList } = useUsers();
+  const API = useAPI();
 
-  useEffect(() => {
-    loadUserList();
-  }, []);
+  const { data: userList } = useQuery({
+    queryKey: ["users", "list", "component"],
+    queryFn: API.getUserList,
+  });
 
   const filteredUserList = useMemo(
-    () => userList.filter((user) => filter?.(user) ?? true),
+    () => (userList ?? []).filter((user) => filter?.(user) ?? true),
     [userList, filter]
   );
 
@@ -105,93 +97,5 @@ export const PermissionProfileSelect = ({
         </SelectGroup>
       </SelectContent>
     </Select>
-  );
-};
-
-export interface UsersInterface {
-  readonly loading: boolean;
-
-  readonly addUsers: (...reqs: RegisterRequest["Body"][]) => Promise<boolean>;
-  readonly removeUsers: (...ids: string[]) => Promise<boolean>;
-
-  readonly user: GetUserResponse["response"] | null;
-  readonly loadUser: (id: string) => Promise<void>;
-
-  readonly users: GetUsersResponse["response"];
-  readonly loadUsers: () => Promise<void>;
-
-  readonly userList: GetUserListResponse["response"];
-  readonly loadUserList: () => Promise<void>;
-}
-
-const UsersContext = createContext<UsersInterface>({
-  loading: true,
-  user: null,
-  users: [],
-  userList: [],
-  addUsers: async () => false,
-  removeUsers: async () => false,
-  loadUser: async () => {},
-  loadUsers: async () => {},
-  loadUserList: async () => {},
-});
-
-export function useUsers() {
-  return useContext(UsersContext);
-}
-
-export const UsersProvider = ({ children }: { children: any }) => {
-  const { handleRequests } = useRequests();
-
-  const {
-    loading,
-    one: user,
-    many: users,
-    list: userList,
-    loadOne: loadUser,
-    loadMany: loadUsers,
-    loadList: loadUserList,
-    refresh: refreshUsers,
-  } = useLoader({
-    getID: ({ ID }) => ID,
-    loadOne: getUser,
-    loadMany: getUsers,
-    loadList: getUserList,
-  });
-
-  const value: UsersInterface = {
-    loading,
-    user,
-    loadUser,
-    users,
-    loadUsers,
-    userList,
-    loadUserList,
-    addUsers: async (...reqs) => {
-      const _results = await handleRequests("User(s) added", reqs, (req) =>
-        registerUser(req)
-      );
-
-      await refreshUsers({
-        add: [],
-      });
-
-      return true;
-    },
-    removeUsers: async (...ids) => {
-      const results = await handleRequests("User(s) removed", ids, (id) =>
-        deleteUser(id)
-      );
-
-      await refreshUsers({
-        remove: results.filter(([_, res]) => !res.error).map(([id]) => id),
-      });
-
-      return true;
-    },
-  };
-
-  return (
-    <UsersContext.Provider value={value}>{children}</UsersContext.Provider>
   );
 };

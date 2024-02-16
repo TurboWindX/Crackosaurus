@@ -32,7 +32,7 @@ export const LoginPage = () => {
             className="grid grid-cols-1 gap-2"
             onSubmit={async (event) => {
               event.preventDefault();
-              await login(username, password);
+              await login({ username, password });
               navigate("/");
             }}
           >

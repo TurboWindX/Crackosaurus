@@ -1,66 +1,73 @@
-import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import {
-  DEFAULT_PERMISSION_PROFILE,
-  PERMISSION_PROFILES,
-  RegisterRequest,
-} from "@repo/api";
+import { DEFAULT_PERMISSION_PROFILE, PERMISSION_PROFILES } from "@repo/api";
+import { type APIType } from "@repo/api/server";
+import { type REQ } from "@repo/api/server/client/web";
 import { Input } from "@repo/shadcn/components/ui/input";
+import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
-import { PermissionProfileSelect, useUsers } from "@repo/ui/users";
+import { PermissionProfileSelect } from "@repo/ui/users";
 
 export const UsersPage = () => {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
-  const {
-    loading,
-    users: list,
-    loadUsers: loadList,
-    addUsers: add,
-    removeUsers: remove,
-  } = useUsers();
 
   const [addUserProfile, setAddUserProfile] = useState(
     DEFAULT_PERMISSION_PROFILE
   );
-  const [addUser, setAddUser] = useState<RegisterRequest["Body"]>({
+
+  const [newUser, setNewUser] = useState<REQ<APIType["register"]>>({
     username: "",
     password: "",
     permissions: PERMISSION_PROFILES[DEFAULT_PERMISSION_PROFILE],
   });
 
-  useEffect(() => {
-    loadList();
-  }, []);
+  const API = useAPI();
+  const queryClient = useQueryClient();
+
+  const { data: users, isLoading } = useQuery({
+    queryKey: ["users", "list", "page"],
+    queryFn: API.getUsers,
+  });
+
+  const { mutateAsync: register } = useMutation({
+    mutationFn: API.register,
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["users", "list"],
+      });
+    },
+  });
 
   return (
     <div className="p-4">
       <DataTable
         type="User"
         head={["User"]}
-        values={list}
+        values={users ?? []}
         rowClick={({ ID }) => navigate(`/users/${ID}`)}
         row={({ username }) => [username]}
-        loading={loading}
+        isLoading={isLoading}
         valueKey={({ ID }) => ID}
         searchFilter={({ username }, search) =>
           username.toLowerCase().includes(search.toLowerCase())
         }
         sort={(a, b) => a.username.localeCompare(b.username)}
         addValidate={() =>
-          addUser.username.trim().length > 0 &&
-          addUser.password.trim().length > 0
+          newUser.username.trim().length > 0 &&
+          newUser.password.trim().length > 0
         }
         addDialog={
           <>
             <Input
               placeholder="Username"
-              value={addUser.username}
+              value={newUser.username}
               onChange={(e) =>
-                setAddUser({
-                  ...addUser,
+                setNewUser({
+                  ...newUser,
                   username: e.target.value,
                 })
               }
@@ -68,10 +75,10 @@ export const UsersPage = () => {
             <Input
               placeholder="Password"
               type="password"
-              value={addUser.password}
+              value={newUser.password}
               onChange={(e) =>
-                setAddUser({
-                  ...addUser,
+                setNewUser({
+                  ...newUser,
                   password: e.target.value,
                 })
               }
@@ -80,8 +87,8 @@ export const UsersPage = () => {
               value={addUserProfile}
               onValueChange={(value, permissions) => {
                 setAddUserProfile(value);
-                setAddUser({
-                  ...addUser,
+                setNewUser({
+                  ...newUser,
                   permissions,
                 });
               }}
@@ -89,9 +96,10 @@ export const UsersPage = () => {
           </>
         }
         noAdd={!hasPermission("users:add")}
-        onAdd={async () => add(addUser)}
-        noRemove
-        onRemove={async (users) => remove(...users.map(({ ID }) => ID))}
+        onAdd={async () => {
+          await register(newUser);
+          return true;
+        }}
       />
     </div>
   );

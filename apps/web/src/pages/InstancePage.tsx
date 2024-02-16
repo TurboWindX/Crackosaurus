@@ -1,8 +1,11 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlayIcon, SquareIcon, TrashIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { GetInstanceResponse, HASH_TYPES, HashType } from "@repo/api";
+import { HASH_TYPES } from "@repo/api";
+import { type APIType } from "@repo/api/server";
+import { type REQ, type RES } from "@repo/api/server/client/web";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
 import {
@@ -14,34 +17,53 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
+import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
-import { useCluster } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
-import { useProjects } from "@repo/ui/projects";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 
 interface JobDataTableProps {
   instanceID: string;
-  values: GetInstanceResponse["response"]["jobs"];
-  loading?: boolean;
+  values: RES<APIType["getInstance"]>["jobs"];
+  isLoading?: boolean;
 }
 
-const JobDataTable = ({ instanceID, values, loading }: JobDataTableProps) => {
-  const { addJobs, removeJobs } = useCluster();
-  const { projectList, loadProjectList } = useProjects();
-
-  useEffect(() => {
-    loadProjectList();
-  });
-
-  const [addJob, setAddJob] = useState<{
-    hashType: HashType;
-    projectIDs: string[];
-  }>({
+const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
+  const [newJob, setNewJob] = useState<REQ<APIType["createInstanceJob"]>>({
+    instanceID,
     hashType: "" as any,
     projectIDs: [],
+  });
+
+  const API = useAPI();
+  const queryClient = useQueryClient();
+
+  const { data: projectList } = useQuery({
+    queryKey: ["projects", "list"],
+    queryFn: API.getProjectList,
+  });
+
+  const { mutateAsync: createInstanceJob } = useMutation({
+    mutationFn: API.createInstanceJob,
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["instances", instanceID],
+      });
+    },
+  });
+
+  const { mutateAsync: deleteInstanceJobs } = useMutation({
+    mutationFn: async (ids: string[]) =>
+      Promise.all(
+        ids.map((jobID) => API.deleteInstanceJob({ instanceID, jobID }))
+      ),
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["instances", instanceID],
+      });
+    },
   });
 
   return (
@@ -49,7 +71,7 @@ const JobDataTable = ({ instanceID, values, loading }: JobDataTableProps) => {
       type="Job"
       values={values ?? []}
       head={["Job", "Status", "Last Updated"]}
-      loading={loading}
+      isLoading={isLoading}
       sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
       row={({ JID, status, updatedAt }) => [
         JID,
@@ -59,9 +81,9 @@ const JobDataTable = ({ instanceID, values, loading }: JobDataTableProps) => {
       addDialog={
         <>
           <Select
-            value={addJob.hashType}
+            value={newJob.hashType}
             onValueChange={(value) =>
-              setAddJob({ ...addJob, hashType: value as any })
+              setNewJob({ ...newJob, hashType: value as any })
             }
           >
             <SelectTrigger>
@@ -78,22 +100,23 @@ const JobDataTable = ({ instanceID, values, loading }: JobDataTableProps) => {
           </Select>
           <MultiSelect
             label="Project"
-            values={projectList.map(({ PID, name }) => [PID, name])}
-            selectedValues={addJob.projectIDs}
+            values={(projectList ?? []).map(({ PID, name }) => [PID, name])}
+            selectedValues={newJob.projectIDs}
             onValueChange={(ids) => {
-              setAddJob({ ...addJob, projectIDs: ids });
+              setNewJob({ ...newJob, projectIDs: ids });
             }}
           />
         </>
       }
-      addValidate={() => addJob.hashType?.length > 0}
+      addValidate={() => newJob.hashType?.length > 0}
       onAdd={async () => {
-        await addJobs(instanceID, addJob);
+        await createInstanceJob({ ...newJob, instanceID });
         return true;
       }}
-      onRemove={async (jobs) =>
-        await removeJobs(instanceID, ...jobs.map(({ JID }) => JID))
-      }
+      onRemove={async (jobs) => {
+        await deleteInstanceJobs(jobs.map(({ JID }) => JID));
+        return true;
+      }}
       searchFilter={({ JID }, search) => JID.includes(search)}
       valueKey={({ JID }) => JID}
     />
@@ -102,17 +125,32 @@ const JobDataTable = ({ instanceID, values, loading }: JobDataTableProps) => {
 
 export const InstancePage = () => {
   const { instanceID } = useParams();
+
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
-  const { instance, loadInstance, removeInstances, loading } = useCluster();
 
   const [startOpen, setStartOpen] = useState(false);
   const [stopOpen, setStopOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
 
-  useEffect(() => {
-    loadInstance(instanceID ?? "");
-  }, [instanceID]);
+  const API = useAPI();
+  const queryClient = useQueryClient();
+
+  const { data: instance, isLoading } = useQuery({
+    queryKey: ["instances", instanceID],
+    queryFn: async () => API.getInstance({ instanceID: instanceID ?? "" }),
+  });
+
+  const { mutateAsync: deleteInstance } = useMutation({
+    mutationFn: API.deleteInstance,
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["instances", "list"],
+      });
+
+      navigate("/instances");
+    },
+  });
 
   return (
     <div className="grid gap-8 p-4">
@@ -141,8 +179,7 @@ export const InstancePage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await removeInstances(instanceID ?? ""))
-                      navigate("/instances");
+                    // TODO: Start
                   }}
                 >
                   <span>Do you want to start this instance?</span>
@@ -171,8 +208,7 @@ export const InstancePage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await removeInstances(instanceID ?? ""))
-                      navigate("/instances");
+                    // TODO: Stop
                   }}
                 >
                   <span>Do you want to stop this instance?</span>
@@ -201,8 +237,7 @@ export const InstancePage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await removeInstances(instanceID ?? ""))
-                      navigate("/instances");
+                    await deleteInstance({ instanceID: instanceID ?? "" });
                   }}
                 >
                   <span>Do you want to permanently remove this instance?</span>
@@ -216,7 +251,7 @@ export const InstancePage = () => {
       <JobDataTable
         instanceID={instance?.IID ?? ""}
         values={instance?.jobs ?? []}
-        loading={loading}
+        isLoading={isLoading}
       />
     </div>
   );
