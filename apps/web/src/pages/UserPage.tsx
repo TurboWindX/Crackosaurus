@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LogOutIcon, TrashIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { APIError } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type RES } from "@repo/api/server/client/web";
 import { Button } from "@repo/shadcn/components/ui/button";
@@ -10,6 +11,7 @@ import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
+import { useErrors } from "@repo/ui/errors";
 
 interface ProjectDataTableProps {
   values: RES<APIType["getUser"]>["projects"];
@@ -26,6 +28,7 @@ const ProjectDataTable = ({ values, isLoading }: ProjectDataTableProps) => {
       head={["Project"]}
       rowClick={({ PID }) => navigate(`/projects/${PID}`)}
       row={({ name }) => [name]}
+      sort={(a, b) => a.name.localeCompare(b.name)}
       isLoading={isLoading}
       valueKey={({ PID }) => PID}
       searchFilter={({ name }, search) =>
@@ -45,11 +48,25 @@ export const UserPage = () => {
 
   const API = useAPI();
   const queryClient = useQueryClient();
+  const { handleError } = useErrors();
 
-  const { data: user, isLoading } = useQuery({
+  const {
+    data: user,
+    isLoading,
+    error,
+    isLoadingError,
+  } = useQuery({
     queryKey: ["users", userID],
     queryFn: async () => API.getUser({ userID: userID ?? "" }),
+    retry(count, error) {
+      if (error instanceof APIError && error.status === 401) return false;
+      return count < 3;
+    },
   });
+
+  useEffect(() => {
+    if (!isLoadingError && error) handleError(error);
+  }, [isLoadingError, error]);
 
   const { mutateAsync: deleteUser } = useMutation({
     mutationFn: async (userID: string) => API.deleteUser({ userID }),
@@ -61,6 +78,7 @@ export const UserPage = () => {
 
       navigate("/users");
     },
+    onError: handleError,
   });
 
   return (
@@ -75,8 +93,9 @@ export const UserPage = () => {
               <Button
                 variant="outline"
                 onClick={async () => {
+                  navigate("/login");
+
                   await logout({});
-                  navigate("/");
                 }}
               >
                 <div className="grid grid-flow-col items-center gap-2">

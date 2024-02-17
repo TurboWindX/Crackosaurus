@@ -1,14 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { DEFAULT_PERMISSION_PROFILE, PERMISSION_PROFILES } from "@repo/api";
+import {
+  APIError,
+  DEFAULT_PERMISSION_PROFILE,
+  PERMISSION_PROFILES,
+} from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type REQ } from "@repo/api/server/client/web";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
+import { useErrors } from "@repo/ui/errors";
 import { PermissionProfileSelect } from "@repo/ui/users";
 
 export const UsersPage = () => {
@@ -27,11 +32,25 @@ export const UsersPage = () => {
 
   const API = useAPI();
   const queryClient = useQueryClient();
+  const { handleError } = useErrors();
 
-  const { data: users, isLoading } = useQuery({
+  const {
+    data: users,
+    isLoading,
+    error,
+    isLoadingError,
+  } = useQuery({
     queryKey: ["users", "list", "page"],
     queryFn: API.getUsers,
+    retry(count, error) {
+      if (error instanceof APIError && error.status === 401) return false;
+      return count < 3;
+    },
   });
+
+  useEffect(() => {
+    if (!isLoadingError && error) handleError(error);
+  }, [isLoadingError, error]);
 
   const { mutateAsync: register } = useMutation({
     mutationFn: API.register,
@@ -40,6 +59,7 @@ export const UsersPage = () => {
         queryKey: ["users", "list"],
       });
     },
+    onError: handleError,
   });
 
   return (

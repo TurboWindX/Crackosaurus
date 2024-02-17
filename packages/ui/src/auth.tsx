@@ -1,54 +1,54 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext } from "react";
-import { Navigate } from "react-router-dom";
+import { useContext, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { PermissionType, hasPermission } from "@repo/api";
-import { type APIType } from "@repo/api/server";
-import { REQ } from "@repo/api/server/client/web";
+import { APIError, PermissionType, hasPermission } from "@repo/api";
 
 import { useAPI } from "./api";
-
-export interface AuthInterface {
-  readonly isLoading: boolean;
-  readonly isAuthenticated: boolean;
-  readonly uid: string;
-  readonly username: string;
-  readonly init: (req: REQ<APIType["init"]>) => Promise<any>;
-  readonly login: (req: REQ<APIType["login"]>) => Promise<any>;
-  readonly logout: (req: REQ<APIType["logout"]>) => Promise<any>;
-  readonly hasPermission: (permission: PermissionType) => boolean;
-}
-
-const AuthContext = createContext<AuthInterface>({
-  isLoading: true,
-  isAuthenticated: false,
-  uid: "",
-  username: "",
-  init: async () => false,
-  login: async () => false,
-  logout: async () => false,
-  hasPermission: () => false,
-});
+import { AuthContext, AuthInterface } from "./contexts";
+import { useErrors } from "./errors";
 
 export function AuthProvider({ children }: { children: any }) {
   const API = useAPI();
-
   const queryClient = useQueryClient();
+  const { handleError } = useErrors();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isLoadingError, isError } = useQuery({
     queryKey: ["auth"],
     queryFn: API.authUser,
+    retry: (count, err) => {
+      if (err instanceof APIError && err.status === 401) return false;
+
+      return count < 3;
+    },
+    refetchOnWindowFocus: false,
   });
+
+  const uid = useMemo(() => data?.uid ?? "", [data]);
+  const username = useMemo(() => data?.username ?? "username", [data]);
+  const isAuthenticated = useMemo(
+    () => !isLoadingError && !isError && data?.uid !== undefined,
+    [isError, isLoadingError, data]
+  );
+  const userHasPermission = useMemo(
+    () => (permission: PermissionType) =>
+      hasPermission(data?.permissions ?? "", permission),
+    [data]
+  );
 
   const { mutateAsync: init } = useMutation({
     mutationFn: API.init,
+    onError: handleError,
   });
 
   const { mutateAsync: login } = useMutation({
     mutationFn: API.login,
     onSuccess() {
-      queryClient.invalidateQueries();
+      queryClient.invalidateQueries({
+        queryKey: ["auth"],
+      });
     },
+    onError: handleError,
   });
 
   const { mutateAsync: logout } = useMutation({
@@ -56,6 +56,7 @@ export function AuthProvider({ children }: { children: any }) {
     onSuccess() {
       queryClient.invalidateQueries();
     },
+    onError: handleError,
   });
 
   const value: AuthInterface = {
@@ -63,11 +64,10 @@ export function AuthProvider({ children }: { children: any }) {
     init,
     login,
     logout,
-    uid: data?.uid ?? "",
-    username: data?.username ?? "username",
-    isAuthenticated: data?.uid !== undefined,
-    hasPermission: (permission: PermissionType) =>
-      hasPermission(data?.permissions ?? "", permission),
+    uid,
+    username,
+    isAuthenticated,
+    hasPermission: userHasPermission,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -84,18 +84,30 @@ export function PermissionRoute({
   permission: PermissionType;
   children: any;
 }) {
-  const { isLoading, hasPermission } = useAuth();
+  const navigate = useNavigate();
+  const { isLoading, isAuthenticated, hasPermission } = useAuth();
 
-  if (!isLoading && !hasPermission(permission))
-    return <Navigate to="/" replace />;
+  useEffect(() => {
+    if (!isLoading) {
+      if (!isAuthenticated) navigate("/login");
+      else if (!hasPermission(permission)) navigate("/");
+    }
+  }, [isLoading, isAuthenticated, hasPermission]);
+
+  if (isLoading) <></>;
 
   return children;
 }
 
 export function AuthRoute({ children }: { children: any }) {
+  const navigate = useNavigate();
   const { isLoading, isAuthenticated } = useAuth();
 
-  if (!isLoading && !isAuthenticated) return <Navigate to="/login" replace />;
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) navigate("/login");
+  }, [isLoading, isAuthenticated]);
+
+  if (isLoading) <></>;
 
   return children;
 }

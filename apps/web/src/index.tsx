@@ -10,23 +10,26 @@ import "@repo/ui/index.css";
 import { ThemeProvider } from "@repo/shadcn/components/theme-provider";
 import { Toaster } from "@repo/shadcn/components/ui/toaster";
 import { APIProvider } from "@repo/ui/api";
-import { AuthProvider } from "@repo/ui/auth";
 
 import { router } from "./pages/index.tsx";
 
 const queryClient = new QueryClient();
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
+const App = () => {
+  return (
     <ThemeProvider defaultTheme="dark" storageKey="ui-theme">
       <QueryClientProvider client={queryClient}>
         <APIProvider url="http://localhost:8000/api">
-          <AuthProvider>
-            <RouterProvider router={router} />
-          </AuthProvider>
+          <RouterProvider router={router} />
         </APIProvider>
       </QueryClientProvider>
       <Toaster />
     </ThemeProvider>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
   </React.StrictMode>
 );

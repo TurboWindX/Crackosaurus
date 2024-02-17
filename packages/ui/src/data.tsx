@@ -168,11 +168,14 @@ export function DataTable<T>({
     () => addDialog !== undefined && onAdd !== undefined && !noAdd,
     [addDialog, onAdd, noAdd]
   );
+
   const hasRemove = useMemo(
     () => onRemove !== undefined && !noRemove,
     [onRemove, noRemove]
   );
+
   const hasButtons = useMemo(() => hasAdd || hasRemove, [hasAdd, hasRemove]);
+
   const hasSelect = useMemo(() => hasRemove, [hasRemove]);
 
   return (
@@ -186,7 +189,10 @@ export function DataTable<T>({
         />
       )}
       {hasButtons && (
-        <div className="ui-grid ui-w-max ui-grid-flow-col ui-gap-4">
+        <div
+          key="buttons"
+          className="ui-grid ui-w-max ui-grid-flow-col ui-gap-4"
+        >
           {hasAdd && (
             <AddDialog
               key="add"
@@ -302,8 +308,8 @@ const DataTableBody = <T,>({
         <TableCell>Loading</TableCell>
         {new Array(head.filter((label) => label).length - 1)
           .fill(0)
-          .map((_) => (
-            <TableCell />
+          .map((_, index) => (
+            <TableCell key={index} />
           ))}
       </TableRow>
     );
@@ -315,8 +321,8 @@ const DataTableBody = <T,>({
         <TableCell>No {plural}</TableCell>
         {new Array(head.filter((label) => label).length - 1)
           .fill(0)
-          .map((_) => (
-            <TableCell />
+          .map((_, index) => (
+            <TableCell key={index} />
           ))}
       </TableRow>
     );

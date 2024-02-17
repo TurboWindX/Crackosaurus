@@ -1,13 +1,13 @@
 import { type ZodType, type z } from "zod";
 
-export interface APIError {
+export interface APIErrorType {
   error: {
     code: number;
     message: string;
   };
 }
 
-export type APIResponse<T> = Promise<T | APIError>;
+export type APIResponse<T> = Promise<T | APIErrorType>;
 
 export type HTTPMethod = "GET" | "POST" | "PUT" | "DELETE";
 
@@ -58,13 +58,23 @@ export type APIHandler<TRoute> = TRoute extends Route<
     ) => Promise<RouteResponse<TRoute>["response"]>
   : never;
 
+export class APIError extends Error {
+  public readonly status: number;
+
+  public constructor(error: APIErrorType["error"]) {
+    super(error.message);
+
+    this.status = error.code;
+  }
+}
+
 export function unwrapResponse<
   TRes extends Awaited<APIResponse<TData>>,
   TData extends { response: any },
 >(res: TRes): TData["response"] {
   const anyRes = res as any;
 
-  if (anyRes.error) throw new Error(anyRes.error);
+  if (anyRes.error) throw new APIError(anyRes.error);
 
   return anyRes.response;
 }

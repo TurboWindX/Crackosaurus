@@ -62,7 +62,9 @@ const LINKS: readonly HeaderLinkProps[] = [
 ] as const;
 
 export const Header = () => {
-  const { uid, username, hasPermission } = useAuth();
+  const { uid, username, hasPermission, isLoading } = useAuth();
+
+  if (isLoading) return <></>;
 
   return (
     <div>

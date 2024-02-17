@@ -1,6 +1,6 @@
 import { Outlet, createBrowserRouter } from "react-router-dom";
 
-import { AuthRoute, PermissionRoute } from "@repo/ui/auth";
+import { AuthProvider, AuthRoute, PermissionRoute } from "@repo/ui/auth";
 import { Header } from "@repo/ui/header";
 
 import { HomePage } from "./HomePage.tsx";
@@ -16,6 +16,11 @@ import { UsersPage } from "./UsersPage.tsx";
 export const router = createBrowserRouter([
   {
     errorElement: <h1>Something went wrong...</h1>,
+    element: (
+      <AuthProvider>
+        <Outlet />
+      </AuthProvider>
+    ),
     children: [
       {
         path: "/setup",

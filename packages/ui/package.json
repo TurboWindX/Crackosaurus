@@ -11,6 +11,7 @@
     "./clusters": "./src/clusters.tsx",
     "./data": "./src/data.tsx",
     "./dialog": "./src/dialog.tsx",
+    "./errors": "./src/errors.tsx",
     "./header": "./src/header.tsx",
     "./status": "./src/status.tsx",
     "./time": "./src/time.tsx",

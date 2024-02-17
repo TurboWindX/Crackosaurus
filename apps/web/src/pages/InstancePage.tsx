@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlayIcon, SquareIcon, TrashIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { HASH_TYPES } from "@repo/api";
+import { APIError, HASH_TYPES } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
 import { Button } from "@repo/shadcn/components/ui/button";
@@ -21,6 +21,7 @@ import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
+import { useErrors } from "@repo/ui/errors";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 
@@ -39,11 +40,16 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
 
   const API = useAPI();
   const queryClient = useQueryClient();
+  const { handleError } = useErrors();
 
-  const { data: projectList } = useQuery({
+  const { data: projectList, error } = useQuery({
     queryKey: ["projects", "list"],
     queryFn: API.getProjectList,
   });
+
+  useEffect(() => {
+    if (error) handleError(error);
+  }, [error]);
 
   const { mutateAsync: createInstanceJob } = useMutation({
     mutationFn: API.createInstanceJob,
@@ -52,6 +58,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
         queryKey: ["instances", instanceID],
       });
     },
+    onError: handleError,
   });
 
   const { mutateAsync: deleteInstanceJobs } = useMutation({
@@ -64,6 +71,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
         queryKey: ["instances", instanceID],
       });
     },
+    onError: handleError,
   });
 
   return (
@@ -135,11 +143,25 @@ export const InstancePage = () => {
 
   const API = useAPI();
   const queryClient = useQueryClient();
+  const { handleError } = useErrors();
 
-  const { data: instance, isLoading } = useQuery({
+  const {
+    data: instance,
+    isLoading,
+    error,
+    isLoadingError,
+  } = useQuery({
     queryKey: ["instances", instanceID],
     queryFn: async () => API.getInstance({ instanceID: instanceID ?? "" }),
+    retry(count, error) {
+      if (error instanceof APIError && error.status === 401) return false;
+      return count < 3;
+    },
   });
+
+  useEffect(() => {
+    if (!isLoadingError && error) handleError(error);
+  }, [isLoadingError, error]);
 
   const { mutateAsync: deleteInstance } = useMutation({
     mutationFn: API.deleteInstance,
@@ -150,6 +172,7 @@ export const InstancePage = () => {
 
       navigate("/instances");
     },
+    onError: handleError,
   });
 
   return (

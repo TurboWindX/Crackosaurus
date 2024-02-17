@@ -142,6 +142,7 @@ const ROUTER: {
       );
       if (!user) throw new APIError("Login failed");
 
+      await request.session.regenerate();
       setSession(request, user);
 
       return "Login successful";

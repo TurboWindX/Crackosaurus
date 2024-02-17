@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { APIError } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type REQ } from "@repo/api/server/client/web";
 import { Badge } from "@repo/shadcn/components/ui/badge";
@@ -9,6 +10,7 @@ import { Input } from "@repo/shadcn/components/ui/input";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
+import { useErrors } from "@repo/ui/errors";
 import { RelativeTime } from "@repo/ui/time";
 
 export const ProjectsPage = () => {
@@ -23,11 +25,25 @@ export const ProjectsPage = () => {
 
   const API = useAPI();
   const queryClient = useQueryClient();
+  const { handleError } = useErrors();
 
-  const { data: projects, isLoading } = useQuery({
+  const {
+    data: projects,
+    isLoading,
+    error,
+    isLoadingError,
+  } = useQuery({
     queryKey: ["projects", "list", "page"],
     queryFn: API.getProjects,
+    retry(count, error) {
+      if (error instanceof APIError && error.status === 401) return false;
+      return count < 3;
+    },
   });
+
+  useEffect(() => {
+    if (!isLoadingError && error) handleError(error);
+  }, [isLoadingError, error]);
 
   const { mutateAsync: createProject } = useMutation({
     mutationFn: API.createProject,
@@ -36,6 +52,7 @@ export const ProjectsPage = () => {
         queryKey: ["projects", "list"],
       });
     },
+    onError: handleError,
   });
 
   return (

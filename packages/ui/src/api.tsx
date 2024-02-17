@@ -1,9 +1,8 @@
-import { createContext, useContext, useMemo } from "react";
+import { useContext, useMemo } from "react";
 
-import { type APIType } from "@repo/api/server";
 import { makeAPI } from "@repo/api/server/client/web";
 
-const APIContext = createContext<APIType>(undefined as any);
+import { APIContext } from "./contexts";
 
 export const useAPI = () => {
   return useContext(APIContext);
