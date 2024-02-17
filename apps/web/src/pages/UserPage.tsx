@@ -1,20 +1,24 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LogOutIcon, TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { GetUserResponse } from "@repo/api";
+import { APIError } from "@repo/api";
+import { type APIType } from "@repo/api/server";
+import { type RES } from "@repo/api/server/client/web";
 import { Button } from "@repo/shadcn/components/ui/button";
-import { TableCell } from "@repo/shadcn/components/ui/table";
+import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
-import { useUsers } from "@repo/ui/users";
+import { useErrors } from "@repo/ui/errors";
 
 interface ProjectDataTableProps {
-  values: GetUserResponse["response"]["projects"];
+  values: RES<APIType["getUser"]>["projects"];
+  isLoading?: boolean;
 }
 
-const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
+const ProjectDataTable = ({ values, isLoading }: ProjectDataTableProps) => {
   const navigate = useNavigate();
 
   return (
@@ -22,14 +26,10 @@ const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
       type="Project"
       values={values ?? []}
       head={["Project"]}
-      row={({ PID, name }) => [
-        <TableCell
-          className="cursor-pointer"
-          onClick={() => navigate(`/projects/${PID}`)}
-        >
-          {name}
-        </TableCell>,
-      ]}
+      rowClick={({ PID }) => navigate(`/projects/${PID}`)}
+      row={({ name }) => [name]}
+      sort={(a, b) => a.name.localeCompare(b.name)}
+      isLoading={isLoading}
       valueKey={({ PID }) => PID}
       searchFilter={({ name }, search) =>
         name.toLowerCase().includes(search.toLowerCase())
@@ -40,21 +40,57 @@ const ProjectDataTable = ({ values }: ProjectDataTableProps) => {
 
 export const UserPage = () => {
   const { userID } = useParams();
+
   const { uid, hasPermission, logout } = useAuth();
-  const { one, loadOne, remove } = useUsers();
   const navigate = useNavigate();
 
   const [removeOpen, setRemoveOpen] = useState(false);
 
+  const API = useAPI();
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const {
+    data: user,
+    isLoading,
+    error,
+    isLoadingError,
+  } = useQuery({
+    queryKey: ["users", userID],
+    queryFn: async () => API.getUser({ userID: userID ?? "" }),
+    retry(count, error) {
+      if (error instanceof APIError && error.status === 401) return false;
+      return count < 3;
+    },
+  });
+
   useEffect(() => {
-    loadOne(parseInt(userID ?? "-1"));
-  }, []);
+    if (!isLoadingError && error) handleError(error);
+  }, [isLoadingError, error]);
+
+  const { mutateAsync: deleteUser } = useMutation({
+    mutationFn: async (userID: string) => API.deleteUser({ userID }),
+    onSuccess() {
+      if (uid === userID) {
+        queryClient.invalidateQueries();
+        navigate("/login");
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["users", "list"] });
+        user?.projects?.forEach(({ PID }) =>
+          queryClient.invalidateQueries({ queryKey: ["projects", PID] })
+        );
+
+        navigate("/users");
+      }
+    },
+    onError: handleError,
+  });
 
   return (
     <div className="grid gap-8 p-4">
       <div className="grid grid-cols-2 gap-4">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-          {one.username}
+          {user?.username ?? "Username"}
         </span>
         <div className="grid grid-flow-col justify-end gap-4">
           {uid.toString() === userID && (
@@ -62,8 +98,9 @@ export const UserPage = () => {
               <Button
                 variant="outline"
                 onClick={async () => {
-                  await logout();
-                  navigate("/");
+                  navigate("/login");
+
+                  await logout({});
                 }}
               >
                 <div className="grid grid-flow-col items-center gap-2">
@@ -73,7 +110,7 @@ export const UserPage = () => {
               </Button>
             </div>
           )}
-          {(hasPermission("users:remove") || uid.toString() === userID) && (
+          {(hasPermission("users:remove") || uid === userID) && (
             <div className="w-max">
               <DrawerDialog
                 title="Remove User"
@@ -93,8 +130,7 @@ export const UserPage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await remove(parseInt(userID ?? "-1")))
-                      navigate("/users");
+                    await deleteUser(userID ?? "");
                   }}
                 >
                   <span>Do you want to permanently remove this user?</span>
@@ -105,7 +141,7 @@ export const UserPage = () => {
           )}
         </div>
       </div>
-      <ProjectDataTable values={one?.projects} />
+      <ProjectDataTable values={user?.projects ?? []} isLoading={isLoading} />
     </div>
   );
 };

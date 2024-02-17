@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  ID          String    @id @default(uuid())
+  username    String    @unique
+  password    String
+  permissions String    @default("")
+  projects    Project[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+}
+
+model Project {
+  PID       String   @id @default(uuid())
+  name      String   @unique
+  members   User[]
+  hashes    Hash[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Hash {
+  HID       String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [PID])
+  jobs      Job[]
+  hash      String
+  hashType  String
+  status    String   @default("NOT_FOUND")
+  value     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Instance {
+  IID       String   @id @default(uuid())
+  name      String?
+  tag       String
+  type      String?
+  jobs      Job[]
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Job {
+  JID        String   @id @default(uuid())
+  instanceId String
+  instance   Instance @relation(fields: [instanceId], references: [IID])
+  hashes     Hash[]
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+}

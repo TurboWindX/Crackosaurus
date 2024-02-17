@@ -1,0 +1,11 @@
+{
+  "name": "@repo/plugins",
+  "version": "0.0.0",
+  "exports": {
+    "./error": "./src/error.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "fastify": "^4.0.0"
+  }
+}

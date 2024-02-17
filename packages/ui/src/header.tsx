@@ -1,4 +1,10 @@
-import { HardHatIcon, UserIcon, UsersIcon } from "lucide-react";
+import {
+  CpuIcon,
+  FolderIcon,
+  HardHatIcon,
+  UserIcon,
+  UsersIcon,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { PermissionType } from "@repo/api";
@@ -37,6 +43,17 @@ const LINKS: readonly HeaderLinkProps[] = [
     icon: HardHatIcon,
   },
   {
+    text: "Projects",
+    path: "/projects",
+    icon: FolderIcon,
+  },
+  {
+    text: "Instances",
+    path: "/instances",
+    icon: CpuIcon,
+    permission: "instances:get",
+  },
+  {
     text: "Users",
     path: "/users",
     icon: UsersIcon,
@@ -45,7 +62,9 @@ const LINKS: readonly HeaderLinkProps[] = [
 ] as const;
 
 export const Header = () => {
-  const { uid, username, hasPermission } = useAuth();
+  const { uid, username, hasPermission, isLoading } = useAuth();
+
+  if (isLoading) return <></>;
 
   return (
     <div>
@@ -56,7 +75,7 @@ export const Header = () => {
               {LINKS.map(
                 (link) =>
                   (!link.permission || hasPermission(link.permission)) && (
-                    <NavigationMenuItem>
+                    <NavigationMenuItem key={link.path}>
                       <Link to={link.path}>
                         <NavigationMenuLink
                           className={navigationMenuTriggerStyle()}
@@ -99,7 +118,7 @@ export const Header = () => {
                         (link) =>
                           (!link.permission ||
                             hasPermission(link.permission)) && (
-                            <SheetClose asChild>
+                            <SheetClose key={link.path} asChild>
                               <Link to={link.path}>
                                 {link.text === "Crackosaurus"
                                   ? "Home"

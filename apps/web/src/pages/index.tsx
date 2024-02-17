@@ -1,18 +1,31 @@
 import { Outlet, createBrowserRouter } from "react-router-dom";
 
-import { AuthRoute, PermissionRoute } from "@repo/ui/auth";
+import { AuthProvider, AuthRoute, PermissionRoute } from "@repo/ui/auth";
 import { Header } from "@repo/ui/header";
 
+import { HomePage } from "./HomePage.tsx";
+import { InstancePage } from "./InstancePage.tsx";
+import { InstancesPage } from "./InstancesPage.tsx";
 import { LoginPage } from "./LoginPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
 import { ProjectsPage } from "./ProjectsPage.tsx";
+import { SetupPage } from "./SetupPage.tsx";
 import { UserPage } from "./UserPage.tsx";
 import { UsersPage } from "./UsersPage.tsx";
 
 export const router = createBrowserRouter([
   {
     errorElement: <h1>Something went wrong...</h1>,
+    element: (
+      <AuthProvider>
+        <Outlet />
+      </AuthProvider>
+    ),
     children: [
+      {
+        path: "/setup",
+        element: <SetupPage />,
+      },
       {
         path: "/login",
         element: <LoginPage />,
@@ -30,7 +43,7 @@ export const router = createBrowserRouter([
             path: "",
             element: (
               <AuthRoute>
-                <ProjectsPage />
+                <HomePage />
               </AuthRoute>
             ),
           },
@@ -66,8 +79,24 @@ export const router = createBrowserRouter([
               </PermissionRoute>
             ),
           },
+          {
+            path: "instances",
+            element: (
+              <PermissionRoute permission="instances:get">
+                <InstancesPage />
+              </PermissionRoute>
+            ),
+          },
+          {
+            path: "instances/:instanceID",
+            element: (
+              <PermissionRoute permission="instances:get">
+                <InstancePage />
+              </PermissionRoute>
+            ),
+          },
         ],
       },
-    ]
-  }
+    ],
+  },
 ]);

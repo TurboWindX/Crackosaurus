@@ -1,36 +1,21 @@
-import { Spinner } from "@repo/shadcn/components/ui/spinner";
+import { useContext, useMemo } from "react";
 
-import { AuthProvider, useAuth } from "./auth";
-import { ProjectsProvider, useProjects } from "./projects";
-import { UsersProvider, useUsers } from "./users";
+import { makeAPI } from "@repo/api/server/client/web";
 
-export const LoadingProvider = ({ children }: { children: any }) => {
-  const { isLoading: authLoading } = useAuth();
-  const { isLoading: usersLoading } = useUsers();
-  const { isLoading: projectsLoading } = useProjects();
+import { APIContext } from "./contexts";
 
-  const isLoading = authLoading || usersLoading || projectsLoading;
-
-  if (isLoading)
-    return (
-      <div className="ui-grid ui-grid-rows-3 ui-h-screen">
-        <div className="ui-grid ui-justify-center ui-items-center ui-row-start-2 ui-row-end-2">
-          <Spinner className="ui-w-[100%] ui-h-[100%]" />
-        </div>
-      </div>
-    );
-
-  return children;
+export const useAPI = () => {
+  return useContext(APIContext);
 };
 
-export const APIProvider = ({ children }: { children: any }) => {
-  return (
-    <AuthProvider>
-      <UsersProvider>
-        <ProjectsProvider>
-          <LoadingProvider>{children}</LoadingProvider>
-        </ProjectsProvider>
-      </UsersProvider>
-    </AuthProvider>
-  );
+export const APIProvider = ({
+  url,
+  children,
+}: {
+  url: string;
+  children: any;
+}) => {
+  const API = useMemo(() => makeAPI(url), [url]);
+
+  return <APIContext.Provider value={API}>{children}</APIContext.Provider>;
 };

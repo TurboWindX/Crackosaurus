@@ -1,109 +1,245 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TrashIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { AddHashRequest, GetProjectResponse, HASH_TYPES } from "@repo/api";
+import { ACTIVE_STATUSES, APIError, type Status } from "@repo/api";
+import { type APIType } from "@repo/api/server";
+import { ProjectJob } from "@repo/api/server";
+import { type REQ, type RES } from "@repo/api/server/client/web";
+import { HASH_TYPES, type HashType } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 import { Separator } from "@repo/shadcn/components/ui/separator";
-import { TableCell } from "@repo/shadcn/components/ui/table";
+import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
-import { useProjects } from "@repo/ui/projects";
+import { useErrors } from "@repo/ui/errors";
+import { StatusBadge } from "@repo/ui/status";
+import { RelativeTime } from "@repo/ui/time";
 import { UserSelect } from "@repo/ui/users";
 
 interface HashDataTableProps {
-  projectID: number;
-  values: GetProjectResponse["response"]["hashes"];
+  projectID: string;
+  values: RES<APIType["getProject"]>["hashes"];
+  isLoading?: boolean;
 }
 
-const HashDataTable = ({ projectID, values }: HashDataTableProps) => {
+const HashDataTable = ({
+  projectID,
+  values,
+  isLoading,
+}: HashDataTableProps) => {
   const { hasPermission } = useAuth();
-  const { addHashes, removeHashes } = useProjects();
 
-  const [addHash, setAddHash] = useState<AddHashRequest["Body"]>({
+  const [newHash, setNewHash] = useState<REQ<APIType["addHash"]>>({
+    projectID,
     hash: "",
-    hashType: "",
+    hashType: "" as HashType,
+  });
+
+  const API = useAPI();
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewHashID, setViewHashID] = useState<string | null>(null);
+  const { data: viewHash } = useQuery({
+    queryKey: ["hashes", viewHashID],
+    queryFn: async () =>
+      viewHashID ? await API.viewHash({ projectID, hashID: viewHashID }) : null,
+  });
+
+  const { mutateAsync: addHash } = useMutation({
+    mutationFn: API.addHash,
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectID],
+      });
+    },
+    onError: handleError,
+  });
+
+  const { mutateAsync: removeHashes } = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.allSettled(
+        ids.map((hashID) => API.removeHash({ projectID, hashID }))
+      ),
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectID],
+      });
+    },
+    onError: handleError,
   });
 
   return (
+    <>
+      <DrawerDialog title="Hash" open={viewOpen} setOpen={setViewOpen}>
+        {viewHash ?? "Not found"}
+      </DrawerDialog>
+      <DataTable
+        type="Hash"
+        pluralSuffix="es"
+        values={values ?? []}
+        head={["Hash", "Type", "Status", "Last Updated"]}
+        valueKey={({ HID }) => HID}
+        isLoading={isLoading}
+        row={({ hash, hashType, status, updatedAt }) => [
+          hash,
+          hashType,
+          <StatusBadge status={status as any} />,
+          <RelativeTime time={updatedAt} />,
+        ]}
+        rowClick={
+          hasPermission("hashes:view")
+            ? ({ HID }) => {
+                setViewHashID(HID);
+                setViewOpen(true);
+              }
+            : undefined
+        }
+        noAdd={!hasPermission("hashes:add")}
+        onAdd={async () => {
+          await addHash(newHash);
+          return true;
+        }}
+        noRemove={!hasPermission("hashes:remove")}
+        onRemove={async (hashes) => {
+          await removeHashes(hashes.map(({ HID }) => HID));
+          return true;
+        }}
+        searchFilter={({ hash, hashType }, search) =>
+          hash.toLowerCase().includes(search.toLowerCase()) ||
+          hashType.toLowerCase().includes(search.toLowerCase())
+        }
+        addValidate={() =>
+          (newHash.hash ?? "").trim().length > 0 &&
+          newHash.hashType.trim().length > 0
+        }
+        addDialog={
+          <>
+            <Input
+              placeholder="Value"
+              value={newHash.hash}
+              onChange={(e) =>
+                setNewHash({
+                  ...newHash,
+                  hash: e.target.value,
+                })
+              }
+            />
+            <Select
+              value={newHash.hashType}
+              onValueChange={(value) =>
+                setNewHash({
+                  ...newHash,
+                  hashType: value as HashType,
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Type</SelectLabel>
+                  {HASH_TYPES.map((type) => (
+                    <SelectItem value={type}>{type}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
+    </>
+  );
+};
+
+interface JobDataTableProps {
+  values: ProjectJob[];
+  isLoading?: boolean;
+}
+
+const JobDataTable = ({ values, isLoading }: JobDataTableProps) => {
+  const navigate = useNavigate();
+
+  return (
     <DataTable
-      type="Hash"
-      pluralSuffix="es"
+      type="Job"
       values={values ?? []}
-      head={["Hash", "Type"]}
-      valueKey={({ HID }) => HID}
-      row={({ hash, hashType }) => [
-        <TableCell>{hash}</TableCell>,
-        <TableCell>{hashType}</TableCell>,
+      head={["Job", "Instance", "Status", "Last Updated"]}
+      valueKey={({ JID }) => JID}
+      rowClick={({ instance }) => navigate(`/instances/${instance.IID}`)}
+      isLoading={isLoading}
+      sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
+      row={({ JID, status, updatedAt, instance }) => [
+        JID,
+        instance.name || instance.IID,
+        <StatusBadge status={status as any} />,
+        <RelativeTime time={updatedAt} />,
       ]}
-      noAdd={!hasPermission("projects:hashes:add")}
-      onAdd={() => addHashes(projectID, addHash)}
-      noRemove={!hasPermission("projects:hashes:remove")}
-      onRemove={(hashes) =>
-        removeHashes(projectID, ...hashes.map(({ HID }) => HID))
-      }
-      searchFilter={({ hash, hashType }, search) =>
-        hash.toLowerCase().includes(search.toLowerCase()) ||
-        hashType.toLowerCase().includes(search.toLowerCase())
-      }
-      addValidate={() =>
-        addHash.hash.trim().length > 0 && addHash.hashType.trim().length > 0
-      }
-      addDialog={
-        <>
-          <Input
-            placeholder="Value"
-            value={addHash.hash}
-            onChange={(e) =>
-              setAddHash({
-                ...addHash,
-                hash: e.target.value,
-              })
-            }
-          />
-          <Select
-            value={addHash.hashType}
-            onValueChange={(value) =>
-              setAddHash({
-                ...addHash,
-                hashType: value,
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              {HASH_TYPES.map((type) => (
-                <SelectItem value={type}>{type}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </>
-      }
+      noAdd
+      noRemove
     />
   );
 };
 
 interface UserDataTableProps {
-  projectID: number;
-  values: GetProjectResponse["response"]["members"];
+  projectID: string;
+  values: RES<APIType["getProject"]>["members"];
+  isLoading?: boolean;
 }
 
-const UserDataTable = ({ projectID, values }: UserDataTableProps) => {
+const UserDataTable = ({
+  projectID,
+  values,
+  isLoading,
+}: UserDataTableProps) => {
   const { hasPermission } = useAuth();
-  const { addUsers, removeUsers } = useProjects();
 
-  const [addUser, setAddUser] = useState<number | null>(null);
+  const [newUser, setNewUser] = useState<REQ<APIType["addUserToProject"]>>({
+    projectID,
+    userID: "",
+  });
+
+  const API = useAPI();
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const { mutateAsync: addUser } = useMutation({
+    mutationFn: API.addUserToProject,
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectID],
+      });
+    },
+    onError: handleError,
+  });
+
+  const { mutateAsync: removeUsers } = useMutation({
+    mutationFn: (ids: string[]) =>
+      Promise.allSettled(
+        ids.map((userID) => API.removeUserFromProject({ projectID, userID }))
+      ),
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", projectID],
+      });
+    },
+    onError: handleError,
+  });
 
   return (
     <DataTable
@@ -111,16 +247,18 @@ const UserDataTable = ({ projectID, values }: UserDataTableProps) => {
       values={values ?? []}
       head={["User"]}
       valueKey={({ ID }) => ID}
-      row={({ username }) => [<TableCell>{username}</TableCell>]}
+      row={({ username }) => [username]}
+      isLoading={isLoading}
       searchFilter={({ username }, search) =>
         username.toLowerCase().includes(search)
       }
+      sort={(a, b) => a.username.localeCompare(b.username)}
       addValidate={() => addUser !== null}
       addDialog={
         <>
           <UserSelect
-            value={addUser}
-            onValueChange={setAddUser}
+            value={newUser.userID}
+            onValueChange={(userID) => setNewUser({ ...newUser, userID })}
             filter={({ ID }) =>
               (values ?? []).every((member) => ID !== member.ID) === true
             }
@@ -128,38 +266,95 @@ const UserDataTable = ({ projectID, values }: UserDataTableProps) => {
         </>
       }
       noAdd={!hasPermission("projects:users:add")}
-      onAdd={() => addUsers(projectID, addUser ?? -1)}
+      onAdd={async () => {
+        await addUser(newUser);
+        return true;
+      }}
       noRemove={!hasPermission("projects:users:remove")}
-      onRemove={(users) => removeUsers(projectID, ...users.map(({ ID }) => ID))}
+      onRemove={async (users) => {
+        await removeUsers(users.map(({ ID }) => ID));
+        return true;
+      }}
     />
   );
 };
 
 export const ProjectPage = () => {
   const { projectID } = useParams();
+
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
-  const { one, loadOne, remove } = useProjects();
-  const [removeOpen, setRemoveOpen] = useState(false);
+  const API = useAPI();
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const {
+    data: project,
+    isLoading,
+    error,
+    isLoadingError,
+  } = useQuery({
+    queryKey: ["projects", projectID],
+    queryFn: async () => API.getProject({ projectID: projectID ?? "" }),
+    retry(count, error) {
+      if (error instanceof APIError && error.status === 401) return false;
+      return count < 3;
+    },
+  });
 
   useEffect(() => {
-    loadOne(parseInt(projectID ?? "-1"));
-  }, []);
+    if (!isLoadingError && error) handleError(error);
+  }, [isLoadingError, error]);
+
+  const { mutateAsync: deleteProject } = useMutation({
+    mutationFn: async (projectID: string) => API.deleteProject({ projectID }),
+    onSuccess() {
+      queryClient.invalidateQueries({ queryKey: ["projects", "list"] });
+
+      navigate("/projects");
+    },
+    onError: handleError,
+  });
+
+  const [removeOpen, setRemoveOpen] = useState(false);
+
+  const hashes = useMemo(() => project?.hashes ?? [], [project]);
+
+  const members = useMemo(() => project?.members ?? [], [project]);
+
+  const jobs = useMemo(() => {
+    const unfilteredJobs = (project?.hashes ?? [])
+      .flatMap((hash) => hash.jobs)
+      .filter((job) => job) as ProjectJob[];
+    const seenJobs: Record<string, boolean> = {};
+
+    return unfilteredJobs.filter(({ JID }) => {
+      if (seenJobs[JID]) return false;
+      seenJobs[JID] = true;
+
+      return true;
+    });
+  }, [project]);
 
   const tables = [
-    hasPermission("projects:hashes:get") && (
+    hasPermission("instances:jobs:get") && jobs.length > 0 && (
+      <JobDataTable key="jobs" values={jobs} isLoading={isLoading} />
+    ),
+    hasPermission("hashes:get") && (
       <HashDataTable
         key="hashes"
-        projectID={parseInt(projectID ?? "-1")}
-        values={one?.hashes ?? []}
+        projectID={projectID ?? ""}
+        values={hashes}
+        isLoading={isLoading}
       />
     ),
     hasPermission("projects:users:get") && (
       <UserDataTable
         key="users"
-        projectID={parseInt(projectID ?? "-1")}
-        values={one?.members ?? []}
+        projectID={projectID ?? ""}
+        values={members}
+        isLoading={isLoading}
       />
     ),
   ];
@@ -173,7 +368,7 @@ export const ProjectPage = () => {
     <div className="grid gap-8 p-4">
       <div className="grid grid-cols-2 gap-4">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-          {one.name}
+          {project?.name ?? "Project"}
         </span>
         <div className="grid grid-flow-col justify-end gap-4">
           {hasPermission("projects:remove") && (
@@ -196,8 +391,7 @@ export const ProjectPage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    if (await remove(parseInt(projectID ?? "-1")))
-                      navigate("/projects");
+                    await deleteProject(projectID ?? "");
                   }}
                 >
                   <span>Do you want to permanently remove this project?</span>

@@ -1,57 +1,86 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { CreateProjectRequest } from "@repo/api";
+import { APIError } from "@repo/api";
+import { type APIType } from "@repo/api/server";
+import { type REQ } from "@repo/api/server/client/web";
 import { Badge } from "@repo/shadcn/components/ui/badge";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { TableCell } from "@repo/shadcn/components/ui/table";
+import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
-import { useProjects } from "@repo/ui/projects";
+import { useErrors } from "@repo/ui/errors";
+import { RelativeTime } from "@repo/ui/time";
 
 export const ProjectsPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const { list, loadList, add, remove } = useProjects();
 
-  const [addProject, setAddProject] = useState<CreateProjectRequest["Body"]>({
+  const [newProject, setNewProject] = useState<REQ<APIType["createProject"]>>({
     projectName: "",
   });
 
   const hasCollaborators = hasPermission("projects:users:get");
 
+  const API = useAPI();
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const {
+    data: projects,
+    isLoading,
+    error,
+    isLoadingError,
+  } = useQuery({
+    queryKey: ["projects", "list", "page"],
+    queryFn: API.getProjects,
+    retry(count, error) {
+      if (error instanceof APIError && error.status === 401) return false;
+      return count < 3;
+    },
+  });
+
   useEffect(() => {
-    loadList();
-  }, []);
+    if (!isLoadingError && error) handleError(error);
+  }, [isLoadingError, error]);
+
+  const { mutateAsync: createProject } = useMutation({
+    mutationFn: API.createProject,
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", "list"],
+      });
+    },
+    onError: handleError,
+  });
 
   return (
     <div className="p-4">
       <DataTable
         type="Project"
-        values={list}
-        head={["Project", hasCollaborators ? "Collaborators" : null]}
+        values={projects ?? []}
+        head={[
+          "Project",
+          hasCollaborators ? "Collaborators" : null,
+          "Last Updated",
+        ]}
         valueKey={({ PID }) => PID}
-        row={({ PID, name, members }) => [
-          <TableCell
-            className="cursor-pointer font-medium"
-            onClick={() => navigate(`/projects/${PID}`)}
-          >
-            {name}
-          </TableCell>,
+        sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
+        isLoading={isLoading}
+        rowClick={({ PID }) => navigate(`/projects/${PID}`)}
+        row={({ name, members, updatedAt }) => [
+          name,
           hasCollaborators ? (
-            <TableCell
-              className="cursor-pointer"
-              onClick={() => navigate(`/projects/${PID}`)}
-            >
-              <div className="grid max-w-max grid-flow-col gap-2">
-                {(members ?? []).map((member) => (
-                  <Badge key={member.ID} variant="secondary">
-                    {member.username}
-                  </Badge>
-                ))}
-              </div>
-            </TableCell>
+            <div className="grid max-w-max grid-flow-col gap-2">
+              {(members ?? []).map((member) => (
+                <Badge key={member.ID} variant="secondary">
+                  {member.username}
+                </Badge>
+              ))}
+            </div>
           ) : null,
+          <RelativeTime time={updatedAt} />,
         ]}
         searchFilter={(project, search) =>
           project.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -59,20 +88,21 @@ export const ProjectsPage = () => {
             member.username.toLowerCase().includes(search.toLowerCase())
           )
         }
-        addValidate={() => addProject.projectName.trim().length > 0}
+        addValidate={() => newProject.projectName.trim().length > 0}
         addDialog={
           <Input
             placeholder="Name"
-            value={addProject.projectName}
+            value={newProject.projectName}
             onChange={(e) =>
-              setAddProject({ ...addProject, projectName: e.target.value })
+              setNewProject({ ...newProject, projectName: e.target.value })
             }
           />
         }
         noAdd={!hasPermission("projects:add")}
-        onAdd={() => add(addProject)}
-        noRemove
-        onRemove={(projects) => remove(...projects.map(({ PID }) => PID))}
+        onAdd={async () => {
+          await createProject(newProject);
+          return true;
+        }}
       />
     </div>
   );

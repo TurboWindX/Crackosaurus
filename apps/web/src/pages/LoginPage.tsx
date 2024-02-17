@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "@repo/shadcn/components/ui/button";
@@ -12,11 +12,16 @@ import { Input } from "@repo/shadcn/components/ui/input";
 import { useAuth } from "@repo/ui/auth";
 
 export const LoginPage = () => {
+  const navigate = useNavigate();
+  const { login, isAuthenticated } = useAuth();
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [redirect, setRedirect] = useState(false);
 
-  const { login } = useAuth();
-  const navigate = useNavigate();
+  useEffect(() => {
+    if (redirect && isAuthenticated) navigate("/");
+  }, [redirect, isAuthenticated]);
 
   return (
     <div className="grid h-screen grid-rows-3 lg:grid-cols-3">
@@ -32,8 +37,10 @@ export const LoginPage = () => {
             className="grid grid-cols-1 gap-2"
             onSubmit={async (event) => {
               event.preventDefault();
-              await login(username, password);
-              navigate("/");
+
+              setRedirect(true);
+
+              await login({ username, password });
             }}
           >
             <Input

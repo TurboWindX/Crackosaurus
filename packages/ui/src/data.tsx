@@ -1,5 +1,5 @@
 import { PlusIcon, TrashIcon } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Card } from "@repo/shadcn/components/ui/card";
@@ -109,6 +109,9 @@ export interface DataTableProps<T> {
   head: (string | null)[];
   row: (value: T) => any[];
   valueKey: (value: T) => string | number;
+  isLoading?: boolean;
+  sort?: (a: T, b: T) => number;
+  rowClick?: (value: T) => void;
   addDialog?: any;
   addValidate?: () => boolean;
   onAdd?: () => Promise<boolean>;
@@ -125,6 +128,8 @@ export function DataTable<T>({
   addValidate,
   onRemove,
   row,
+  rowClick,
+  sort,
   valueKey,
   addDialog,
   values,
@@ -132,37 +137,62 @@ export function DataTable<T>({
   searchFilter,
   noAdd,
   noRemove,
+  isLoading,
 }: DataTableProps<T>) {
-  const plural = `${type}${pluralSuffix || "s"}`;
-
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [selects, setSelects] = useState<Record<string | number, boolean>>({});
   const [search, setSearch] = useState("");
 
-  const searchValues = values.filter(
-    (value) => searchFilter?.(value, search) ?? true
-  );
-  const selectedValues = searchValues.filter(
-    (value) => selects[valueKey(value)]
+  const plural = useMemo(
+    () => `${type}${pluralSuffix || "s"}`,
+    [type, pluralSuffix]
   );
 
-  const hasAdd = addDialog !== undefined && onAdd !== undefined && !noAdd;
-  const hasRemove = onRemove !== undefined && !noRemove;
-  const hasButtons = hasAdd || hasRemove;
-  const hasSelect = hasRemove;
+  const sortedValues = useMemo(
+    () => (sort ? values.sort(sort) : values),
+    [values, sort]
+  );
+
+  const searchValues = useMemo(
+    () => sortedValues.filter((value) => searchFilter?.(value, search) ?? true),
+    [search, sortedValues, searchFilter]
+  );
+
+  const selectedValues = useMemo(
+    () => searchValues.filter((value) => selects[valueKey(value)]),
+    [selects, searchValues, valueKey]
+  );
+
+  const hasAdd = useMemo(
+    () => addDialog !== undefined && onAdd !== undefined && !noAdd,
+    [addDialog, onAdd, noAdd]
+  );
+
+  const hasRemove = useMemo(
+    () => onRemove !== undefined && !noRemove,
+    [onRemove, noRemove]
+  );
+
+  const hasButtons = useMemo(() => hasAdd || hasRemove, [hasAdd, hasRemove]);
+
+  const hasSelect = useMemo(() => hasRemove, [hasRemove]);
 
   return (
     <div className="ui-grid ui-gap-4">
       {searchFilter !== undefined && (
         <Input
+          key="search"
           placeholder={`Search ${plural}`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
       )}
       {hasButtons && (
-        <div className="ui-grid ui-w-max ui-grid-flow-col ui-gap-4">
+        <div
+          key="buttons"
+          className="ui-grid ui-w-max ui-grid-flow-col ui-gap-4"
+        >
           {hasAdd && (
             <AddDialog
               key="add"
@@ -198,7 +228,7 @@ export function DataTable<T>({
           <TableHeader>
             <TableRow>
               {hasSelect && (
-                <TableHead className="ui-w-[50px]">
+                <TableHead key="select" className="ui-w-[50px]">
                   <Checkbox
                     checked={
                       searchValues.length === selectedValues.length &&
@@ -222,44 +252,109 @@ export function DataTable<T>({
               {head
                 .filter((label) => label)
                 .map((label) => (
-                  <TableHead>{label}</TableHead>
+                  <TableHead key={label}>{label}</TableHead>
                 ))}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {searchValues.length === 0 ? (
-              <TableRow key="none">
-                {hasSelect && <TableCell />}
-                <TableCell>No {plural}</TableCell>
-                {new Array(head.filter((label) => label).length - 1)
-                  .fill(0)
-                  .map((_) => (
-                    <TableCell />
-                  ))}
-              </TableRow>
-            ) : (
-              searchValues.map((value) => (
-                <TableRow key={valueKey(value)}>
-                  {hasSelect && (
-                    <TableCell>
-                      <Checkbox
-                        checked={selects[valueKey(value)]}
-                        onCheckedChange={(state) =>
-                          setSelects({
-                            ...selects,
-                            [valueKey(value)]: !!state.valueOf(),
-                          })
-                        }
-                      />
-                    </TableCell>
-                  )}
-                  {row(value)}
-                </TableRow>
-              ))
-            )}
+            <DataTableBody
+              values={searchValues}
+              head={head}
+              row={row}
+              rowClick={rowClick}
+              hasSelect={hasSelect}
+              plural={plural}
+              valueKey={valueKey}
+              selects={selects}
+              setSelects={setSelects}
+              isLoading={isLoading}
+            />
           </TableBody>
         </Table>
       </Card>
     </div>
   );
 }
+
+export interface DataTableBodyProps<T> {
+  values: T[];
+  head: (string | null)[];
+  hasSelect: boolean;
+  plural: string;
+  valueKey: (value: T) => string | number;
+  selects: Record<string | number, boolean>;
+  setSelects: (data: Record<string | number, boolean>) => void;
+  row: (value: T) => any[];
+  rowClick?: (value: T) => void;
+  isLoading?: boolean;
+}
+
+const DataTableBody = <T,>({
+  values,
+  hasSelect,
+  plural,
+  head,
+  valueKey,
+  selects,
+  setSelects,
+  row,
+  rowClick,
+  isLoading,
+}: DataTableBodyProps<T>) => {
+  if (isLoading)
+    return (
+      <TableRow key="loading">
+        {hasSelect && <TableCell />}
+        <TableCell>Loading</TableCell>
+        {new Array(head.filter((label) => label).length - 1)
+          .fill(0)
+          .map((_, index) => (
+            <TableCell key={index} />
+          ))}
+      </TableRow>
+    );
+
+  if (values.length === 0)
+    return (
+      <TableRow key="none">
+        {hasSelect && <TableCell />}
+        <TableCell>No {plural}</TableCell>
+        {new Array(head.filter((label) => label).length - 1)
+          .fill(0)
+          .map((_, index) => (
+            <TableCell key={index} />
+          ))}
+      </TableRow>
+    );
+
+  return values.map((value) => (
+    <TableRow key={valueKey(value)}>
+      {hasSelect && (
+        <TableCell key="select">
+          <Checkbox
+            checked={selects[valueKey(value)]}
+            onCheckedChange={(state) =>
+              setSelects({
+                ...selects,
+                [valueKey(value)]: !!state.valueOf(),
+              })
+            }
+          />
+        </TableCell>
+      )}
+      {row(value).map((column, index) =>
+        column ? (
+          <TableCell
+            key={index}
+            className={`${index === 0 ? "ui-font-medium" : ""} ${
+              rowClick ? "ui-cursor-pointer" : ""
+            }`}
+            onClick={() => rowClick?.(value)}
+          >
+            {column}
+          </TableCell>
+        ) : null
+      )}
+    </TableRow>
+  ));
+};

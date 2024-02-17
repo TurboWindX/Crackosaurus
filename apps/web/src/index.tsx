@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
@@ -12,13 +13,23 @@ import { APIProvider } from "@repo/ui/api";
 
 import { router } from "./pages/index.tsx";
 
+const queryClient = new QueryClient();
+
+const App = () => {
+  return (
+    <ThemeProvider defaultTheme="dark" storageKey="ui-theme">
+      <QueryClientProvider client={queryClient}>
+        <APIProvider url="http://localhost:8000/api">
+          <RouterProvider router={router} />
+        </APIProvider>
+      </QueryClientProvider>
+      <Toaster />
+    </ThemeProvider>
+  );
+};
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ThemeProvider defaultTheme="dark" storageKey="ui-theme">
-      <APIProvider>
-        <RouterProvider router={router} />
-        <Toaster />
-      </APIProvider>
-    </ThemeProvider>
+    <App />
   </React.StrictMode>
 );
