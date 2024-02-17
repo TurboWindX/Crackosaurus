@@ -1,8 +1,9 @@
 import { z } from "zod";
 
+import { HASH_TYPES } from "@repo/hashcat/data";
+
 import { PERMISSIONS } from "../auth";
 import { APIHandler, Route } from "../routing";
-import { HASH_TYPES } from "../types";
 
 export const PROJECT_JOB = z.object({
   JID: z.string(),
@@ -19,12 +20,14 @@ export const ROUTES = {
   ping: {
     method: "GET",
     path: "/ping",
+    permissions: [],
     request: z.object({}).optional(),
     response: z.string(),
   },
   init: {
     method: "POST",
     path: "/init",
+    permissions: [],
     request: z.object({
       username: z.string(),
       password: z.string(),
@@ -34,6 +37,7 @@ export const ROUTES = {
   getUser: {
     method: "GET",
     path: "/users/:userID",
+    permissions: ["auth"],
     request: z.object({}).optional(),
     response: z.object({
       ID: z.string(),
@@ -51,6 +55,7 @@ export const ROUTES = {
   getUsers: {
     method: "GET",
     path: "/users",
+    permissions: ["auth"],
     request: z.object({}).optional(),
     response: z
       .object({
@@ -63,6 +68,7 @@ export const ROUTES = {
   getUserList: {
     method: "GET",
     path: "/users/list",
+    permissions: ["users:list"],
     request: z.object({}).optional(),
     response: z
       .object({
@@ -74,6 +80,7 @@ export const ROUTES = {
   login: {
     method: "POST",
     path: "/auth/login",
+    permissions: [],
     request: z.object({
       username: z.string(),
       password: z.string(),
@@ -83,12 +90,14 @@ export const ROUTES = {
   logout: {
     method: "POST",
     path: "/auth/logout",
+    permissions: ["auth"],
     request: z.object({}).optional(),
     response: z.string(),
   },
   register: {
     method: "POST",
     path: "/users",
+    permissions: ["users:add"],
     request: z.object({
       username: z.string(),
       password: z.string(),
@@ -99,12 +108,14 @@ export const ROUTES = {
   deleteUser: {
     method: "DELETE",
     path: "/users/:userID",
+    permissions: ["users:remove"],
     request: z.object({}).optional(),
     response: z.string(),
   },
   addHash: {
     method: "POST",
     path: "/projects/:projectID/hashes",
+    permissions: ["hashes:add"],
     request: z.object({
       hash: z.string(),
       hashType: z.enum(HASH_TYPES),
@@ -114,12 +125,21 @@ export const ROUTES = {
   removeHash: {
     method: "DELETE",
     path: "/projects/:projectID/hashes/:hashID",
+    permissions: ["hashes:remove"],
     request: z.object({}).optional(),
     response: z.string(),
+  },
+  viewHash: {
+    method: "GET",
+    path: "/projects/:projectID/hashes/:hashID/view",
+    permissions: ["hashes:view"],
+    request: z.object({}).optional(),
+    response: z.string().nullable(),
   },
   getInstance: {
     method: "GET",
     path: "/instances/:instanceID",
+    permissions: ["instances:get"],
     request: z.object({}).optional(),
     response: z.object({
       IID: z.string(),
@@ -139,6 +159,7 @@ export const ROUTES = {
   getInstances: {
     method: "GET",
     path: "/instances",
+    permissions: ["instances:get"],
     request: z.object({}).optional(),
     response: z
       .object({
@@ -152,6 +173,7 @@ export const ROUTES = {
   getInstanceList: {
     method: "GET",
     path: "/instances/list",
+    permissions: ["instances:list"],
     request: z.object({}).optional(),
     response: z
       .object({
@@ -163,12 +185,14 @@ export const ROUTES = {
   deleteInstance: {
     method: "DELETE",
     path: "/instances/:instanceID",
+    permissions: ["instances:remove"],
     request: z.object({}).optional(),
     response: z.string(),
   },
   createInstance: {
     method: "POST",
     path: "/instances",
+    permissions: ["instances:add"],
     request: z.object({
       name: z.string().nullable(),
       type: z.string().nullable(),
@@ -178,6 +202,7 @@ export const ROUTES = {
   createInstanceJob: {
     method: "POST",
     path: "/instances/:instanceID/jobs",
+    permissions: ["instances:jobs:add"],
     request: z.object({
       hashType: z.enum(HASH_TYPES),
       projectIDs: z.string().array(),
@@ -186,6 +211,7 @@ export const ROUTES = {
   },
   deleteInstanceJob: {
     method: "DELETE",
+    permissions: ["instances:jobs:remove"],
     path: "/instances/:instanceID/jobs/:jobID",
     request: z.object({}).optional(),
     response: z.string(),
@@ -193,6 +219,7 @@ export const ROUTES = {
   getProject: {
     method: "GET",
     path: "/projects/:projectID",
+    permissions: ["auth"],
     request: z.object({}).optional(),
     response: z.object({
       PID: z.string(),
@@ -211,6 +238,7 @@ export const ROUTES = {
           hash: z.string(),
           hashType: z.string(),
           status: z.string(),
+          updatedAt: z.date(),
           jobs: PROJECT_JOB.array().optional(),
         })
         .array()
@@ -220,6 +248,7 @@ export const ROUTES = {
   getProjects: {
     method: "GET",
     path: "/projects",
+    permissions: ["auth"],
     request: z.object({}).optional(),
     response: z
       .object({
@@ -239,6 +268,7 @@ export const ROUTES = {
   getProjectList: {
     method: "GET",
     path: "/projects/list",
+    permissions: ["auth"],
     request: z.object({}).optional(),
     response: z
       .object({
@@ -250,6 +280,7 @@ export const ROUTES = {
   createProject: {
     method: "POST",
     path: "/projects",
+    permissions: ["projects:add"],
     request: z.object({
       projectName: z.string(),
     }),
@@ -258,24 +289,28 @@ export const ROUTES = {
   deleteProject: {
     method: "DELETE",
     path: "/projects/:projectID",
+    permissions: ["projects:remove"],
     request: z.object({}).optional(),
     response: z.string(),
   },
   addUserToProject: {
     method: "POST",
     path: "/projects/:projectID/users/:userID",
+    permissions: ["projects:users:add"],
     request: z.object({}).optional(),
     response: z.string(),
   },
   removeUserFromProject: {
     method: "DELETE",
     path: "/projects/:projectID/users/:userID",
+    permissions: ["projects:users:remove"],
     request: z.object({}).optional(),
     response: z.string(),
   },
   changePassword: {
     method: "PUT",
     path: "/users/:userID/password",
+    permissions: ["auth"],
     request: z.object({
       oldPassword: z.string(),
       newPassword: z.string(),
@@ -285,6 +320,7 @@ export const ROUTES = {
   authUser: {
     method: "GET",
     path: "/auth/user",
+    permissions: ["auth"],
     request: z.object({}).optional(),
     response: z.object({
       uid: z.string(),

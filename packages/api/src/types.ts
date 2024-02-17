@@ -1,9 +1,6 @@
-export const HASH_TYPES = ["NTLM", "bcrypt"] as const;
-export type HashType = (typeof HASH_TYPES)[number];
-
 export const STATUSES = [
   "PENDING",
-  "STARTED",
+  "RUNNING",
   "STOPPED",
   "COMPLETE",
   "ERROR",
@@ -13,25 +10,22 @@ export type Status = (typeof STATUSES)[number];
 
 export const ACTIVE_STATUSES: { [key in Status]?: boolean } = {
   PENDING: true,
-  STARTED: true,
+  RUNNING: true,
   UNKNOWN: true,
 } as const;
 
 export interface ClusterStatus {
-  instances: {
-    [key: string]: {
-      status: string;
-      jobs: {
-        [key: string]: {
-          status: string;
-          hashes: {
-            [key: string]: {
-              status: string;
-              value?: string;
-            };
-          };
-        };
-      };
-    };
-  };
+  instances: Record<
+    string,
+    {
+      status: Status;
+      jobs: Record<
+        string,
+        {
+          status: Status;
+          hashes: Record<string, string>;
+        }
+      >;
+    }
+  >;
 }

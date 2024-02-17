@@ -71,12 +71,17 @@ export const UserPage = () => {
   const { mutateAsync: deleteUser } = useMutation({
     mutationFn: async (userID: string) => API.deleteUser({ userID }),
     onSuccess() {
-      queryClient.invalidateQueries({ queryKey: ["users", "list"] });
-      user?.projects?.forEach(({ PID }) =>
-        queryClient.invalidateQueries({ queryKey: ["projects", PID] })
-      );
+      if (uid === userID) {
+        queryClient.invalidateQueries();
+        navigate("/login");
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["users", "list"] });
+        user?.projects?.forEach(({ PID }) =>
+          queryClient.invalidateQueries({ queryKey: ["projects", PID] })
+        );
 
-      navigate("/users");
+        navigate("/users");
+      }
     },
     onError: handleError,
   });
@@ -105,7 +110,7 @@ export const UserPage = () => {
               </Button>
             </div>
           )}
-          {(hasPermission("users:remove") || uid.toString() === userID) && (
+          {(hasPermission("users:remove") || uid === userID) && (
             <div className="w-max">
               <DrawerDialog
                 title="Remove User"

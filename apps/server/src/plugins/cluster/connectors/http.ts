@@ -1,6 +1,6 @@
-import { type HashType } from "@repo/api";
-import { APIType } from "@repo/api/cluster";
+import { type APIType } from "@repo/api/cluster";
 import { makeAPI } from "@repo/api/cluster/client/node";
+import { type HashType } from "@repo/hashcat/data";
 
 import { ClusterConnector } from "./connector";
 

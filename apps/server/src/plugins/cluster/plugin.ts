@@ -63,6 +63,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
             select: {
               HID: true,
               hash: true,
+              hashType: true,
               status: true,
             },
           },
@@ -71,10 +72,15 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
     },
   });
 
-  const clusterStatus = await cluster.getStatus();
+  let clusterStatus;
+  try {
+    clusterStatus = await cluster.getStatus();
+  } catch (e) {
+    clusterStatus = {};
+  }
 
   for (let instance of instances) {
-    const instanceInfo = clusterStatus?.instances?.[instance.IID];
+    const instanceInfo = clusterStatus?.instances?.[instance.tag];
     const instanceStatus = instanceInfo?.status ?? "UNKNOWN";
 
     if (instanceStatus !== instance.status) {
@@ -106,17 +112,17 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
       }
 
       for (let hash of job.hashes) {
-        const hashInfo = jobInfo?.hashes?.[hash.hash];
-        const hashStatus = hashInfo?.status ?? "NOT_FOUND";
+        const value = jobInfo?.hashes?.[hash.hash];
 
-        if (hashStatus !== hash.status) {
-          await prisma.hash.update({
+        if (hash.status === "NOT_FOUND" && value) {
+          await prisma.hash.updateMany({
             where: {
-              HID: hash.HID,
+              hash: hash.hash,
+              hashType: hash.hashType,
             },
             data: {
-              status: hashStatus,
-              value: hashInfo?.value,
+              status: "FOUND",
+              value,
               updatedAt: new Date(),
             },
           });

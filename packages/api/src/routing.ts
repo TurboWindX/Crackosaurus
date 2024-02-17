@@ -1,5 +1,7 @@
 import { type ZodType, type z } from "zod";
 
+import { PermissionType } from ".";
+
 export interface APIErrorType {
   error: {
     code: number;
@@ -44,6 +46,7 @@ export interface Route<
 > {
   method: HTTPMethod;
   path: TPath;
+  permissions: PermissionType[];
   request: TReq;
   response: TRes;
 }

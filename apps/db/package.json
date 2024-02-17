@@ -1,0 +1,11 @@
+{
+  "name": "@repo/db",
+  "version": "0.0.0",
+  "scripts": {
+    "prisma:format": "prisma format",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "devDependencies": {
+    "prisma": "^5.7.1"
+  }
+}

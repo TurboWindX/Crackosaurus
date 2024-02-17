@@ -1,15 +1,18 @@
 import crypto from "crypto";
 
-import { type ClusterStatus, type HashType } from "@repo/api";
+import { type ClusterStatus } from "@repo/api";
+import { type HashType } from "@repo/hashcat/data";
 
 import { Cluster } from "./cluster";
 
-export class DebugCluster extends Cluster {
+export class DebugCluster extends Cluster<undefined> {
   public async load(): Promise<boolean> {
     console.log("Debug Cluster loaded");
 
     return true;
   }
+
+  public async tick(): Promise<void> {}
 
   public async createInstance(
     instanceType?: string | undefined

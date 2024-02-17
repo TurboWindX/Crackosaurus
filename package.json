@@ -13,7 +13,8 @@
     "@trivago/prettier-plugin-sort-imports": "^4.3.0",
     "prettier": "^3.1.0",
     "prettier-plugin-tailwindcss": "^0.5.11",
-    "turbo": "latest"
+    "turbo": "latest",
+    "typescript": "^5.3.3"
   },
   "engines": {
     "node": ">=18"

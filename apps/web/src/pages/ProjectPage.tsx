@@ -3,16 +3,11 @@ import { TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import {
-  ACTIVE_STATUSES,
-  APIError,
-  HASH_TYPES,
-  type HashType,
-  type Status,
-} from "@repo/api";
+import { ACTIVE_STATUSES, APIError, type Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { ProjectJob } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
+import { HASH_TYPES, type HashType } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import {
@@ -57,6 +52,14 @@ const HashDataTable = ({
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
+  const [viewOpen, setViewOpen] = useState(false);
+  const [viewHashID, setViewHashID] = useState<string | null>(null);
+  const { data: viewHash } = useQuery({
+    queryKey: ["hashes", viewHashID],
+    queryFn: async () =>
+      viewHashID ? await API.viewHash({ projectID, hashID: viewHashID }) : null,
+  });
+
   const { mutateAsync: addHash } = useMutation({
     mutationFn: API.addHash,
     onSuccess() {
@@ -81,71 +84,86 @@ const HashDataTable = ({
   });
 
   return (
-    <DataTable
-      type="Hash"
-      pluralSuffix="es"
-      values={values ?? []}
-      head={["Hash", "Type", "Status"]}
-      valueKey={({ HID }) => HID}
-      isLoading={isLoading}
-      row={({ hash, hashType, status }) => [
-        hash,
-        hashType,
-        <StatusBadge status={status as any} />,
-      ]}
-      noAdd={!hasPermission("hashes:add")}
-      onAdd={async () => {
-        await addHash(newHash);
-        return true;
-      }}
-      noRemove={!hasPermission("hashes:remove")}
-      onRemove={async (hashes) => {
-        await removeHashes(hashes.map(({ HID }) => HID));
-        return true;
-      }}
-      searchFilter={({ hash, hashType }, search) =>
-        hash.toLowerCase().includes(search.toLowerCase()) ||
-        hashType.toLowerCase().includes(search.toLowerCase())
-      }
-      addValidate={() =>
-        newHash.hash.trim().length > 0 && newHash.hashType.trim().length > 0
-      }
-      addDialog={
-        <>
-          <Input
-            placeholder="Value"
-            value={newHash.hash}
-            onChange={(e) =>
-              setNewHash({
-                ...newHash,
-                hash: e.target.value,
-              })
-            }
-          />
-          <Select
-            value={newHash.hashType}
-            onValueChange={(value) =>
-              setNewHash({
-                ...newHash,
-                hashType: value as HashType,
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectLabel>Type</SelectLabel>
-                {HASH_TYPES.map((type) => (
-                  <SelectItem value={type}>{type}</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </>
-      }
-    />
+    <>
+      <DrawerDialog title="Hash" open={viewOpen} setOpen={setViewOpen}>
+        {viewHash ?? "Not found"}
+      </DrawerDialog>
+      <DataTable
+        type="Hash"
+        pluralSuffix="es"
+        values={values ?? []}
+        head={["Hash", "Type", "Status", "Last Updated"]}
+        valueKey={({ HID }) => HID}
+        isLoading={isLoading}
+        row={({ hash, hashType, status, updatedAt }) => [
+          hash,
+          hashType,
+          <StatusBadge status={status as any} />,
+          <RelativeTime time={updatedAt} />,
+        ]}
+        rowClick={
+          hasPermission("hashes:view")
+            ? ({ HID }) => {
+                setViewHashID(HID);
+                setViewOpen(true);
+              }
+            : undefined
+        }
+        noAdd={!hasPermission("hashes:add")}
+        onAdd={async () => {
+          await addHash(newHash);
+          return true;
+        }}
+        noRemove={!hasPermission("hashes:remove")}
+        onRemove={async (hashes) => {
+          await removeHashes(hashes.map(({ HID }) => HID));
+          return true;
+        }}
+        searchFilter={({ hash, hashType }, search) =>
+          hash.toLowerCase().includes(search.toLowerCase()) ||
+          hashType.toLowerCase().includes(search.toLowerCase())
+        }
+        addValidate={() =>
+          (newHash.hash ?? "").trim().length > 0 &&
+          newHash.hashType.trim().length > 0
+        }
+        addDialog={
+          <>
+            <Input
+              placeholder="Value"
+              value={newHash.hash}
+              onChange={(e) =>
+                setNewHash({
+                  ...newHash,
+                  hash: e.target.value,
+                })
+              }
+            />
+            <Select
+              value={newHash.hashType}
+              onValueChange={(value) =>
+                setNewHash({
+                  ...newHash,
+                  hashType: value as HashType,
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Type</SelectLabel>
+                  {HASH_TYPES.map((type) => (
+                    <SelectItem value={type}>{type}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
+    </>
   );
 };
 
@@ -319,14 +337,9 @@ export const ProjectPage = () => {
     });
   }, [project]);
 
-  const activeJobs = useMemo(
-    () => jobs.filter((job) => ACTIVE_STATUSES[job.status as Status]),
-    [jobs]
-  );
-
   const tables = [
-    hasPermission("instances:jobs:get") && activeJobs.length > 0 && (
-      <JobDataTable key="jobs" values={activeJobs} isLoading={isLoading} />
+    hasPermission("instances:jobs:get") && jobs.length > 0 && (
+      <JobDataTable key="jobs" values={jobs} isLoading={isLoading} />
     ),
     hasPermission("hashes:get") && (
       <HashDataTable

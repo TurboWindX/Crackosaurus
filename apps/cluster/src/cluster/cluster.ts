@@ -1,4 +1,5 @@
-import { type ClusterStatus, type HashType } from "@repo/api";
+import { type ClusterStatus } from "@repo/api";
+import { type HashType } from "@repo/hashcat/data";
 
 export abstract class Cluster<TConfig = undefined> {
   public constructor(protected readonly config: TConfig) {}
@@ -6,6 +7,7 @@ export abstract class Cluster<TConfig = undefined> {
   public abstract getStatus(): Promise<ClusterStatus>;
 
   public abstract load(): Promise<boolean>;
+  public abstract tick(): Promise<void>;
 
   public abstract createInstance(
     instanceType?: string | null

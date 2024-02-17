@@ -1,7 +1,8 @@
 import * as AWS from "aws-sdk";
 import crypto from "node:crypto";
 
-import { type ClusterStatus, type HashType } from "@repo/api";
+import { type ClusterStatus } from "@repo/api";
+import { type HashType } from "@repo/hashcat/data";
 
 import { Cluster } from "./cluster";
 
@@ -28,6 +29,8 @@ export class AWSCluster extends Cluster<AWSClusterConfig> {
 
     return true;
   }
+
+  public async tick(): Promise<void> {}
 
   public async createInstance(instanceType?: string): Promise<string | null> {
     try {

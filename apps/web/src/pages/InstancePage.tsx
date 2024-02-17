@@ -3,9 +3,10 @@ import { PlayIcon, SquareIcon, TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { APIError, HASH_TYPES } from "@repo/api";
+import { APIError } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
+import { HASH_TYPES } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
 import {

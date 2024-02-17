@@ -1,4 +1,5 @@
-import { type ClusterStatus, type HashType } from "@repo/api";
+import { type ClusterStatus } from "@repo/api";
+import { type HashType } from "@repo/hashcat/data";
 
 export abstract class ClusterConnector<TConfig = undefined> {
   public constructor(protected readonly config: TConfig) {}

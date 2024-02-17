@@ -1,12 +1,15 @@
 import Fastify from "fastify";
 
 import api from "./api";
-import { DebugCluster } from "./cluster/debug";
+import { clusterPlugin } from "./plugins/cluster";
 
 const fastify = Fastify();
 
-const cluster = new DebugCluster(undefined);
-fastify.register(api, { cluster });
+fastify.register(clusterPlugin, {
+  debug: true,
+});
+
+fastify.register(api);
 
 fastify.listen(
   {

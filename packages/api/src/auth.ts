@@ -1,7 +1,9 @@
 export const PERMISSIONS = [
   "*",
+  "auth",
   "root",
   "hashes:*",
+  "hashes:view",
   "hashes:get",
   "hashes:add",
   "hashes:remove",
@@ -36,6 +38,7 @@ export type PermissionType = (typeof PERMISSIONS)[number];
 export const PERMISSION_PROFILES = {
   admin: ["*"],
   contributor: [
+    "auth",
     "hashes:*",
     "instances:get",
     "instances:jobs:*",
@@ -44,7 +47,7 @@ export const PERMISSION_PROFILES = {
     "projects:users:*",
     "users:list",
   ],
-  viewer: ["hashes:get"],
+  viewer: ["auth", "hashes:get"],
 } satisfies Record<string, PermissionType[]>;
 
 export const DEFAULT_PERMISSION_PROFILE: keyof typeof PERMISSION_PROFILES =

@@ -1,3 +1,6 @@
+import { FastifySessionObject } from "@fastify/session";
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcrypt";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 
 import {
@@ -9,37 +12,10 @@ import {
   hasPermission,
 } from "@repo/api";
 import { ROUTES } from "@repo/api/server";
+import { HashType, toHashcatHash } from "@repo/hashcat/data";
 import { APIError, AuthError, errorHandler } from "@repo/plugins/error";
 
-import { addHash, removeHash } from "./hashes";
-import {
-  createInstance,
-  deleteInstance,
-  getInstance,
-  getInstanceList,
-  getInstances,
-} from "./instances";
-import { createJob, deleteJob } from "./jobs";
-import {
-  addUserToProject,
-  createProject,
-  deleteProject,
-  getUserProject,
-  getUserProjectList,
-  getUserProjects,
-  removeUserFromProject,
-} from "./projects";
-import {
-  AuthenticatedUser,
-  changePassword,
-  checkNoUsers,
-  createUser,
-  deleteUser,
-  getAuthenticatedUser,
-  getUser,
-  getUserList,
-  getUsers,
-} from "./users";
+import { ClusterConnector } from "../plugins/cluster/connectors/connector";
 
 declare module "fastify" {
   interface Session {
@@ -49,25 +25,935 @@ declare module "fastify" {
   }
 }
 
-function setSession(
-  request: FastifyRequest,
-  authenticatedUser: AuthenticatedUser
-) {
-  request.session.uid = authenticatedUser.ID;
-  request.session.username = authenticatedUser.username;
-  request.session.permissions = authenticatedUser.permissions;
+function hashPassword(password: string): string {
+  const saltRounds = 8;
+
+  return bcrypt.hashSync(password, saltRounds);
 }
 
-function checkAuth(
-  request: FastifyRequest,
-  _reply: FastifyReply,
-  next: (err?: Error | undefined) => void
-) {
-  if (request.session.uid === undefined)
-    throw new AuthError("You need to be authenticated");
-
-  next();
+function checkPassword(inputPassword: string, dbPassword: string): boolean {
+  return bcrypt.compareSync(inputPassword, dbPassword);
 }
+
+type RouteHandler<TRoute> = TRoute extends Route<
+  infer _TPath,
+  infer _TReq,
+  infer _TRes
+>
+  ? (
+      data: RouteRequest<TRoute>["Params"] &
+        RouteRequest<TRoute>["Body"] & {
+          request: FastifyRequest;
+          prisma: PrismaClient;
+          cluster: ClusterConnector;
+          currentUserID: string;
+          hasPermission: (permission: PermissionType) => boolean;
+        }
+    ) => Promise<RouteResponse<TRoute>["response"]>
+  : never;
+
+const HANDLERS: {
+  [key in keyof typeof ROUTES]: RouteHandler<(typeof ROUTES)[key]>;
+} = {
+  ping: async () => "pong",
+  init: async ({ prisma, username, password }) => {
+    let user;
+    try {
+      user = await prisma.user.findFirst({
+        select: {
+          ID: true,
+        },
+      });
+    } catch (err) {
+      throw new APIError("User error");
+    }
+
+    if (user !== null) throw new APIError("Application is already initialized");
+
+    try {
+      const user = await prisma.user.create({
+        select: {
+          ID: true,
+        },
+        data: {
+          username,
+          password: hashPassword(password),
+          permissions: "root",
+        },
+      });
+
+      return user.ID;
+    } catch (err) {
+      throw new APIError("User error");
+    }
+  },
+  login: async ({ request, prisma, username, password }) => {
+    let user;
+    try {
+      user = await prisma.user.findUniqueOrThrow({
+        select: {
+          ID: true,
+          username: true,
+          permissions: true,
+          password: true,
+        },
+        where: {
+          username: username,
+        },
+      });
+    } catch (err) {
+      throw new APIError("Login failed");
+    }
+
+    if (!checkPassword(password, user.password))
+      throw new APIError("Login failed");
+
+    await request.session.regenerate();
+
+    request.session.uid = user.ID;
+    request.session.username = user.username;
+    request.session.permissions = user.permissions;
+
+    return user.ID;
+  },
+  logout: async ({ request }) => {
+    await request.session.destroy();
+
+    return "Logout successful";
+  },
+  authUser: async ({ request }) => {
+    return {
+      uid: request.session.uid,
+      username: request.session.username,
+      permissions: request.session.permissions.split(" ") as PermissionType[],
+    };
+  },
+  getUser: async ({ prisma, hasPermission, currentUserID, userID }) => {
+    if (!hasPermission("users:get") && userID !== currentUserID)
+      throw new APIError("Cannot get user");
+
+    try {
+      return await prisma.user.findUniqueOrThrow({
+        select: {
+          ID: true,
+          username: true,
+          permissions: true,
+          projects: {
+            select: {
+              PID: true,
+              name: true,
+            },
+            where: hasPermission("projects:get")
+              ? undefined
+              : {
+                  members: {
+                    some: {
+                      ID: currentUserID,
+                    },
+                  },
+                },
+          },
+        },
+        where: {
+          ID: userID,
+        },
+      });
+    } catch (err) {
+      throw new APIError("User error");
+    }
+  },
+  getUsers: async ({ prisma }) => {
+    try {
+      return await prisma.user.findMany({
+        select: {
+          ID: true,
+          username: true,
+          permissions: true,
+        },
+      });
+    } catch (err) {
+      throw new APIError("User error");
+    }
+  },
+  getUserList: async ({ prisma }) => {
+    try {
+      return await prisma.user.findMany({
+        select: {
+          ID: true,
+          username: true,
+        },
+      });
+    } catch (err) {
+      throw new APIError("User error");
+    }
+  },
+  register: async ({
+    prisma,
+    hasPermission,
+    username,
+    password,
+    permissions,
+  }) => {
+    if ((permissions ?? []).some((permission) => !hasPermission(permission)))
+      throw new APIError(
+        "You must have the permission to provide these permissions"
+      );
+
+    let user;
+    try {
+      user = await prisma.user.create({
+        select: {
+          ID: true,
+        },
+        data: {
+          username,
+          password: hashPassword(password),
+          permissions: permissions?.join(" ") ?? "",
+        },
+      });
+    } catch (err) {
+      throw new APIError("User error");
+    }
+
+    return user.ID;
+  },
+  deleteUser: async ({
+    request,
+    prisma,
+    hasPermission,
+    currentUserID,
+    userID,
+  }) => {
+    if (!hasPermission("users:remove") && userID !== currentUserID)
+      throw new APIError("Cannot remove user");
+
+    let user;
+    try {
+      user = await prisma.user.findUniqueOrThrow({
+        select: {
+          projects: {
+            select: {
+              PID: true,
+              members: {
+                select: {
+                  ID: true,
+                },
+              },
+            },
+          },
+        },
+        where: {
+          ID: userID,
+        },
+      });
+    } catch (err) {
+      throw new APIError("User error");
+    }
+
+    try {
+      await prisma.user.delete({
+        where: {
+          ID: userID,
+        },
+      });
+    } catch (err) {
+      throw new APIError("Delete error");
+    }
+
+    if (userID === currentUserID) await request.session.destroy();
+
+    const emptyProjectIDs = user.projects
+      .filter(({ members }) => members.length === 1)
+      .map(({ PID }) => PID);
+    if (emptyProjectIDs.length > 0) {
+      try {
+        user = await prisma.project.deleteMany({
+          where: {
+            PID: {
+              in: emptyProjectIDs,
+            },
+          },
+        });
+      } catch (err) {}
+    }
+
+    return "User has been obliterated into oblivion";
+  },
+  changePassword: async ({
+    prisma,
+    hasPermission,
+    currentUserID,
+    userID,
+    oldPassword,
+    newPassword,
+  }) => {
+    if (!hasPermission("users:edit") && userID !== currentUserID)
+      throw new APIError("Cannot edit user");
+
+    // Check if old password is valid or bypass
+    if (!hasPermission("users:edit")) {
+      let userPassword = "";
+      try {
+        const user = await prisma.user.findUniqueOrThrow({
+          select: {
+            password: true,
+          },
+          where: {
+            ID: userID,
+          },
+        });
+
+        userPassword = user.password;
+      } catch (err) {
+        throw new APIError("User error");
+      }
+
+      if (!checkPassword(oldPassword, userPassword))
+        throw new APIError("Invalid old password");
+    }
+
+    // Update password for user
+    try {
+      await prisma.user.update({
+        where: {
+          ID: userID,
+        },
+        data: {
+          password: hashPassword(newPassword),
+        },
+      });
+    } catch (err) {
+      throw new APIError("User error");
+    }
+
+    return "Password has been changed";
+  },
+  getProjects: async ({ prisma, hasPermission, currentUserID }) => {
+    try {
+      return await prisma.project.findMany({
+        select: {
+          PID: true,
+          name: true,
+          updatedAt: true,
+          members: hasPermission("projects:users:get")
+            ? {
+                select: {
+                  ID: true,
+                  username: true,
+                },
+              }
+            : undefined,
+        },
+        where: hasPermission("root")
+          ? undefined
+          : {
+              members: {
+                some: {
+                  ID: currentUserID,
+                },
+              },
+            },
+      });
+    } catch (err) {
+      throw new APIError("Project error");
+    }
+  },
+  getProjectList: async ({ prisma, hasPermission, currentUserID }) => {
+    try {
+      return await prisma.project.findMany({
+        select: {
+          PID: true,
+          name: true,
+        },
+        where: hasPermission("projects:get")
+          ? undefined
+          : {
+              members: {
+                some: {
+                  ID: currentUserID,
+                },
+              },
+            },
+      });
+    } catch (err) {
+      throw new APIError("Project error");
+    }
+  },
+  getProject: async ({ prisma, hasPermission, currentUserID, projectID }) => {
+    try {
+      return await prisma.project.findUniqueOrThrow({
+        select: {
+          PID: true,
+          name: true,
+          updatedAt: true,
+          members: hasPermission("projects:users:get")
+            ? {
+                select: {
+                  ID: true,
+                  username: true,
+                },
+              }
+            : undefined,
+          hashes: hasPermission("hashes:get")
+            ? {
+                select: {
+                  HID: true,
+                  hash: true,
+                  hashType: true,
+                  status: true,
+                  updatedAt: true,
+                  jobs: hasPermission("instances:jobs:get")
+                    ? {
+                        select: {
+                          JID: true,
+                          status: true,
+                          updatedAt: true,
+                          instance: {
+                            select: {
+                              IID: true,
+                              name: true,
+                            },
+                          },
+                        },
+                      }
+                    : undefined,
+                },
+              }
+            : undefined,
+        },
+        where: {
+          PID: projectID,
+          members: hasPermission("projects:get")
+            ? undefined
+            : {
+                some: {
+                  ID: currentUserID,
+                },
+              },
+        },
+      });
+    } catch (err) {
+      throw new APIError("Project error");
+    }
+  },
+  createProject: async ({ prisma, currentUserID, projectName }) => {
+    let project;
+    try {
+      project = await prisma.project.create({
+        select: {
+          PID: true,
+        },
+        data: {
+          name: projectName,
+          members: {
+            connect: {
+              ID: currentUserID,
+            },
+          },
+        },
+      });
+    } catch (error) {
+      throw new APIError("Project error");
+    }
+
+    return project.PID;
+  },
+  deleteProject: async ({
+    prisma,
+    hasPermission,
+    currentUserID,
+    projectID,
+  }) => {
+    let project;
+    try {
+      project = await prisma.project.findUniqueOrThrow({
+        select: {
+          hashes: {
+            select: {
+              HID: true,
+            },
+          },
+        },
+        where: {
+          PID: projectID,
+          members: hasPermission("root")
+            ? undefined
+            : {
+                some: {
+                  ID: currentUserID,
+                },
+              },
+        },
+      });
+    } catch (err) {
+      throw new APIError("Project error");
+    }
+
+    try {
+      await prisma.hash.deleteMany({
+        where: {
+          HID: {
+            in: project.hashes.map(({ HID }) => HID),
+          },
+        },
+      });
+    } catch (err) {
+      throw new APIError("Hash error");
+    }
+
+    try {
+      await prisma.project.delete({
+        where: {
+          PID: projectID,
+        },
+      });
+    } catch (err) {
+      throw new APIError("Project error");
+    }
+
+    return "Project has been deleted";
+  },
+  addUserToProject: async ({
+    prisma,
+    hasPermission,
+    currentUserID,
+    projectID,
+    userID,
+  }) => {
+    try {
+      await prisma.project.update({
+        where: {
+          PID: projectID,
+          members: hasPermission("root")
+            ? undefined
+            : {
+                some: {
+                  ID: currentUserID,
+                },
+              },
+        },
+        data: {
+          members: {
+            connect: {
+              ID: userID,
+            },
+          },
+        },
+      });
+    } catch (err) {
+      throw new APIError("Project error");
+    }
+
+    return "User has been added to the project";
+  },
+  removeUserFromProject: async ({
+    prisma,
+    hasPermission,
+    currentUserID,
+    projectID,
+    userID,
+  }) => {
+    try {
+      await prisma.project.update({
+        where: {
+          PID: projectID,
+          members: hasPermission("root")
+            ? undefined
+            : {
+                some: {
+                  ID: currentUserID,
+                },
+              },
+        },
+        data: {
+          members: {
+            disconnect: {
+              ID: userID,
+            },
+          },
+        },
+      });
+    } catch (err) {
+      throw new APIError("Project error");
+    }
+
+    return "User has been removed from the project";
+  },
+  addHash: async ({
+    prisma,
+    hasPermission,
+    currentUserID,
+    projectID,
+    hash,
+    hashType,
+  }) => {
+    try {
+      await prisma.project.update({
+        where: {
+          PID: projectID,
+          members: hasPermission("root")
+            ? undefined
+            : {
+                some: {
+                  ID: currentUserID,
+                },
+              },
+        },
+        data: {
+          updatedAt: new Date(),
+        },
+      });
+    } catch (err) {}
+
+    const hashValue = toHashcatHash(hashType as HashType, hash);
+
+    let seenHash;
+    try {
+      seenHash = await prisma.hash.findFirst({
+        select: {
+          value: true,
+        },
+        where: {
+          hash: hashValue,
+          hashType,
+          status: "FOUND",
+        },
+      });
+    } catch (err) {
+      throw new APIError("Hash error");
+    }
+
+    let outHash;
+    try {
+      outHash = await prisma.hash.create({
+        select: {
+          HID: true,
+        },
+        data: {
+          hash: hashValue,
+          hashType,
+          value: seenHash ? seenHash.value : undefined,
+          status: seenHash ? "FOUND" : undefined,
+          project: {
+            connect: {
+              PID: projectID,
+            },
+          },
+        },
+      });
+    } catch (err) {
+      throw new APIError("Hash error");
+    }
+
+    return outHash.HID;
+  },
+  removeHash: async ({
+    prisma,
+    hasPermission,
+    currentUserID,
+    projectID,
+    hashID,
+  }) => {
+    try {
+      await prisma.project.update({
+        where: {
+          PID: projectID,
+          members: hasPermission("root")
+            ? undefined
+            : {
+                some: {
+                  ID: currentUserID,
+                },
+              },
+        },
+        data: {
+          updatedAt: new Date(),
+        },
+      });
+    } catch (err) {}
+
+    try {
+      await prisma.hash.delete({
+        where: {
+          HID: hashID,
+        },
+      });
+    } catch (err) {
+      throw new APIError("Hash error");
+    }
+
+    return "Hash has been removed";
+  },
+  viewHash: async ({ prisma, hasPermission, currentUserID, hashID }) => {
+    let hash;
+    try {
+      hash = await prisma.hash.findUniqueOrThrow({
+        select: {
+          value: true,
+        },
+        where: {
+          HID: hashID,
+          project: {
+            members: {
+              some: hasPermission("root")
+                ? undefined
+                : {
+                    ID: currentUserID,
+                  },
+            },
+          },
+        },
+      });
+    } catch (e) {
+      throw new APIError("Hash error");
+    }
+
+    return hash.value;
+  },
+  getInstances: async ({ prisma }) => {
+    try {
+      return await prisma.instance.findMany({
+        select: {
+          IID: true,
+          name: true,
+          status: true,
+          updatedAt: true,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Instance error");
+    }
+  },
+  getInstanceList: async ({ prisma }) => {
+    try {
+      return await prisma.instance.findMany({
+        select: {
+          IID: true,
+          name: true,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Instance error");
+    }
+  },
+  createInstance: async ({ prisma, cluster, name, type }) => {
+    const tag = await cluster.createInstance(type);
+    if (!tag) throw new APIError("Instance not created");
+
+    let instanceId: string;
+    try {
+      const instance = await prisma.instance.create({
+        select: {
+          IID: true,
+        },
+        data: {
+          name,
+          tag,
+          type,
+        },
+      });
+
+      instanceId = instance.IID;
+    } catch (e) {
+      throw new APIError("Instance not created");
+    }
+
+    return instanceId;
+  },
+  getInstance: async ({ prisma, instanceID }) => {
+    try {
+      return await prisma.instance.findUniqueOrThrow({
+        include: {
+          jobs: true,
+        },
+        where: {
+          IID: instanceID,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Instance error");
+    }
+  },
+  deleteInstance: async ({ prisma, cluster, instanceID }) => {
+    let instance;
+    try {
+      instance = await prisma.instance.findUniqueOrThrow({
+        select: {
+          tag: true,
+        },
+        where: {
+          IID: instanceID,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Instance error");
+    }
+
+    if (!(await cluster.deleteInstance(instance.tag)))
+      throw new APIError("Could not terminate instance");
+
+    try {
+      await prisma.job.deleteMany({
+        where: {
+          instance: {
+            IID: instanceID,
+          },
+        },
+      });
+    } catch (e) {
+      throw new APIError("Job error");
+    }
+
+    try {
+      await prisma.instance.delete({
+        where: {
+          IID: instanceID,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Instance error");
+    }
+
+    return "Instance has been destroy";
+  },
+  createInstanceJob: async ({
+    prisma,
+    cluster,
+    hasPermission,
+    currentUserID,
+    instanceID,
+    hashType,
+    projectIDs,
+  }) => {
+    let instance;
+    try {
+      instance = await prisma.instance.findUniqueOrThrow({
+        select: {
+          tag: true,
+        },
+        where: {
+          IID: instanceID,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Instance error");
+    }
+
+    let projects;
+    try {
+      projects = await prisma.project.findMany({
+        select: {
+          hashes: {
+            select: {
+              HID: true,
+              hash: true,
+              hashType: true,
+              status: true,
+            },
+          },
+        },
+        where: {
+          PID: {
+            in: projectIDs,
+          },
+          members: hasPermission("root")
+            ? undefined
+            : {
+                some: {
+                  ID: currentUserID,
+                },
+              },
+        },
+      });
+    } catch (e) {
+      throw new APIError("Project error");
+    }
+
+    const hashes = projects.flatMap((project) =>
+      project.hashes.filter(
+        (hash) => hash.hashType === hashType && hash.status === "NOT_FOUND"
+      )
+    );
+    if (hashes.length === 0)
+      throw new APIError("Cannot create a job without any valid hashes");
+
+    const jobID = await cluster.createJob(
+      instance.tag,
+      hashType,
+      hashes.map(({ hash }) => hash)
+    );
+    if (!jobID) throw new APIError("Cannot queue job");
+
+    try {
+      await prisma.job.create({
+        data: {
+          JID: jobID,
+          instance: {
+            connect: {
+              IID: instanceID,
+            },
+          },
+          hashes: {
+            connect: hashes.map(({ HID }) => ({ HID })),
+          },
+        },
+      });
+    } catch (e) {
+      throw new APIError("Job error");
+    }
+
+    return jobID;
+  },
+  deleteInstanceJob: async ({ prisma, cluster, instanceID, jobID }) => {
+    let job;
+    try {
+      job = await prisma.job.findUniqueOrThrow({
+        select: {
+          instance: {
+            select: {
+              IID: true,
+              tag: true,
+            },
+          },
+        },
+        where: {
+          JID: jobID,
+          instance: {
+            IID: instanceID,
+          },
+        },
+      });
+    } catch (e) {
+      throw new APIError("Job error");
+    }
+
+    if (!(await cluster.deleteJob(job.instance.tag, jobID)))
+      throw new APIError("Could not dequeue job");
+
+    try {
+      await prisma.job.delete({
+        where: {
+          JID: jobID,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Job error");
+    }
+
+    try {
+      await prisma.instance.update({
+        where: {
+          IID: job.instance.IID,
+        },
+        data: {
+          updatedAt: new Date(),
+        },
+      });
+    } catch (e) {}
+
+    return "Job destroyed";
+  },
+} as const;
 
 function checkPermission(permission: PermissionType) {
   return (
@@ -98,431 +984,33 @@ function validate(validator: { parse?: (data: any) => any }) {
   };
 }
 
-type RouteHandler<TRoute> = TRoute extends Route<
-  infer TPath,
-  infer TReq,
-  infer TRes
->
-  ? {
-      checks?: ((...req: any) => void)[];
-      handler: (
-        request: FastifyRequest<RouteRequest<TRoute>>
-      ) => Promise<RouteResponse<TRoute>["response"]>;
-    }
-  : never;
-
-const ROUTER: {
-  [key in keyof typeof ROUTES]: RouteHandler<(typeof ROUTES)[key]>;
-} = {
-  ping: {
-    handler: async () => {
-      return "pong";
-    },
-  },
-  init: {
-    handler: async (request) => {
-      if (!(await checkNoUsers(request.server.prisma)))
-        throw new APIError("App is already initiated");
-
-      const { username, password } = request.body;
-
-      await createUser(request.server.prisma, username, password, ["root"]);
-
-      return "First admin user has been created";
-    },
-  },
-  login: {
-    handler: async (request) => {
-      const { username, password } = request.body;
-
-      const user = await getAuthenticatedUser(
-        request.server.prisma,
-        username,
-        password
-      );
-      if (!user) throw new APIError("Login failed");
-
-      await request.session.regenerate();
-      setSession(request, user);
-
-      return "Login successful";
-    },
-  },
-  logout: {
-    handler: async (request) => {
-      await request.session.destroy();
-
-      return "Logout successful";
-    },
-  },
-  authUser: {
-    checks: [checkAuth],
-    handler: async (request) => {
-      return {
-        uid: request.session.uid,
-        username: request.session.username,
-        permissions: request.session.permissions.split(" ") as PermissionType[],
-      };
-    },
-  },
-  getUser: {
-    checks: [checkAuth],
-    handler: async (request) => {
-      const { userID } = request.params;
-
-      if (
-        !hasPermission(request.session.permissions, "users:get") &&
-        userID !== request.session.uid
-      )
-        throw new APIError("Cannot get user");
-
-      return await getUser(
-        request.server.prisma,
-        userID,
-        request.session.uid,
-        hasPermission(request.session.permissions, "projects:get")
-      );
-    },
-  },
-  getUsers: {
-    checks: [checkAuth],
-    handler: async (request) => {
-      return await getUsers(request.server.prisma);
-    },
-  },
-  getUserList: {
-    checks: [checkPermission("users:list")],
-    handler: async (request) => {
-      return await getUserList(request.server.prisma);
-    },
-  },
-  register: {
-    checks: [checkPermission("users:add")],
-    handler: async (request) => {
-      const { username, password, permissions } = request.body;
-
-      if (
-        (permissions ?? []).some(
-          (permission) =>
-            !hasPermission(request.session.permissions, permission)
-        )
-      )
-        throw new APIError(
-          "You must have the permission to provide these permissions"
-        );
-
-      await createUser(
-        request.server.prisma,
-        username,
-        password,
-        permissions ?? []
-      );
-
-      return "User has been created";
-    },
-  },
-  deleteUser: {
-    checks: [checkAuth],
-    handler: async (request) => {
-      const { userID } = request.params;
-
-      if (
-        !hasPermission(request.session.permissions, "users:remove") &&
-        userID !== request.session.uid
-      )
-        throw new APIError("Cannot remove user");
-
-      await deleteUser(request.server.prisma, userID);
-
-      return "User has been obliterated into oblivion";
-    },
-  },
-  changePassword: {
-    checks: [checkAuth],
-    handler: async (request) => {
-      const { userID } = request.params;
-      const { oldPassword, newPassword } = request.body;
-
-      const bypassCheck = hasPermission(
-        request.session.permissions,
-        "users:edit"
-      );
-      if (!bypassCheck && userID !== request.session.uid)
-        throw new APIError("Cannot edit user");
-
-      await changePassword(
-        request.server.prisma,
-        userID,
-        oldPassword,
-        newPassword,
-        bypassCheck
-      );
-
-      return "Password has been changed";
-    },
-  },
-  getProjects: {
-    checks: [checkAuth],
-    handler: async (request) => {
-      const response = await getUserProjects(
-        request.server.prisma,
-        request.session.uid,
-        hasPermission(request.session.permissions, "projects:get")
-      );
-
-      let newResponse;
-      if (!hasPermission(request.session.permissions, "projects:users:get"))
-        newResponse = response.map((project) => ({
-          ...project,
-          members: undefined,
-        }));
-      else newResponse = response;
-
-      return newResponse;
-    },
-  },
-  getProjectList: {
-    checks: [checkAuth],
-    handler: async (request) => {
-      return await getUserProjectList(
-        request.server.prisma,
-        request.session.uid,
-        hasPermission(request.session.permissions, "projects:get")
-      );
-    },
-  },
-  getProject: {
-    checks: [checkAuth],
-    handler: async (request) => {
-      const { projectID } = request.params;
-
-      const response = await getUserProject(
-        request.server.prisma,
-        projectID,
-        request.session.uid,
-        hasPermission(request.session.permissions, "projects:get")
-      );
-
-      let newResponse;
-      if (!hasPermission(request.session.permissions, "projects:users:get"))
-        newResponse = {
-          ...response,
-          users: undefined,
-        };
-      else newResponse = response;
-
-      if (!hasPermission(request.session.permissions, "hashes:get"))
-        newResponse = {
-          ...newResponse,
-          hashes: undefined,
-        };
-      else if (
-        !hasPermission(request.session.permissions, "instances:get") &&
-        !hasPermission(request.session.permissions, "instances:jobs:get")
-      )
-        newResponse = {
-          ...newResponse,
-          hashes: newResponse.hashes?.map((hash) => ({
-            ...hash,
-            jobs: undefined,
-          })),
-        };
-
-      return newResponse;
-    },
-  },
-  createProject: {
-    checks: [checkPermission("projects:add")],
-    handler: async (request) => {
-      const { projectName } = request.body;
-
-      await createProject(
-        request.server.prisma,
-        projectName,
-        request.session.uid
-      );
-
-      return "Project has been created";
-    },
-  },
-  deleteProject: {
-    checks: [checkAuth],
-    handler: async (request) => {
-      const { projectID } = request.params;
-
-      await deleteProject(
-        request.server.prisma,
-        projectID,
-        request.session.uid,
-        hasPermission(request.session.permissions, "projects:remove")
-      );
-
-      return "Project has been deleted";
-    },
-  },
-  addUserToProject: {
-    checks: [checkPermission("projects:users:add")],
-    handler: async (request) => {
-      const { projectID, userID } = request.params;
-
-      await addUserToProject(
-        request.server.prisma,
-        request.session.uid,
-        userID,
-        projectID,
-        hasPermission(request.session.permissions, "root")
-      );
-
-      return "User has been added to the project";
-    },
-  },
-  removeUserFromProject: {
-    checks: [checkPermission("projects:users:remove")],
-    handler: async (request) => {
-      const { projectID, userID } = request.params;
-
-      await removeUserFromProject(
-        request.server.prisma,
-        request.session.uid,
-        userID,
-        projectID,
-        hasPermission(request.session.permissions, "root")
-      );
-
-      return "User has been removed from the project";
-    },
-  },
-  addHash: {
-    checks: [checkPermission("hashes:add")],
-    handler: async (request) => {
-      const { projectID } = request.params;
-      const { hash, hashType } = request.body;
-
-      await addHash(
-        request.server.prisma,
-        request.session.uid,
-        projectID,
-        hash,
-        hashType,
-        hasPermission(request.session.permissions, "root")
-      );
-
-      return "Hash has been added";
-    },
-  },
-  removeHash: {
-    checks: [checkPermission("hashes:remove")],
-    handler: async (request) => {
-      const { projectID, hashID } = request.params;
-
-      await removeHash(
-        request.server.prisma,
-        projectID,
-        hashID,
-        request.session.uid,
-        hasPermission(request.session.permissions, "root")
-      );
-
-      return "Hash has been removed";
-    },
-  },
-  getInstances: {
-    checks: [checkPermission("instances:get")],
-    handler: async (request) => {
-      return await getInstances(request.server.prisma);
-    },
-  },
-  getInstanceList: {
-    checks: [checkPermission("instances:list")],
-    handler: async (request) => {
-      return await getInstanceList(request.server.prisma);
-    },
-  },
-  createInstance: {
-    checks: [checkPermission("instances:add")],
-    handler: async (request) => {
-      const { name, type } = request.body;
-
-      return await createInstance(
-        request.server.prisma,
-        request.server.cluster,
-        name,
-        type
-      );
-    },
-  },
-  getInstance: {
-    checks: [checkPermission("instances:get")],
-    handler: async (request) => {
-      const { instanceID } = request.params;
-
-      return await getInstance(request.server.prisma, instanceID);
-    },
-  },
-  deleteInstance: {
-    checks: [checkPermission("instances:remove")],
-    handler: async (request) => {
-      const { instanceID } = request.params;
-
-      await deleteInstance(
-        request.server.prisma,
-        request.server.cluster,
-        instanceID
-      );
-
-      return "Instance has been destroy";
-    },
-  },
-  createInstanceJob: {
-    checks: [checkPermission("instances:jobs:add")],
-    handler: async (request) => {
-      const { instanceID } = request.params;
-      const { hashType, projectIDs } = request.body;
-
-      const jobID = await createJob(
-        request.server.prisma,
-        request.server.cluster,
-        instanceID,
-        hashType,
-        projectIDs,
-        request.session.uid,
-        hasPermission(request.session.permissions, "root")
-      );
-
-      return jobID;
-    },
-  },
-  deleteInstanceJob: {
-    checks: [checkPermission("instances:jobs:remove")],
-    handler: async (request) => {
-      const { instanceID, jobID } = request.params;
-
-      await deleteJob(
-        request.server.prisma,
-        request.server.cluster,
-        instanceID,
-        jobID
-      );
-
-      return "Job destroyed";
-    },
-  },
-} as const;
-
 export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
   instance.setErrorHandler(errorHandler);
 
   for (const [key, route] of Object.entries(ROUTES)) {
     const method = route.method.toLowerCase() as Lowercase<HTTPMethod>;
-    const router = ROUTER[key as keyof typeof ROUTES];
+    const handler = HANDLERS[key as keyof typeof ROUTES];
 
     instance[method](
       route.path,
       {
-        preHandler: router.checks,
+        preHandler: route.permissions.map((permission) =>
+          checkPermission(permission)
+        ),
         preValidation: [validate(route.request)],
       },
-      async (request: any) => ({ response: await router.handler(request) })
+      async (request: FastifyRequest) => ({
+        response: await handler({
+          ...(request.body as any),
+          ...(request.params as any),
+          request,
+          prisma: request.server.prisma,
+          cluster: request.server.cluster,
+          hasPermission: (permission: PermissionType) =>
+            hasPermission(request.session.permissions ?? [], permission),
+          currentUserID: request.session.uid ?? "",
+        }),
+      })
     );
   }
 

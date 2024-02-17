@@ -4,11 +4,11 @@ import { HTTPMethod, Route, RouteRequest, RouteResponse } from "@repo/api";
 import { ROUTES } from "@repo/api/cluster";
 import { APIError, errorHandler } from "@repo/plugins/error";
 
-import { Cluster } from "../cluster/cluster";
+import { type Cluster } from "../cluster/cluster";
 
 declare module "fastify" {
   interface FastifyInstance {
-    cluster: Cluster;
+    cluster: Cluster<any>;
   }
 }
 
@@ -70,12 +70,7 @@ const ROUTER: {
   },
 };
 
-const api: FastifyPluginCallback<{ cluster: Cluster }> = (
-  instance,
-  { cluster },
-  next
-) => {
-  instance.decorate("cluster", cluster);
+const api: FastifyPluginCallback = (instance, _options, next) => {
   instance.setErrorHandler(errorHandler);
 
   for (const [key, route] of Object.entries(ROUTES)) {
