@@ -3,8 +3,8 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "check": "prettier --config .prettierrc.json --check \"../../**/*.{ts,tsx,md,json}\"",
-    "format": "prettier --config .prettierrc.json --write \"../../**/*.{ts,tsx,md,json}\""
+    "check": "prettier --config .prettierrc.json --ignore-path .prettierignore --check \"../../**/*.{ts,tsx,md,json}\"",
+    "format": "prettier --config .prettierrc.json --ignore-path .prettierignore --write \"../../**/*.{ts,tsx,md,json}\""
   },
   "devDependencies": {
     "@trivago/prettier-plugin-sort-imports": "^4.3.0",
