@@ -5,34 +5,6 @@ RUN npm install -g turbo
 
 WORKDIR /app
 
-FROM base AS config
-
-WORKDIR /config
-
-COPY . .
-
-RUN turbo prune @repo/config --docker
-
-WORKDIR /app
-
-RUN mv /config/out/json/* .
-RUN mv /config/out/package-lock.json .
-
-RUN npm install
-
-RUN rm -rf apps packages
-RUN mv /config/out/full/* .
-
-RUN mv /config/packages/container/config.json .
-
-RUN rm -rf /config
-
-WORKDIR /app/apps/config
-
-RUN npm run config:cli docker
-
-WORKDIR /app
-
 FROM base AS builder
 
 COPY . .
@@ -47,9 +19,11 @@ COPY --from=builder /app/out/package-lock.json ./package-lock.json
 RUN npm install
 
 COPY --from=builder /app/out/full .
-COPY --from=config /app/apps/cluster/.config.json /app/apps/cluster/.config.json
 
-RUN turbo run build --filter=cluster
+ARG CLUSTER_HOST
+ARG CLUSTER_PORT
+ARG CLUSTER_TYPE
+RUN CLUSTER_HOST=CLUSTER_HOST CLUSTER_PORT=CLUSTER_PORT CLUSTER_TYPE=CLUSTER_TYPE turbo run build --filter=cluster
 
 FROM base AS runner
 
@@ -61,7 +35,6 @@ RUN chown -R cluster:cluster /app
 USER cluster
 
 COPY --from=installer --chown=cluster:cluster /app/node_modules/ ./node_modules/
-
-COPY --from=installer --chown=cluster:cluster /app/apps/cluster/dist/index.js .
+COPY --from=installer --chown=cluster:cluster /app/apps/cluster/dist .
 
 CMD ["node", "index.js"]

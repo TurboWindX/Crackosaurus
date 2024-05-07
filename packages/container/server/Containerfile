@@ -5,30 +5,6 @@ RUN npm install -g turbo
 
 WORKDIR /app
 
-FROM base AS config
-
-WORKDIR /config
-
-COPY . .
-
-RUN turbo prune @repo/config --docker
-
-WORKDIR /app
-
-RUN mv /config/out/json/* .
-RUN mv /config/out/package-lock.json .
-
-RUN npm install
-
-RUN rm -rf apps packages
-RUN mv /config/out/full/* .
-
-RUN mv /config/packages/container/config.json .
-
-RUN rm -rf /config
-
-RUN npm run config:cli -w apps/config -- docker
-
 FROM base AS builder
 
 COPY . .
@@ -43,12 +19,20 @@ COPY --from=builder /app/out/package-lock.json ./package-lock.json
 RUN npm install
 
 COPY --from=builder /app/out/full .
-COPY --from=config /app/apps/db/.config.json /app/apps/db/.config.json
-COPY --from=config /app/apps/web/.config.json /app/apps/web/.config.json
-COPY --from=config /app/apps/server/.config.json /app/apps/server/.config.json
 
-RUN npm run migrate -w apps/db
-RUN turbo run build --filter=server --filter=web
+ARG DATABASE_PROVIDER
+ARG DATABASE_PATH
+RUN DATABASE_PROVIDER=$DATABASE_PROVIDER DATABASE_PATH=$DATABASE_PATH turbo run build --filter=db
+RUN npm run generate:run -w apps/db
+
+ARG BACKEND_HOST
+ARG BACKEND_PORT
+ARG BACKEND_SECRET
+RUN BACKEND_HOST=$BACKEND_HOST BACKEND_PORT=$BACKEND_PORT BACKEND_SECRET=$BACKEND_SECRET turbo run build --filter=server
+
+ARG WEB_HOST
+ARG WEB_PORT
+RUN WEB_HOST=$WEB_HOST WEB_PORT=$WEB_PORT turbo run build --filter=web
 
 FROM base AS runner
 
@@ -60,9 +44,7 @@ RUN chown -R server:server /app
 USER server
 
 COPY --from=installer --chown=server:server /app/node_modules/ ./node_modules/
-
 COPY --from=installer --chown=server:server /app/apps/db /app/apps/db
-
 COPY --from=installer --chown=server:server /app/apps/server/dist/index.js .
 COPY --from=installer --chown=server:server /app/apps/web/dist ./public
 

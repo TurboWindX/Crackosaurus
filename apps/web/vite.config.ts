@@ -1,12 +1,24 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig, splitVendorChunkPlugin } from "vite";
+import { defineConfig } from "vite";
 
-import config from "./src/config";
+import { loadWebConfig } from "../../packages/app-config/web";
 
-// https://vitejs.dev/config/
+const config = loadWebConfig();
+
 export default defineConfig({
   server: {
     port: config.host.port,
   },
-  plugins: [react(), splitVendorChunkPlugin()],
+  plugins: [react()],
+  define: {
+    PACKAGE_WEB_CONFIG: config,
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id: string) =>
+          id.includes("node_modules") ? "vendor" : undefined,
+      },
+    },
+  },
 });

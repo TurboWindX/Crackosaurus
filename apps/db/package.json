@@ -2,12 +2,22 @@
   "name": "@repo/db",
   "version": "0.0.0",
   "scripts": {
-    "format": "ts-node src/format.ts",
-    "migrate": "ts-node src/schema.ts && ts-node src/migrate.ts"
+    "build": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild",
+    "deploy": "npm run build && npm run deploy:run",
+    "deploy:run": "node dist/schema.js && node dist/deploy.js",
+    "generate": "npm run build && npm run generate:run",
+    "generate:run": "node dist/schema.js && node dist/generate.js",
+    "format": "npm run build && npm run format:run",
+    "format:run": "node dist/format.js",
+    "migrate": "npm run build && npm run migrate:run",
+    "migrate:run": "node dist/schema.js && node dist/migrate.js"
   },
   "devDependencies": {
     "@repo/typescript-config": "*",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-replace": "^5.0.5",
     "prisma": "^5.7.1",
-    "ts-node": "^10.9.2"
+    "rollup": "^4.17.2",
+    "rollup-plugin-esbuild": "^6.1.1"
   }
 }

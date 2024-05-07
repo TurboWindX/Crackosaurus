@@ -3,8 +3,6 @@
   "private": true,
   "scripts": {
     "build": "turbo build",
-    "config": "npm run config:tool -w apps/config",
-    "config:cli": "npm run config:cli -w apps/config",
     "check": "turbo check",
     "dev": "turbo dev",
     "format": "turbo format",

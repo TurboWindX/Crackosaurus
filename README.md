@@ -7,7 +7,6 @@ A password cracking platform.
 ### Init
 
 ```
-npm run config
 npm run migrate
 ```
 

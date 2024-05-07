@@ -1,5 +1,4 @@
-import { BackendConfig } from "@repo/app-config";
+import { type BackendConfig } from "@repo/app-config/server";
 
-import config from "../.config.json";
-
-export default config as BackendConfig;
+//@ts-ignore
+export default PACKAGE_SERVER_CONFIG as BackendConfig;

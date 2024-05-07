@@ -1,5 +1,3 @@
-import { ClusterConfig } from "@repo/app-config";
+import { loadClusterConfig } from "@repo/app-config/cluster";
 
-import config from "../.config.json";
-
-export default config as ClusterConfig;
+export default loadClusterConfig();

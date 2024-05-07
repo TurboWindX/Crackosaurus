@@ -1,5 +1,4 @@
-import { DatabaseConfig } from "@repo/app-config";
+import { type DatabaseConfig } from "@repo/app-config/db";
 
-import config from "../.config.json";
-
-export default config as DatabaseConfig;
+// @ts-ignore
+export default PACKAGE_DATABASE_CONFIG as DatabaseConfig;

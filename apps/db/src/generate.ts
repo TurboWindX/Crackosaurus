@@ -13,11 +13,13 @@ function main(): void {
 
   const schemaPath = path.join(providerPath, "schema.prisma");
 
-  childProcess.spawnSync(
+  const proc = childProcess.spawnSync(
     "prisma",
-    ["migrate", "dev", `--schema=${schemaPath}`],
+    ["generate", `--schema=${schemaPath}`],
     { encoding: "utf-8", stdio: "inherit" }
   );
+
+  if ((proc.status ?? 1) !== 0) process.exit(1);
 }
 
 if (require.main === module) main();

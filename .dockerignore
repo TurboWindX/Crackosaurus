@@ -6,3 +6,4 @@
 **/*.sqlite
 docker-compose.yml
 .dockerignore
+packages/container
