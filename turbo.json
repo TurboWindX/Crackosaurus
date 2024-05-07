@@ -5,12 +5,20 @@
     "build": {
       "dependsOn": ["^build"]
     },
-    "lint": {
-      "dependsOn": ["^lint"]
+    "check": {
+      "dependsOn": ["^check"]
     },
     "dev": {
+      "dependsOn": ["^dev"],
       "cache": false,
       "persistent": true
+    },
+    "format": {
+      "dependsOn": ["^format"],
+      "cache": false
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
     }
   }
 }

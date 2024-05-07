@@ -2,10 +2,12 @@
   "name": "@repo/db",
   "version": "0.0.0",
   "scripts": {
-    "prisma:format": "prisma format",
-    "prisma:migrate": "prisma migrate dev"
+    "format": "ts-node src/format.ts",
+    "migrate": "ts-node src/schema.ts && ts-node src/migrate.ts"
   },
   "devDependencies": {
-    "prisma": "^5.7.1"
+    "@repo/typescript-config": "*",
+    "prisma": "^5.7.1",
+    "ts-node": "^10.9.2"
   }
 }

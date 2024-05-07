@@ -1,30 +1,26 @@
-import { FastifyPluginOptions } from "fastify";
 import fp from "fastify-plugin";
 
+import { ClusterConfig } from "@repo/app-config";
+
+import { AWSCluster } from "../cluster/aws";
 import { Cluster } from "../cluster/cluster";
 import { DebugCluster } from "../cluster/debug";
-import { FileSystemCluster, type FileSystemClusterConfig } from "../cluster/fs";
+import { FileSystemCluster } from "../cluster/fs";
 
-interface ClusterPluginBaseConfig extends FastifyPluginOptions {}
-
-interface ClusterDebugConfig extends ClusterPluginBaseConfig {
-  debug: boolean;
-}
-
-interface ClusterFileSystemConfig extends ClusterPluginBaseConfig {
-  fileSystem: FileSystemClusterConfig;
-}
-
-export type ClusterPluginConfig = ClusterDebugConfig | ClusterFileSystemConfig;
+export type ClusterPluginConfig = ClusterConfig["type"];
 
 export const clusterPlugin = fp<ClusterPluginConfig>(
   async (server, options) => {
     let cluster: Cluster<any>;
 
-    if (options.fileSystem) {
-      cluster = new FileSystemCluster(options.fileSystem);
+    if (options.name === "aws") {
+      cluster = new AWSCluster(options);
+    } else if (options.name === "debug") {
+      cluster = new DebugCluster(options);
+    } else if (options.name === "filesystem") {
+      cluster = new FileSystemCluster(options);
     } else {
-      cluster = new DebugCluster(undefined);
+      throw new TypeError("Unhandled cluster type");
     }
 
     server.decorate("cluster", cluster);

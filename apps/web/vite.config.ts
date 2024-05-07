@@ -1,14 +1,12 @@
 import react from "@vitejs/plugin-react";
-import fs from "node:fs";
-import { defineConfig } from "vite";
+import { defineConfig, splitVendorChunkPlugin } from "vite";
+
+import config from "./src/config";
 
 // https://vitejs.dev/config/
 export default defineConfig({
   server: {
-    //   https: {
-    //     key: fs.readFileSync("dev.key"),
-    //     cert: fs.readFileSync("dev.crt")
-    //   }
+    port: config.host.port,
   },
-  plugins: [react()],
+  plugins: [react(), splitVendorChunkPlugin()],
 });

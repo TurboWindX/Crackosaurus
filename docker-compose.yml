@@ -1,0 +1,25 @@
+version: "3"
+services:
+  cluster:
+    container_name: cluster
+    build: 
+      context: .
+      dockerfile: packages/container/cluster/Containerfile
+    networks:
+      - cluster
+  server:
+    container_name: server 
+    build:
+      context: .
+      dockerfile: packages/container/server/Containerfile
+    ports:
+      - "8000:8000"
+    networks:
+      - cluster
+      - server
+
+networks:
+  cluster:
+    driver: bridge
+  server:
+    driver: bridge

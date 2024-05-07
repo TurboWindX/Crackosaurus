@@ -1,0 +1,11 @@
+{
+  "name": "@repo/app-config",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./index.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "zod": "^3.23.6"
+  }
+}

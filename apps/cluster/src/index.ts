@@ -1,20 +1,19 @@
 import Fastify from "fastify";
 
 import api from "./api";
+import config from "./config";
 import { clusterPlugin } from "./plugins/cluster";
 
 const fastify = Fastify();
 
-fastify.register(clusterPlugin, {
-  debug: true,
-});
+fastify.register(clusterPlugin, config.type);
 
 fastify.register(api);
 
 fastify.listen(
   {
     host: "0.0.0.0",
-    port: 8001,
+    port: config.host.port,
   },
   (err, address) => {
     if (err) {

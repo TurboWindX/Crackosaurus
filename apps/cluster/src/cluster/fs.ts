@@ -4,16 +4,11 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { type ClusterStatus, type Status } from "@repo/api";
+import { FileSystemClusterConfig } from "@repo/app-config";
 import { type HashType } from "@repo/hashcat/data";
 import { hashcat, readHashcatPot } from "@repo/hashcat/exe";
 
 import { Cluster } from "./cluster";
-
-export interface FileSystemClusterConfig {
-  exePath: string;
-  rootFolder: string;
-  wordlistPath: string;
-}
 
 interface InstanceMetadata {
   status: Status;
