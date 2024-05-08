@@ -3,14 +3,6 @@
   "compilerOptions": {
     "outDir": "dist"
   },
-  "include": [
-    "src",
-    "turbo",
-    "../cluster/src/cluster/local.ts",
-    "../cluster/src/cluster/debug.ts",
-    "../cluster/src/cluster/aws.ts",
-    "../cluster/src/cluster/hashcat.ts",
-    "../cluster/src/cluster/cluster.ts"
-  ],
+  "include": ["src", "turbo"],
   "exclude": ["node_modules", "dist"]
 }

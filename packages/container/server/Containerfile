@@ -1,0 +1,51 @@
+FROM docker.io/node:20-alpine AS base
+
+RUN apk update
+RUN npm install -g turbo
+
+WORKDIR /app
+
+FROM base AS builder
+
+COPY . .
+
+RUN turbo prune @repo/db @repo/web @repo/server --docker
+
+FROM base AS installer
+
+COPY --from=builder /app/out/json .
+COPY --from=builder /app/out/package-lock.json ./package-lock.json
+
+RUN npm install
+
+COPY --from=builder /app/out/full .
+
+ARG DATABASE_PROVIDER
+ARG DATABASE_PATH
+RUN DATABASE_PROVIDER=$DATABASE_PROVIDER DATABASE_PATH=$DATABASE_PATH turbo run build --filter=db
+RUN npm run generate:run -w apps/db
+
+ARG BACKEND_HOST
+ARG BACKEND_PORT
+ARG BACKEND_SECRET
+RUN BACKEND_HOST=$BACKEND_HOST BACKEND_PORT=$BACKEND_PORT BACKEND_SECRET=$BACKEND_SECRET turbo run build --filter=server
+
+ARG WEB_HOST
+ARG WEB_PORT
+RUN WEB_HOST=$WEB_HOST WEB_PORT=$WEB_PORT turbo run build --filter=web
+
+FROM base AS runner
+
+RUN addgroup --system --gid 1001 server
+RUN adduser --system --uid 1001 server
+
+RUN chown -R server:server /app
+
+USER server
+
+COPY --from=installer --chown=server:server /app/node_modules/ ./node_modules/
+COPY --from=installer --chown=server:server /app/apps/db /app/apps/db
+COPY --from=installer --chown=server:server /app/apps/server/dist/index.js .
+COPY --from=installer --chown=server:server /app/apps/web/dist ./public
+
+CMD ["node", "index.js"]

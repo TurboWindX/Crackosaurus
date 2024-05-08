@@ -1,0 +1,8 @@
+{
+  "name": "@repo/container",
+  "version": "0.0.0",
+  "exports": {
+    "./config": "./config.json"
+  },
+  "license": "MIT"
+}

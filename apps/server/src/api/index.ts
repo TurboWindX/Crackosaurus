@@ -1,4 +1,3 @@
-import { FastifySessionObject } from "@fastify/session";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";

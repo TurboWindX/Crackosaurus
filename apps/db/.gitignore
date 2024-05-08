@@ -6,3 +6,7 @@ node_modules
 *.key
 *.crt
 *.csr
+
+*.sqlite
+*.sqlite-journal
+providers/**/*.prisma

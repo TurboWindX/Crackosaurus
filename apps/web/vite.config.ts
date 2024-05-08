@@ -1,14 +1,24 @@
 import react from "@vitejs/plugin-react";
-import fs from "node:fs";
 import { defineConfig } from "vite";
 
-// https://vitejs.dev/config/
+import { loadWebConfig } from "../../packages/app-config/web";
+
+const config = loadWebConfig();
+
 export default defineConfig({
   server: {
-    //   https: {
-    //     key: fs.readFileSync("dev.key"),
-    //     cert: fs.readFileSync("dev.crt")
-    //   }
+    port: config.host.port,
   },
   plugins: [react()],
+  define: {
+    PACKAGE_WEB_CONFIG: config,
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: (id: string) =>
+          id.includes("node_modules") ? "vendor" : undefined,
+      },
+    },
+  },
 });

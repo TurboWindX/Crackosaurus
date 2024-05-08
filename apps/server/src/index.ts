@@ -1,36 +1,44 @@
 import { fastifyCookie } from "@fastify/cookie";
 import cors from "@fastify/cors";
 import { fastifySession } from "@fastify/session";
+import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
 import fs from "node:fs";
+import path from "node:path";
 
 import { api } from "./api";
+import config from "./config";
 import { clusterPlugin } from "./plugins/cluster/plugin";
 import prismaPlugin from "./plugins/prisma";
 
-const fastify = Fastify({
-  // https: {
-  //   key: fs.readFileSync("dev.key"),
-  //   cert: fs.readFileSync("dev.crt")
-  // }
-});
+const fastify = Fastify();
 
-//Fastify session management
 fastify.register(fastifyCookie);
 fastify.register(fastifySession, {
   cookieName: "CrackID",
-  secret: "One Alex is good but two is better if you ask me.",
+  secret: config.secret,
   cookie: {
     secure: false,
     maxAge: 24 * 60 * 60,
   },
 });
 
+const staticFolder = path.resolve("public");
+if (fs.existsSync(staticFolder)) {
+  fastify.register(fastifyStatic, { root: staticFolder });
+
+  fastify.setNotFoundHandler({}, (_request, reply) => {
+    reply.status(200).type("text/html");
+
+    return reply.sendFile("index.html");
+  });
+}
+
 fastify.register(prismaPlugin);
 
 fastify.register(clusterPlugin, {
   http: {
-    url: "http://localhost:8001",
+    url: `http://${config.cluster.name}:${config.cluster.port}`,
   },
   pollingRateMs: 1000,
 });
@@ -45,8 +53,7 @@ fastify.register(cors, {
 
     const hostname = new URL(origin).hostname;
 
-    // TODO: Config for frontend website.
-    if (hostname !== "localhost") {
+    if (hostname !== config.web.name) {
       cb(new Error("Not allowed"), false);
       return;
     }
@@ -60,7 +67,7 @@ fastify.register(api, { prefix: "api" });
 fastify.listen(
   {
     host: "0.0.0.0",
-    port: 8000,
+    port: config.host.port,
   },
   (err, address) => {
     if (err) {

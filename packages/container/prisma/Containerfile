@@ -1,0 +1,45 @@
+FROM docker.io/node:20-alpine AS base
+
+RUN apk update
+RUN npm install -g turbo
+
+WORKDIR /app
+
+FROM base AS builder
+
+COPY . .
+
+RUN turbo prune @repo/db @repo/web @repo/server --docker
+
+FROM base AS installer
+
+COPY --from=builder /app/out/json .
+COPY --from=builder /app/out/package-lock.json ./package-lock.json
+
+RUN npm install
+
+COPY --from=builder /app/out/full .
+
+ARG DATABASE_PROVIDER
+ARG DATABASE_PATH
+RUN DATABASE_PROVIDER=$DATABASE_PROVIDER DATABASE_PATH=$DATABASE_PATH turbo run build --filter=db
+
+FROM base AS runner
+
+RUN npm install -g prisma
+
+RUN addgroup --system --gid 1001 prisma
+RUN adduser --system --uid 1001 prisma
+
+RUN chown -R prisma:prisma /app
+
+USER prisma
+
+COPY --from=installer --chown=prisma:prisma /app/node_modules/ ./node_modules/
+COPY --from=installer --chown=prisma:prisma /app/apps/db /app/apps/db
+
+WORKDIR /app/apps/db
+
+RUN node dist/schema.js
+
+CMD ["node", "dist/deploy.js"]

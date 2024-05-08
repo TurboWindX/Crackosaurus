@@ -1,0 +1,64 @@
+version: "3"
+services:
+  database:
+    container_name: database
+    image: docker.io/postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    networks:
+      - app
+  prisma:
+    container_name: prisma
+    restart: on-failure
+    build:
+      context: .
+      dockerfile: packages/container/prisma/Containerfile
+      args:
+        DATABASE_PROVIDER: postgresql
+        DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
+    networks:
+      - app
+    depends_on:
+      - database
+  cluster:
+    container_name: cluster
+    restart: always
+    build:
+      context: .
+      dockerfile: packages/container/cluster/Containerfile
+      args:
+        CLUSTER_HOST: cluster
+        CLUSTER_PORT: 8001
+        CLUSTER_TYPE: debug
+    networks:
+      - cluster
+  server:
+    container_name: server
+    restart: always
+    build:
+      context: .
+      dockerfile: packages/container/server/Containerfile
+      args:
+        BACKEND_HOST: localhost
+        BACKEND_PORT: 8000
+        BACKEND_SECRET: SECRET:123456789012345678901234567890
+        WEB_HOST: localhost
+        WEB_PORT: 8000
+        DATABASE_PROVIDER: postgresql
+        DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
+    ports:
+      - "8000:8000"
+    networks:
+      - app
+      - cluster
+    depends_on:
+      - database
+      - cluster
+
+networks:
+  app:
+    driver: bridge
+  cluster:
+    driver: bridge

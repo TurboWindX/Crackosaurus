@@ -11,6 +11,7 @@ import { ThemeProvider } from "@repo/shadcn/components/theme-provider";
 import { Toaster } from "@repo/shadcn/components/ui/toaster";
 import { APIProvider } from "@repo/ui/api";
 
+import config from "./config.ts";
 import { router } from "./pages/index.tsx";
 
 const queryClient = new QueryClient();
@@ -19,7 +20,9 @@ const App = () => {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="ui-theme">
       <QueryClientProvider client={queryClient}>
-        <APIProvider url="http://localhost:8000/api">
+        <APIProvider
+          url={`http://${config.backend.name}:${config.backend.port}/api`}
+        >
           <RouterProvider router={router} />
         </APIProvider>
       </QueryClientProvider>

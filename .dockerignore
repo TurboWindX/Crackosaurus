@@ -1,0 +1,9 @@
+**/.turbo
+**/.config.json
+**/node_modules
+**/dist
+**/Containerfile
+**/*.sqlite
+docker-compose.yml
+.dockerignore
+packages/container

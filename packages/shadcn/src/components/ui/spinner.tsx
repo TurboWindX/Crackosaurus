@@ -10,7 +10,7 @@ function Spinner({
     <svg
       aria-hidden="true"
       className={cn(
-        "scn-text-secondary scn-animate-spin scn-fill-primary",
+        "scn-animate-spin scn-fill-primary scn-text-secondary",
         className
       )}
       viewBox="0 0 100 101"
