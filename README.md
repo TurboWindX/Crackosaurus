@@ -25,6 +25,6 @@ npm run format
 ## Pre-production
 
 ```
-sudo podman-compose build
-sudo podman-compose up
+sudo docker-compose build
+sudo docker-compose up
 ```
