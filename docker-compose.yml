@@ -17,7 +17,8 @@ services:
       dockerfile: packages/container/prisma/Containerfile
       args:
         DATABASE_PROVIDER: postgresql
-        DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
+    environment:
+      DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
     networks:
       - app
     depends_on:
@@ -28,12 +29,12 @@ services:
     build:
       context: .
       dockerfile: packages/container/cluster/Containerfile
-      args:
-        CLUSTER_HOST: cluster
-        CLUSTER_PORT: 8001
-        CLUSTER_TYPE: debug
+    environment:
+      CLUSTER_HOST: cluster
+      CLUSTER_PORT: 13337
+      CLUSTER_TYPE: debug
     networks:
-      - cluster
+      - app
   server:
     container_name: server
     restart: always
@@ -41,24 +42,24 @@ services:
       context: .
       dockerfile: packages/container/server/Containerfile
       args:
-        BACKEND_HOST: localhost
-        BACKEND_PORT: 8000
-        BACKEND_SECRET: SECRET:123456789012345678901234567890
-        WEB_HOST: localhost
-        WEB_PORT: 8000
         DATABASE_PROVIDER: postgresql
-        DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
+        BACKEND_HOST: localhost
+        BACKEND_PORT: 8080
+    environment:
+      WEB_HOST: localhost
+      WEB_PORT: 8080
+      CLUSTER_HOST: cluster
+      CLUSTER_PORT: 13337
+      BACKEND_SECRET: SECRET:123456789012345678901234567890
+      DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
     ports:
-      - "8000:8000"
+      - "8080:8080"
     networks:
       - app
-      - cluster
     depends_on:
-      - database
       - cluster
+      - database
 
 networks:
   app:
-    driver: bridge
-  cluster:
     driver: bridge

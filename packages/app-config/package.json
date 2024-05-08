@@ -4,11 +4,15 @@
   "exports": {
     "./cluster": "./cluster.ts",
     "./db": "./db.ts",
+    "./host": "./host.ts",
     "./server": "./server.ts",
     "./web": "./web.ts"
   },
   "license": "MIT",
   "dependencies": {
     "zod": "^3.23.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.11"
   }
 }

@@ -21,7 +21,6 @@ function main(): void {
     throw ReferenceError(`Could not find schema at ${schemaPath}`);
 
   let schema = fs.readFileSync(schemaPath, { encoding: "utf-8" });
-  schema = schema.replace("DATABASE_URL", config.path);
 
   const mergedSchema = `${schema}\n${COMMON_SCHEMA}`;
 

@@ -20,9 +20,7 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
-ARG DATABASE_PROVIDER
-ARG DATABASE_PATH
-RUN DATABASE_PROVIDER=$DATABASE_PROVIDER DATABASE_PATH=$DATABASE_PATH turbo run build --filter=db
+RUN turbo run build --filter=db
 
 FROM base AS runner
 
@@ -40,6 +38,9 @@ COPY --from=installer --chown=prisma:prisma /app/apps/db /app/apps/db
 
 WORKDIR /app/apps/db
 
-RUN node dist/schema.js
+ARG DATABASE_PROVIDER
+ENV DATABASE_PROVIDER=$DATABASE_PROVIDER
+
+RUN DATABASE_PROVIDER=$DATABASE_PROVIDER node dist/schema.js
 
 CMD ["node", "dist/deploy.js"]

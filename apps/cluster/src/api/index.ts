@@ -28,15 +28,12 @@ function validate(validator: { parse?: (data: any) => any }) {
   };
 }
 
-type RouteHandler<TRoute> = TRoute extends Route<
-  infer TPath,
-  infer TReq,
-  infer TRes
->
-  ? (
-      request: FastifyRequest<RouteRequest<TRoute>>
-    ) => Promise<RouteResponse<TRoute>["response"]>
-  : never;
+type RouteHandler<TRoute> =
+  TRoute extends Route<infer TPath, infer TReq, infer TRes>
+    ? (
+        request: FastifyRequest<RouteRequest<TRoute>>
+      ) => Promise<RouteResponse<TRoute>["response"]>
+    : never;
 
 const ROUTER: {
   [key in keyof typeof ROUTES]: RouteHandler<(typeof ROUTES)[key]>;

@@ -20,19 +20,18 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
+RUN turbo run build --filter=db
+
 ARG DATABASE_PROVIDER
-ARG DATABASE_PATH
-RUN DATABASE_PROVIDER=$DATABASE_PROVIDER DATABASE_PATH=$DATABASE_PATH turbo run build --filter=db
-RUN npm run generate:run -w apps/db
+
+RUN DATABASE_PROVIDER=$DATABASE_PROVIDER npm run generate:run -w apps/db
 
 ARG BACKEND_HOST
 ARG BACKEND_PORT
-ARG BACKEND_SECRET
-RUN BACKEND_HOST=$BACKEND_HOST BACKEND_PORT=$BACKEND_PORT BACKEND_SECRET=$BACKEND_SECRET turbo run build --filter=server
 
-ARG WEB_HOST
-ARG WEB_PORT
-RUN WEB_HOST=$WEB_HOST WEB_PORT=$WEB_PORT turbo run build --filter=web
+RUN BACKEND_HOST=$BACKEND_HOST BACKEND_PORT=$BACKEND_PORT turbo run build --filter=web
+
+RUN turbo run build --filter=server
 
 FROM base AS runner
 
@@ -47,5 +46,14 @@ COPY --from=installer --chown=server:server /app/node_modules/ ./node_modules/
 COPY --from=installer --chown=server:server /app/apps/db /app/apps/db
 COPY --from=installer --chown=server:server /app/apps/server/dist/index.js .
 COPY --from=installer --chown=server:server /app/apps/web/dist ./public
+
+ARG DATABASE_PROVIDER
+ENV DATABASE_PROVIDER=$DATABASE_PROVIDER
+
+ARG BACKEND_HOST
+ENV BACKEND_HOST=$BACKEND_HOST
+
+ARG BACKEND_PORT
+ENV BACKEND_PORT=$BACKEND_PORT
 
 CMD ["node", "index.js"]

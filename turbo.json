@@ -9,7 +9,6 @@
       "dependsOn": ["^check"]
     },
     "dev": {
-      "dependsOn": ["^dev"],
       "cache": false
     },
     "format": {

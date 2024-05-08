@@ -22,22 +22,20 @@ export type PathParams<T extends string> =
         ? PathParams<`/${Rest}`>
         : never;
 
-export type RouteRequest<TRoute> = TRoute extends Route<
-  infer TPath,
-  infer TReq,
-  any
->
-  ? {
-      Params: { [key in PathParams<TPath>]: string };
-      Body: z.infer<TReq>;
-    }
-  : never;
+export type RouteRequest<TRoute> =
+  TRoute extends Route<infer TPath, infer TReq, any>
+    ? {
+        Params: { [key in PathParams<TPath>]: string };
+        Body: z.infer<TReq>;
+      }
+    : never;
 
-export type RouteResponse<TRoute> = TRoute extends Route<any, any, infer TRes>
-  ? {
-      response: z.infer<TRes>;
-    }
-  : never;
+export type RouteResponse<TRoute> =
+  TRoute extends Route<any, any, infer TRes>
+    ? {
+        response: z.infer<TRes>;
+      }
+    : never;
 
 export interface Route<
   TPath extends string,
@@ -51,15 +49,12 @@ export interface Route<
   response: TRes;
 }
 
-export type APIHandler<TRoute> = TRoute extends Route<
-  infer TPath,
-  infer TReq,
-  any
->
-  ? (
-      req: Record<PathParams<TPath>, string> & z.infer<TReq>
-    ) => Promise<RouteResponse<TRoute>["response"]>
-  : never;
+export type APIHandler<TRoute> =
+  TRoute extends Route<infer TPath, infer TReq, any>
+    ? (
+        req: Record<PathParams<TPath>, string> & z.infer<TReq>
+      ) => Promise<RouteResponse<TRoute>["response"]>
+    : never;
 
 export class APIError extends Error {
   public readonly status: number;

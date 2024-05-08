@@ -20,10 +20,7 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
-ARG CLUSTER_HOST
-ARG CLUSTER_PORT
-ARG CLUSTER_TYPE
-RUN CLUSTER_HOST=CLUSTER_HOST CLUSTER_PORT=CLUSTER_PORT CLUSTER_TYPE=CLUSTER_TYPE turbo run build --filter=cluster
+RUN turbo run build --filter=cluster
 
 FROM base AS runner
 

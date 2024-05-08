@@ -19,7 +19,7 @@
   },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^15.2.3",
-    "@types/node": "^20.10.5",
+    "@rollup/plugin-replace": "^5.0.5",
     "concurrently": "^8.2.2",
     "nodemon": "^3.1.0",
     "rollup": "^4.17.2",
