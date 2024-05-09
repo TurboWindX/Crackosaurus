@@ -1,9 +1,12 @@
 import { NestedStack, NestedStackProps } from "aws-cdk-lib";
 import {
+  ISubnet,
   IVpc,
   InstanceClass,
   InstanceSize,
   InstanceType,
+  Peer,
+  Port,
   SubnetType,
   Vpc,
 } from "aws-cdk-lib/aws-ec2";
@@ -21,19 +24,17 @@ import {
   BACKEND_DEFAULT_PORT,
   CLUSTER_DEFAULT_PORT,
 } from "@repo/app-config/host";
-import {
-  BackendConfig,
-  argsBackendConfig,
-  envBackendConfig,
-} from "@repo/app-config/server";
+import { BackendConfig } from "@repo/app-config/server";
 
+import { ClusterStack, ClusterStackConfig } from "./cluster-stack";
 import { DatabaseStack, DatabaseStackConfig } from "./database-stack";
-import { ServiceStack, ServiceStackConfig } from "./service-stack";
+import { ServerStack, ServerStackConfig } from "./server-stack";
 
 interface AppStackRequiredConfig {
   databaseName?: string;
-  server: ServiceStackConfig;
-  cluster: ServiceStackConfig;
+  databasePort?: number;
+  server: ServerStackConfig;
+  cluster: ClusterStackConfig;
 }
 
 interface AppStackDatabaseConfig {
@@ -41,12 +42,31 @@ interface AppStackDatabaseConfig {
   database: DatabaseStackConfig;
 }
 
-export type AppStackConfig = AppStackRequiredConfig &
-  Partial<AppStackDatabaseConfig>;
+interface AppStackDatabaseCredentialsConfig {
+  databaseCreditals: "secret";
+  databaseUser?: string;
+  passwordLength?: number;
+}
 
-interface AppStackRequiredProps {
-  vpc?: IVpc;
-  databaseCredentials?: ISecret;
+interface AppStackVpcConfig {
+  vpcType: "aws";
+}
+
+export type AppStackConfig = AppStackRequiredConfig &
+  Partial<AppStackDatabaseConfig> &
+  Partial<AppStackDatabaseCredentialsConfig> &
+  Partial<AppStackVpcConfig>;
+
+interface AppStackVpcSubnets {
+  internet: ISubnet[];
+  app: ISubnet[];
+  database: ISubnet[];
+}
+
+interface AppStackVpcProps {
+  vpcType: "instance";
+  vpc: IVpc;
+  subnets: AppStackVpcSubnets;
 }
 
 interface AppStackDatabaseProps {
@@ -54,71 +74,110 @@ interface AppStackDatabaseProps {
   databaseInstance: IDatabaseInstance;
 }
 
+interface AppStackDatabaseCredentialsProps {
+  databaseCreditals: "instance";
+  databaseSecret: ISecret;
+}
+
 export type AppStackProps = NestedStackProps &
   AppStackRequiredConfig &
-  AppStackRequiredProps &
-  (AppStackDatabaseProps | AppStackDatabaseConfig);
+  (AppStackVpcProps | AppStackVpcConfig) &
+  (AppStackDatabaseProps | AppStackDatabaseConfig) &
+  (AppStackDatabaseCredentialsProps | AppStackDatabaseCredentialsConfig);
 
 export class AppStack extends NestedStack {
   public readonly database?: DatabaseStack;
 
-  public readonly server: ServiceStack;
-  public readonly cluster: ServiceStack;
+  public readonly server: ServerStack;
+  public readonly cluster: ClusterStack;
 
+  public static readonly DEFAULT_DATABASE_USER = "postgres";
   public static readonly DEFAULT_DATABASE_NAME = "crackosaurus";
   public static readonly DEFAULT_DATABASE_PORT = 5432;
+
+  public static readonly DEFAULT_SECRET_LENGTH = 32;
 
   constructor(scope: Construct, props: AppStackProps) {
     super(scope, "app-stack", props);
 
+    /**
+     * Vpc
+     */
+
     let vpc: IVpc;
-    if (props.vpc) {
+    let subnets: AppStackVpcSubnets;
+    if (props.vpcType === "instance") {
       vpc = props.vpc;
-    } else {
+      subnets = props.subnets;
+    } else if (props.vpcType === "aws") {
       vpc = new Vpc(this, "vpc", {
         subnetConfiguration: [
           {
             cidrMask: 24,
-            name: "ingress",
+            name: "internet",
             subnetType: SubnetType.PUBLIC,
           },
           {
             cidrMask: 24,
-            name: "application",
+            name: "app",
             subnetType: SubnetType.PRIVATE_WITH_EGRESS,
           },
           {
             cidrMask: 28,
-            name: "rds",
+            name: "database",
             subnetType: SubnetType.PRIVATE_ISOLATED,
           },
         ],
       });
+
+      subnets = {
+        internet: vpc.selectSubnets({ subnetGroupName: "internet" }).subnets,
+        app: vpc.selectSubnets({ subnetGroupName: "app" }).subnets,
+        database: vpc.selectSubnets({ subnetGroupName: "database" }).subnets,
+      };
+    } else {
+      throw TypeError(`Unhandled vpc type ${(props as any).vpcType}`);
     }
 
-    let databaseCredentials: ISecret;
-    if (props.databaseCredentials) {
-      databaseCredentials = props.databaseCredentials;
-    } else {
-      databaseCredentials = new Secret(this, "db-creds", {
+    /**
+     * Database Credentials
+     */
+
+    let databaseSecret: ISecret;
+    if (props.databaseCreditals === "instance") {
+      databaseSecret = props.databaseSecret;
+    } else if (props.databaseCreditals === "secret") {
+      databaseSecret = new Secret(this, "db-creds", {
         description: "Database credentials",
         generateSecretString: {
-          secretStringTemplate: JSON.stringify({ username: "postgres" }),
+          secretStringTemplate: JSON.stringify({
+            username: props.databaseUser ?? AppStack.DEFAULT_DATABASE_USER,
+          }),
           generateStringKey: "password",
-          passwordLength: 32,
+          passwordLength:
+            props.passwordLength ?? AppStack.DEFAULT_SECRET_LENGTH,
           excludePunctuation: true,
         },
       });
+    } else {
+      throw TypeError(
+        `Unhandled database type ${(props as any).databaseCreditals}`
+      );
     }
+
+    /**
+     * Database Service
+     */
 
     let databaseInstance: IDatabaseInstance;
     if (props.databaseType === "postgresql") {
       this.database = new DatabaseStack(this, {
         ...props.database,
         database: props.databaseName ?? AppStack.DEFAULT_DATABASE_NAME,
-        credentials: databaseCredentials,
-        port: AppStack.DEFAULT_DATABASE_PORT,
+        credentials: databaseSecret,
+        port: props.databasePort ?? AppStack.DEFAULT_DATABASE_PORT,
         vpc,
+        subnets: subnets.database,
       });
 
       databaseInstance = this.database.instance;
@@ -130,23 +189,31 @@ export class AppStack extends NestedStack {
       throw TypeError(`Unhandled database type ${(props as any).databaseType}`);
     }
 
-    const databaseUrl = `postgresql://${databaseCredentials
+    const databaseUrl = `postgresql://${databaseSecret
       .secretValueFromJson("username")
-      .unsafeUnwrap()}:${databaseCredentials
+      .unsafeUnwrap()}:${databaseSecret
       .secretValueFromJson("password")
       .unsafeUnwrap()}@${databaseInstance.instanceEndpoint.hostname}:${
       databaseInstance.instanceEndpoint.port
     }/${props.databaseName}?schema=public`;
 
-    const cluster = new Cluster(this, "cluster", { vpc: props.vpc });
+    /**
+     * App Cluster
+     */
+
+    const cluster = new Cluster(this, "cluster", { vpc });
     cluster.addCapacity("cluster-capacity", {
       instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.MICRO),
       desiredCapacity: 2,
     });
 
+    /**
+     * Cluster Service
+     */
+
     const clusterConfig: ClusterConfig = {
       host: {
-        name: props.cluster.hostname,
+        name: "cluster",
         port: CLUSTER_DEFAULT_PORT,
       },
       type: {
@@ -154,31 +221,34 @@ export class AppStack extends NestedStack {
       },
     };
 
-    this.cluster = new ServiceStack(this, {
+    this.cluster = new ClusterStack(this, {
       ...props.cluster,
-      name: "cluster",
       cluster,
-      args: argsClusterConfig(clusterConfig),
-      environment: envClusterConfig(clusterConfig),
+      subnets: subnets.app,
+      config: clusterConfig,
     });
 
     const serverSecret = new Secret(this, "server-secret", {
-      description: "Server secret",
+      description: "Server cookie secret",
       generateSecretString: {
         secretStringTemplate: JSON.stringify({}),
         generateStringKey: "secret",
-        passwordLength: 32,
+        passwordLength: AppStack.DEFAULT_SECRET_LENGTH,
         excludePunctuation: true,
       },
     });
 
+    /**
+     * Server Service
+     */
+
     const serverConfig: BackendConfig = {
       host: {
-        name: props.server.hostname,
+        name: "server",
         port: BACKEND_DEFAULT_PORT,
       },
       web: {
-        name: props.server.hostname,
+        name: "server",
         port: BACKEND_DEFAULT_PORT,
       },
       database: {
@@ -189,12 +259,35 @@ export class AppStack extends NestedStack {
       secret: serverSecret.secretValueFromJson("secret").unsafeUnwrap(),
     };
 
-    this.server = new ServiceStack(this, {
+    this.server = new ServerStack(this, {
       ...props.server,
-      name: "server",
       cluster,
-      args: argsBackendConfig(serverConfig),
-      environment: envBackendConfig(serverConfig),
+      subnets: subnets.app,
+      config: serverConfig,
     });
+
+    /**
+     * Security Group
+     */
+
+    if (this.database) {
+      const port = this.database.instance.instanceEndpoint.port;
+
+      this.database.securityGroup.addIngressRule(
+        Peer.securityGroupId(this.server.securityGroup.securityGroupId),
+        Port.tcp(port),
+        `Allow database access via port ${port} to server`
+      );
+    }
+
+    if (this.cluster) {
+      const port = clusterConfig.host.port;
+
+      this.cluster.securityGroup.addIngressRule(
+        Peer.securityGroupId(this.server.securityGroup.securityGroupId),
+        Port.tcp(port),
+        `Allow cluster access via port ${port} to server`
+      );
+    }
   }
 }
