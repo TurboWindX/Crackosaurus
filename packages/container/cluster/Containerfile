@@ -34,4 +34,8 @@ USER cluster
 COPY --from=installer --chown=cluster:cluster /app/node_modules/ ./node_modules/
 COPY --from=installer --chown=cluster:cluster /app/apps/cluster/dist .
 
+ARG CLUSTER_PORT
+ENV CLUSTER_PORT=$CLUSTER_PORT
+EXPOSE $CLUSTER_PORT
+
 CMD ["node", "index.js"]

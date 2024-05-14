@@ -29,9 +29,10 @@ services:
     build:
       context: .
       dockerfile: packages/container/cluster/Containerfile
+      args:
+        CLUSTER_PORT: 8080
     environment:
       CLUSTER_HOST: cluster
-      CLUSTER_PORT: 13337
       CLUSTER_TYPE: debug
     networks:
       - app
@@ -43,13 +44,13 @@ services:
       dockerfile: packages/container/server/Containerfile
       args:
         DATABASE_PROVIDER: postgresql
-        BACKEND_HOST: localhost
+        BACKEND_HOST: USE_WEB_HOST
         BACKEND_PORT: 8080
     environment:
       WEB_HOST: localhost
       WEB_PORT: 8080
       CLUSTER_HOST: cluster
-      CLUSTER_PORT: 13337
+      CLUSTER_PORT: 8080
       BACKEND_SECRET: SECRET:123456789012345678901234567890
       DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
     ports:

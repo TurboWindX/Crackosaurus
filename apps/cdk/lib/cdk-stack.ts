@@ -15,6 +15,7 @@ export class CdkStack extends Stack {
       databaseCreditals: "secret",
       database: {},
       cluster: {},
+      prisma: {},
       server: {},
     });
   }

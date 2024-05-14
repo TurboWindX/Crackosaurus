@@ -60,7 +60,9 @@ export function loadClusterConfig() {
 export function argsClusterConfig(
   config: ClusterConfig
 ): Record<string, string> {
-  return {};
+  return {
+    CLUSTER_PORT: config.host.port.toString(),
+  };
 }
 
 export function envClusterConfig(
@@ -68,7 +70,6 @@ export function envClusterConfig(
 ): Record<string, string> {
   return {
     CLUSTER_HOST: config.host.name,
-    CLUSTER_PORT: config.host.port.toString(),
     CLUSTER_TYPE: config.type.name,
   };
 }

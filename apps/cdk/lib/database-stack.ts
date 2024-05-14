@@ -1,17 +1,10 @@
-import {
-  Duration,
-  NestedStack,
-  NestedStackProps,
-  RemovalPolicy,
-} from "aws-cdk-lib";
+import { Duration, RemovalPolicy } from "aws-cdk-lib";
 import {
   ISubnet,
   IVpc,
   InstanceClass,
   InstanceSize,
   InstanceType,
-  Peer,
-  Port,
   SecurityGroup,
 } from "aws-cdk-lib/aws-ec2";
 import { Key } from "aws-cdk-lib/aws-kms";
@@ -29,9 +22,8 @@ export interface DatabaseStackConfig {
   removal?: RemovalPolicy;
 }
 
-export interface DatabaseStackProps
-  extends DatabaseStackConfig,
-    NestedStackProps {
+export interface DatabaseStackProps extends DatabaseStackConfig {
+  prefix?: string;
   database: string;
   port: number;
   vpc: IVpc;
@@ -39,7 +31,7 @@ export interface DatabaseStackProps
   credentials: ISecret;
 }
 
-export class DatabaseStack extends NestedStack {
+export class DatabaseStack extends Construct {
   public readonly securityGroup: SecurityGroup;
   public readonly storageEncryptionKey: Key;
   public readonly instance: DatabaseInstance;
@@ -50,21 +42,25 @@ export class DatabaseStack extends NestedStack {
   public static readonly DEFAULT_REMOVAL_POLICY = RemovalPolicy.DESTROY;
 
   constructor(scope: Construct, props: DatabaseStackProps) {
-    super(scope, `${DatabaseStack.NAME}-stack`, props);
+    const id = `${DatabaseStack.NAME}-stack`;
+    super(scope, id);
+
+    const prefix =
+      props.prefix !== undefined ? `${props.prefix}-${id}` : undefined;
+    const tag = (v: string) =>
+      prefix !== undefined ? `${prefix}-${v}` : undefined;
 
     this.securityGroup = new SecurityGroup(scope, "security-group", {
+      securityGroupName: tag("security-group"),
       vpc: props.vpc,
     });
 
-    this.securityGroup.addIngressRule(
-      Peer.ipv4(props.vpc.vpcCidrBlock),
-      Port.tcp(props.port),
-      `Allow database access via port ${props.port} to VPC ${props.vpc.vpcId}`
-    );
-
     this.storageEncryptionKey = new Key(this, "key");
 
+    const removal = props.removal ?? DatabaseStack.DEFAULT_REMOVAL_POLICY;
+
     this.instance = new DatabaseInstance(this, "database", {
+      databaseName: props.database,
       vpc: props.vpc,
       vpcSubnets: {
         subnets: props.subnets,
@@ -76,12 +72,11 @@ export class DatabaseStack extends NestedStack {
       }),
       storageEncryptionKey: this.storageEncryptionKey,
       securityGroups: [this.securityGroup],
-      databaseName: props.database,
       credentials: Credentials.fromSecret(props.credentials),
       backupRetention: props.backup ?? DatabaseStack.DEFAULT_BACKUP_RETENTION,
-      deleteAutomatedBackups: true,
-      deletionProtection: props.removal !== RemovalPolicy.DESTROY,
-      removalPolicy: props.removal ?? DatabaseStack.DEFAULT_REMOVAL_POLICY,
+      deleteAutomatedBackups: removal === RemovalPolicy.DESTROY,
+      deletionProtection: removal !== RemovalPolicy.DESTROY,
+      removalPolicy: removal,
     });
   }
 }

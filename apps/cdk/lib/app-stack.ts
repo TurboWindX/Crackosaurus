@@ -2,9 +2,6 @@ import { NestedStack, NestedStackProps } from "aws-cdk-lib";
 import {
   ISubnet,
   IVpc,
-  InstanceClass,
-  InstanceSize,
-  InstanceType,
   Peer,
   Port,
   SubnetType,
@@ -15,24 +12,18 @@ import { IDatabaseInstance } from "aws-cdk-lib/aws-rds";
 import { ISecret, Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
-import {
-  ClusterConfig,
-  argsClusterConfig,
-  envClusterConfig,
-} from "@repo/app-config/cluster";
-import {
-  BACKEND_DEFAULT_PORT,
-  CLUSTER_DEFAULT_PORT,
-} from "@repo/app-config/host";
+import { ClusterConfig } from "@repo/app-config/cluster";
 import { BackendConfig } from "@repo/app-config/server";
 
 import { ClusterStack, ClusterStackConfig } from "./cluster-stack";
 import { DatabaseStack, DatabaseStackConfig } from "./database-stack";
+import { PrismaStack, PrismaStackConfig } from "./prisma-stack";
 import { ServerStack, ServerStackConfig } from "./server-stack";
 
 interface AppStackRequiredConfig {
   databaseName?: string;
   databasePort?: number;
+  prisma: PrismaStackConfig;
   server: ServerStackConfig;
   cluster: ClusterStackConfig;
 }
@@ -79,7 +70,12 @@ interface AppStackDatabaseCredentialsProps {
   databaseSecret: ISecret;
 }
 
+interface AppStackPrefixProps {
+  prefix?: string;
+}
+
 export type AppStackProps = NestedStackProps &
+  AppStackPrefixProps &
   AppStackRequiredConfig &
   (AppStackVpcProps | AppStackVpcConfig) &
   (AppStackDatabaseProps | AppStackDatabaseConfig) &
@@ -88,6 +84,9 @@ export type AppStackProps = NestedStackProps &
 export class AppStack extends NestedStack {
   public readonly database?: DatabaseStack;
 
+  public readonly appCluster: Cluster;
+
+  public readonly prisma: PrismaStack;
   public readonly server: ServerStack;
   public readonly cluster: ClusterStack;
 
@@ -98,7 +97,13 @@ export class AppStack extends NestedStack {
   public static readonly DEFAULT_SECRET_LENGTH = 32;
 
   constructor(scope: Construct, props: AppStackProps) {
-    super(scope, "app-stack", props);
+    const id = "app-stack";
+    super(scope, id, props);
+
+    const prefix =
+      props.prefix !== undefined ? `${props.prefix}-${id}` : undefined;
+    const tag = (v: string) =>
+      prefix !== undefined ? `${prefix}-${v}` : undefined;
 
     /**
      * Vpc
@@ -111,20 +116,21 @@ export class AppStack extends NestedStack {
       subnets = props.subnets;
     } else if (props.vpcType === "aws") {
       vpc = new Vpc(this, "vpc", {
+        vpcName: tag("vpc"),
         subnetConfiguration: [
           {
-            cidrMask: 24,
             name: "internet",
+            cidrMask: 24,
             subnetType: SubnetType.PUBLIC,
           },
           {
-            cidrMask: 24,
             name: "app",
+            cidrMask: 24,
             subnetType: SubnetType.PRIVATE_WITH_EGRESS,
           },
           {
-            cidrMask: 28,
             name: "database",
+            cidrMask: 28,
             subnetType: SubnetType.PRIVATE_ISOLATED,
           },
         ],
@@ -140,14 +146,15 @@ export class AppStack extends NestedStack {
     }
 
     /**
-     * Database Credentials
+     * Database Service
      */
 
     let databaseSecret: ISecret;
     if (props.databaseCreditals === "instance") {
       databaseSecret = props.databaseSecret;
     } else if (props.databaseCreditals === "secret") {
-      databaseSecret = new Secret(this, "db-creds", {
+      databaseSecret = new Secret(this, "database-credentials", {
+        secretName: tag("database-credentials"),
         description: "Database credentials",
         generateSecretString: {
           secretStringTemplate: JSON.stringify({
@@ -165,15 +172,14 @@ export class AppStack extends NestedStack {
       );
     }
 
-    /**
-     * Database Service
-     */
+    const databaseName = props.databaseName ?? AppStack.DEFAULT_DATABASE_NAME;
 
     let databaseInstance: IDatabaseInstance;
     if (props.databaseType === "postgresql") {
       this.database = new DatabaseStack(this, {
         ...props.database,
-        database: props.databaseName ?? AppStack.DEFAULT_DATABASE_NAME,
+        prefix,
+        database: databaseName,
         credentials: databaseSecret,
         port: props.databasePort ?? AppStack.DEFAULT_DATABASE_PORT,
         vpc,
@@ -195,16 +201,16 @@ export class AppStack extends NestedStack {
       .secretValueFromJson("password")
       .unsafeUnwrap()}@${databaseInstance.instanceEndpoint.hostname}:${
       databaseInstance.instanceEndpoint.port
-    }/${props.databaseName}?schema=public`;
+    }/${databaseName}?schema=public`;
 
     /**
      * App Cluster
      */
 
-    const cluster = new Cluster(this, "cluster", { vpc });
-    cluster.addCapacity("cluster-capacity", {
-      instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.MICRO),
-      desiredCapacity: 2,
+    this.appCluster = new Cluster(this, "cluster", {
+      clusterName: tag("cluster"),
+      vpc,
+      containerInsights: true,
     });
 
     /**
@@ -214,7 +220,7 @@ export class AppStack extends NestedStack {
     const clusterConfig: ClusterConfig = {
       host: {
         name: "cluster",
-        port: CLUSTER_DEFAULT_PORT,
+        port: 8080,
       },
       type: {
         name: "debug",
@@ -223,12 +229,29 @@ export class AppStack extends NestedStack {
 
     this.cluster = new ClusterStack(this, {
       ...props.cluster,
-      cluster,
+      prefix,
+      cluster: this.appCluster,
       subnets: subnets.app,
       config: clusterConfig,
     });
 
+    /**
+     * Prisma Service
+     */
+
+    this.prisma = new PrismaStack(this, {
+      prefix,
+      databaseUrl,
+      cluster: this.appCluster,
+      subnets: subnets.app,
+    });
+
+    /**
+     * Server Service
+     */
+
     const serverSecret = new Secret(this, "server-secret", {
+      secretName: tag("server-secret"),
       description: "Server cookie secret",
       generateSecretString: {
         secretStringTemplate: JSON.stringify({}),
@@ -238,55 +261,64 @@ export class AppStack extends NestedStack {
       },
     });
 
-    /**
-     * Server Service
-     */
-
     const serverConfig: BackendConfig = {
       host: {
-        name: "server",
-        port: BACKEND_DEFAULT_PORT,
+        name: "USE_WEB_HOST",
+        port: 8080,
       },
       web: {
         name: "server",
-        port: BACKEND_DEFAULT_PORT,
+        port: 8080,
       },
       database: {
         provider: "postgresql",
         path: databaseUrl,
       },
-      cluster: clusterConfig.host,
+      cluster: {
+        name: this.cluster.loadBalancer.loadBalancerDnsName,
+        port: 80,
+      },
       secret: serverSecret.secretValueFromJson("secret").unsafeUnwrap(),
     };
 
     this.server = new ServerStack(this, {
       ...props.server,
-      cluster,
-      subnets: subnets.app,
+      prefix,
+      cluster: this.appCluster,
+      serviceSubnets: subnets.app,
+      loadBalancerSubnets: subnets.internet,
       config: serverConfig,
     });
+
+    // Force database to be built before deploying.
+    if (this.database)
+      this.server.service.node.addDependency(this.database.instance);
 
     /**
      * Security Group
      */
 
     if (this.database) {
-      const port = this.database.instance.instanceEndpoint.port;
+      const databasePort = this.database.instance.instanceEndpoint.port;
 
       this.database.securityGroup.addIngressRule(
-        Peer.securityGroupId(this.server.securityGroup.securityGroupId),
-        Port.tcp(port),
-        `Allow database access via port ${port} to server`
+        Peer.securityGroupId(this.prisma.securityGroup.securityGroupId),
+        Port.tcp(databasePort),
+        "Prisma to RDS"
+      );
+
+      this.database.securityGroup.addIngressRule(
+        Peer.securityGroupId(this.server.serviceSG.securityGroupId),
+        Port.tcp(databasePort),
+        "Server to RDS"
       );
     }
 
     if (this.cluster) {
-      const port = clusterConfig.host.port;
-
-      this.cluster.securityGroup.addIngressRule(
-        Peer.securityGroupId(this.server.securityGroup.securityGroupId),
-        Port.tcp(port),
-        `Allow cluster access via port ${port} to server`
+      this.cluster.loadBalancerSG.addIngressRule(
+        Peer.securityGroupId(this.server.serviceSG.securityGroupId),
+        Port.tcp(this.cluster.loadBalancerPort),
+        "Server to Cluster"
       );
     }
   }

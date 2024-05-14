@@ -1,15 +1,17 @@
-import { NestedStack, NestedStackProps } from "aws-cdk-lib";
-import { ISubnet, SecurityGroup } from "aws-cdk-lib/aws-ec2";
+import { Duration } from "aws-cdk-lib";
+import { ISubnet, Peer, Port, SecurityGroup } from "aws-cdk-lib/aws-ec2";
 import { DockerImageAsset } from "aws-cdk-lib/aws-ecr-assets";
 import {
-  Compatibility,
   ContainerImage,
-  Ec2Service,
+  FargateService,
+  FargateTaskDefinition,
   ICluster,
-  NetworkMode,
-  TaskDefinition,
+  LogDriver,
 } from "aws-cdk-lib/aws-ecs";
-import { ManagedPolicy, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import {
+  ApplicationLoadBalancer,
+  ApplicationProtocol,
+} from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { Construct } from "constructs";
 import * as path from "node:path";
 
@@ -19,31 +21,35 @@ import {
   envClusterConfig,
 } from "@repo/app-config/cluster";
 
-export interface ClusterStackConfig {
-  cpu?: number;
-  memoryLimitMiB?: number;
-}
+export interface ClusterStackConfig {}
 
-export interface ServiceStackProps
-  extends ClusterStackConfig,
-    NestedStackProps {
+export interface ServiceStackProps extends ClusterStackConfig {
+  prefix?: string;
   cluster: ICluster;
   subnets: ISubnet[];
   config: ClusterConfig;
 }
 
-export class ClusterStack extends NestedStack {
-  public readonly executionRole: Role;
-  public readonly securityGroup: SecurityGroup;
-  public readonly service: Ec2Service;
+export class ClusterStack extends Construct {
+  public readonly taskDefinition: FargateTaskDefinition;
+
+  public readonly service: FargateService;
+  public readonly serviceSG: SecurityGroup;
+
+  public readonly loadBalancer: ApplicationLoadBalancer;
+  public readonly loadBalancerPort: number;
+  public readonly loadBalancerSG: SecurityGroup;
 
   public static readonly NAME = "cluster";
 
-  public static readonly DEFAULT_CPU = 512;
-  public static readonly DEFAULT_MEMORY_LIMIT_MIB = 512;
-
   constructor(scope: Construct, props: ServiceStackProps) {
-    super(scope, `${ClusterStack.NAME}-stack`, props);
+    const id = `${ClusterStack.NAME}-stack`;
+    super(scope, id);
+
+    const prefix =
+      props.prefix !== undefined ? `${props.prefix}-${id}` : undefined;
+    const tag = (v: string) =>
+      prefix !== undefined ? `${prefix}-${v}` : undefined;
 
     const image = new DockerImageAsset(this, "docker-image", {
       directory: path.join(__dirname, "..", "..", ".."),
@@ -51,44 +57,80 @@ export class ClusterStack extends NestedStack {
       buildArgs: argsClusterConfig(props.config),
     });
 
-    this.executionRole = new Role(this, "role", {
-      assumedBy: new ServicePrincipal("ec2.amazonaws.com"),
-      managedPolicies: [
-        ManagedPolicy.fromAwsManagedPolicyName("AmazonEC2FullAccess"),
-      ],
-    });
+    this.taskDefinition = new FargateTaskDefinition(this, "task");
 
-    const taskDefinition = new TaskDefinition(this, "task", {
-      compatibility: Compatibility.EC2,
-      networkMode: NetworkMode.AWS_VPC,
-      executionRole: this.executionRole,
-    });
-
-    taskDefinition.addContainer("container", {
+    this.taskDefinition.addContainer("container", {
+      containerName: tag("container"),
       image: ContainerImage.fromDockerImageAsset(image),
-      hostname: ClusterStack.NAME,
       environment: envClusterConfig(props.config),
       portMappings: [
         {
           containerPort: props.config.host.port,
         },
       ],
-      cpu: props.cpu ?? ClusterStack.DEFAULT_CPU,
-      memoryLimitMiB:
-        props.memoryLimitMiB ?? ClusterStack.DEFAULT_MEMORY_LIMIT_MIB,
+      healthCheck: {
+        command: [
+          "CMD-SHELL",
+          `wget -q --tries=1 --spider http://localhost:${props.config.host.port}/ping || exit 1`,
+        ],
+        interval: Duration.seconds(30),
+        retries: 2,
+      },
+      logging: LogDriver.awsLogs({
+        streamPrefix: tag("container") ?? id,
+      }),
     });
 
-    this.securityGroup = new SecurityGroup(this, "security-group", {
+    this.serviceSG = new SecurityGroup(this, "service-sg", {
+      securityGroupName: tag("service-sg"),
       vpc: props.cluster.vpc,
     });
 
-    this.service = new Ec2Service(this, "service", {
+    this.service = new FargateService(this, "service", {
+      serviceName: tag("service"),
       cluster: props.cluster,
-      taskDefinition,
+      taskDefinition: this.taskDefinition,
       vpcSubnets: {
         subnets: props.subnets,
       },
-      securityGroups: [this.securityGroup],
+      securityGroups: [this.serviceSG],
     });
+
+    this.loadBalancerPort = 80;
+
+    this.loadBalancerSG = new SecurityGroup(this, "load-balancer-sg", {
+      securityGroupName: tag("load-balancer-sg"),
+      vpc: props.cluster.vpc,
+    });
+
+    this.serviceSG.addIngressRule(
+      Peer.securityGroupId(this.loadBalancerSG.securityGroupId),
+      Port.tcp(props.config.host.port),
+      "LoadBalancer to Cluster"
+    );
+
+    this.loadBalancer = new ApplicationLoadBalancer(this, "load-balancer", {
+      vpc: props.cluster.vpc,
+      vpcSubnets: {
+        subnets: props.subnets,
+      },
+      internetFacing: false,
+      securityGroup: this.loadBalancerSG,
+    });
+
+    this.loadBalancer
+      .addListener("load-balancer-http", {
+        protocol: ApplicationProtocol.HTTP,
+        port: this.loadBalancerPort,
+        open: false,
+      })
+      .addTargets("load-balancer-http-target", {
+        protocol: ApplicationProtocol.HTTP,
+        port: props.config.host.port,
+        targets: [this.service],
+      })
+      .configureHealthCheck({
+        path: "/ping",
+      });
   }
 }
