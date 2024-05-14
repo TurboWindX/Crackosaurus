@@ -67,7 +67,7 @@ http://localhost:8080/setup
 
 ### 🔗 PR
 
-Development of the app is done via [feature branches](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow) off of `development`. Make sure to have this configured before continuing.
+Development of the app is done via [feature branches](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow) off of the `dev` branch. Make sure to have this configured before continuing.
 
 ### 🧩 Dependencies
 
