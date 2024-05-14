@@ -34,22 +34,19 @@ function checkPassword(inputPassword: string, dbPassword: string): boolean {
   return bcrypt.compareSync(inputPassword, dbPassword);
 }
 
-type RouteHandler<TRoute> = TRoute extends Route<
-  infer _TPath,
-  infer _TReq,
-  infer _TRes
->
-  ? (
-      data: RouteRequest<TRoute>["Params"] &
-        RouteRequest<TRoute>["Body"] & {
-          request: FastifyRequest;
-          prisma: PrismaClient;
-          cluster: ClusterConnector;
-          currentUserID: string;
-          hasPermission: (permission: PermissionType) => boolean;
-        }
-    ) => Promise<RouteResponse<TRoute>["response"]>
-  : never;
+type RouteHandler<TRoute> =
+  TRoute extends Route<infer _TPath, infer _TReq, infer _TRes>
+    ? (
+        data: RouteRequest<TRoute>["Params"] &
+          RouteRequest<TRoute>["Body"] & {
+            request: FastifyRequest;
+            prisma: PrismaClient;
+            cluster: ClusterConnector;
+            currentUserID: string;
+            hasPermission: (permission: PermissionType) => boolean;
+          }
+      ) => Promise<RouteResponse<TRoute>["response"]>
+    : never;
 
 const HANDLERS: {
   [key in keyof typeof ROUTES]: RouteHandler<(typeof ROUTES)[key]>;

@@ -56,3 +56,20 @@ export function loadClusterConfig() {
     type: configType,
   });
 }
+
+export function argsClusterConfig(
+  config: ClusterConfig
+): Record<string, string> {
+  return {
+    CLUSTER_PORT: config.host.port.toString(),
+  };
+}
+
+export function envClusterConfig(
+  config: ClusterConfig
+): Record<string, string> {
+  return {
+    CLUSTER_HOST: config.host.name,
+    CLUSTER_TYPE: config.type.name,
+  };
+}

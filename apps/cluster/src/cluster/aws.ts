@@ -2,7 +2,7 @@ import * as AWS from "aws-sdk";
 import crypto from "node:crypto";
 
 import { type ClusterStatus } from "@repo/api";
-import { AWSClusterConfig } from "@repo/app-config";
+import { type AWSClusterConfig } from "@repo/app-config/cluster";
 import { type HashType } from "@repo/hashcat/data";
 
 import { Cluster } from "./cluster";

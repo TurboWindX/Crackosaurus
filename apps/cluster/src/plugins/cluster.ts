@@ -1,6 +1,6 @@
 import fp from "fastify-plugin";
 
-import { ClusterConfig } from "@repo/app-config";
+import { type ClusterConfig } from "@repo/app-config/cluster";
 
 import { AWSCluster } from "../cluster/aws";
 import { Cluster } from "../cluster/cluster";

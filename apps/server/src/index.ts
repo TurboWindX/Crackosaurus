@@ -45,18 +45,8 @@ fastify.register(clusterPlugin, {
 
 fastify.register(cors, {
   credentials: true,
-  origin: (origin, cb) => {
-    if (origin === undefined) {
-      cb(null, true);
-      return;
-    }
-
-    const hostname = new URL(origin).hostname;
-
-    if (hostname !== config.web.name) {
-      cb(new Error("Not allowed"), false);
-      return;
-    }
+  origin: (_origin, cb) => {
+    // TODO: Proper CORS
 
     cb(null, true);
   },

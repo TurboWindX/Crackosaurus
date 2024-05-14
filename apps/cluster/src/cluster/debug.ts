@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { type ClusterStatus } from "@repo/api";
-import { DebugClusterConfig } from "@repo/app-config";
+import { type DebugClusterConfig } from "@repo/app-config/cluster";
 import { type HashType } from "@repo/hashcat/data";
 
 import { Cluster } from "./cluster";

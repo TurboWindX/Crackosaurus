@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { type ClusterStatus, type Status } from "@repo/api";
-import { FileSystemClusterConfig } from "@repo/app-config";
+import { type FileSystemClusterConfig } from "@repo/app-config/cluster";
 import { type HashType } from "@repo/hashcat/data";
 import { hashcat, readHashcatPot } from "@repo/hashcat/exe";
 

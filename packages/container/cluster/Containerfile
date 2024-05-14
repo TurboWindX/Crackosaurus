@@ -20,10 +20,7 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
-ARG CLUSTER_HOST
-ARG CLUSTER_PORT
-ARG CLUSTER_TYPE
-RUN CLUSTER_HOST=CLUSTER_HOST CLUSTER_PORT=CLUSTER_PORT CLUSTER_TYPE=CLUSTER_TYPE turbo run build --filter=cluster
+RUN turbo run build --filter=cluster
 
 FROM base AS runner
 
@@ -36,5 +33,9 @@ USER cluster
 
 COPY --from=installer --chown=cluster:cluster /app/node_modules/ ./node_modules/
 COPY --from=installer --chown=cluster:cluster /app/apps/cluster/dist .
+
+ARG CLUSTER_PORT
+ENV CLUSTER_PORT=$CLUSTER_PORT
+EXPOSE $CLUSTER_PORT
 
 CMD ["node", "index.js"]

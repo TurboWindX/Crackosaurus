@@ -6,6 +6,7 @@ import { loadWebConfig } from "../../packages/app-config/web";
 const config = loadWebConfig();
 
 export default defineConfig({
+  clearScreen: false,
   server: {
     port: config.host.port,
   },
