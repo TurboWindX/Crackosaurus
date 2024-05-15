@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { APIError } from "@repo/api";
+import { APIError, Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type REQ } from "@repo/api/server/client/web";
 import { Input } from "@repo/shadcn/components/ui/input";
@@ -68,7 +68,7 @@ export const InstancesPage = () => {
         sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
         row={({ IID, name, status, updatedAt }) => [
           name || IID,
-          <StatusBadge status={status as any} />,
+          <StatusBadge status={status as Status} />,
           <RelativeTime time={updatedAt} />,
         ]}
         searchFilter={({ IID, name }, search) =>

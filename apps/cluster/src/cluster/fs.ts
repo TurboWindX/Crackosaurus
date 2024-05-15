@@ -8,6 +8,7 @@ import { type FileSystemClusterConfig } from "@repo/app-config/cluster";
 import { type HashType } from "@repo/hashcat/data";
 import { hashcat, readHashcatPot } from "@repo/hashcat/exe";
 
+import { STATUS } from "../../../../packages/api/src/types";
 import { Cluster } from "./cluster";
 
 interface InstanceMetadata {
@@ -26,7 +27,7 @@ class MetadataFile<TData extends Record<string, any>> {
 
   public constructor(
     public readonly folder: string,
-    public data: TData = null as any
+    public data: TData = null as unknown as TData
   ) {}
 
   public read(): TData | null {
@@ -179,8 +180,8 @@ export class FileSystemCluster extends Cluster<FileSystemClusterConfig> {
       if (exitCode === null) continue;
 
       let status: Status;
-      if (exitCode >= 0) status = "COMPLETE";
-      else status = "ERROR";
+      if (exitCode >= 0) status = STATUS.Complete;
+      else status = STATUS.Error;
       jobMetadata.data.status = status;
 
       jobMetadata.write();
@@ -212,8 +213,8 @@ export class FileSystemCluster extends Cluster<FileSystemClusterConfig> {
       );
 
       switch (jobMetadata.data.status) {
-        case "PENDING":
-          jobMetadata.data.status = "RUNNING";
+        case STATUS.Pending:
+          jobMetadata.data.status = STATUS.Running;
           isDirty = true;
 
           this.runningJobs[jobID] = hashcat({
@@ -224,7 +225,7 @@ export class FileSystemCluster extends Cluster<FileSystemClusterConfig> {
             wordlistFile: jobMetadata.data.wordlist,
           });
 
-        case "RUNNING":
+        case STATUS.Running:
           runningInstances.add(jobMetadata.data.instanceID);
           break;
       }
@@ -233,16 +234,16 @@ export class FileSystemCluster extends Cluster<FileSystemClusterConfig> {
     for (const [instanceID, instanceMetadata] of Object.entries(
       this.instanceMetadatas
     )) {
-      if (instanceMetadata.data.status === "STOPPED") continue;
+      if (instanceMetadata.data.status === STATUS.Stopped) continue;
 
       const isRunning = runningInstances.has(instanceID);
 
       const status = instanceMetadata.data.status;
-      if (status === "RUNNING" && !isRunning) {
-        instanceMetadata.data.status = "PENDING";
+      if (status === STATUS.Running && !isRunning) {
+        instanceMetadata.data.status = STATUS.Pending;
         isDirty = true;
-      } else if (status === "PENDING" && isRunning) {
-        instanceMetadata.data.status = "RUNNING";
+      } else if (status === STATUS.Pending && isRunning) {
+        instanceMetadata.data.status = STATUS.Running;
         isDirty = true;
       }
     }
@@ -265,7 +266,7 @@ export class FileSystemCluster extends Cluster<FileSystemClusterConfig> {
     const instanceMetadata = new MetadataFile<InstanceMetadata>(
       instanceFolder,
       {
-        status: "PENDING",
+        status: STATUS.Pending,
       }
     );
     this.instanceMetadatas[instanceID] = instanceMetadata;
@@ -297,7 +298,7 @@ export class FileSystemCluster extends Cluster<FileSystemClusterConfig> {
     fs.writeFileSync(hashesFile, hashes.join("\n"));
 
     const jobMetadata = new MetadataFile<JobMetadata>(jobFolder, {
-      status: "PENDING",
+      status: STATUS.Pending,
       instanceID,
       hashType,
       wordlist: this.config.wordlistPath,

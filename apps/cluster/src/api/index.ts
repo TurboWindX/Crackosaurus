@@ -54,11 +54,7 @@ const ROUTER: {
     const { instanceID } = request.params;
     const { hashType, hashes } = request.body;
 
-    return request.server.cluster.createJob(
-      instanceID,
-      hashType as any,
-      hashes
-    );
+    return request.server.cluster.createJob(instanceID, hashType, hashes);
   },
   deleteJob: async (request) => {
     const { instanceID, jobID } = request.params;

@@ -33,4 +33,6 @@ export const AuthContext = createContext<AuthInterface>({
   hasPermission: () => false,
 });
 
-export const APIContext = createContext<APIType>(undefined as any);
+export const APIContext = createContext<APIType>(
+  undefined as unknown as APIType
+);

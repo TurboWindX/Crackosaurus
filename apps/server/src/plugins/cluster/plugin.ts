@@ -2,6 +2,8 @@ import { PrismaClient } from "@prisma/client";
 import { type FastifyPluginOptions } from "fastify";
 import fp from "fastify-plugin";
 
+import { STATUS } from "@repo/api";
+
 import { ClusterConnector } from "./connectors/connector";
 import {
   HTTPClusterConnector,
@@ -26,7 +28,7 @@ export type ClusterPluginConfig = ClusterPluginHttpConfig;
 
 export const clusterPlugin = fp<ClusterPluginConfig>(
   async (server, options) => {
-    let cluster: ClusterConnector<any> = undefined as any;
+    let cluster: ClusterConnector<any>;
     if (options.http) {
       cluster = new HTTPClusterConnector(options.http);
     } else throw new Error("No valid config");
@@ -81,7 +83,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
 
   for (let instance of instances) {
     const instanceInfo = clusterStatus?.instances?.[instance.tag];
-    const instanceStatus = instanceInfo?.status ?? "UNKNOWN";
+    const instanceStatus = instanceInfo?.status ?? STATUS.Unknown;
 
     if (instanceStatus !== instance.status) {
       await prisma.instance.update({
@@ -97,7 +99,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
 
     for (let job of instance.jobs) {
       const jobInfo = instanceInfo?.jobs?.[job.JID];
-      const jobStatus = jobInfo?.status ?? "UNKNOWN";
+      const jobStatus = jobInfo?.status ?? STATUS.Unknown;
 
       if (jobStatus !== job.status) {
         await prisma.job.update({
@@ -114,14 +116,14 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
       for (let hash of job.hashes) {
         const value = jobInfo?.hashes?.[hash.hash];
 
-        if (hash.status === "NOT_FOUND" && value) {
+        if (hash.status === STATUS.NotFound && value) {
           await prisma.hash.updateMany({
             where: {
               hash: hash.hash,
               hashType: hash.hashType,
             },
             data: {
-              status: "FOUND",
+              status: STATUS.Found,
               value,
               updatedAt: new Date(),
             },

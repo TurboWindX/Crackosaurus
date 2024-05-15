@@ -83,9 +83,7 @@ async function jsonFetch<Req extends Record<string, any>, Res>(
   path: string,
   data: Req
 ): Promise<Res> {
-  const params = path
-    .split("/:")
-    .map((section) => section.split("/")[0] as string);
+  const params = path.split("/:").map((section) => section.split("/")[0] ?? "");
   params.shift();
 
   const body = { ...data };
