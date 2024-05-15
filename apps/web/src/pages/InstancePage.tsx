@@ -3,10 +3,10 @@ import { PlayIcon, SquareIcon, TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { APIError } from "@repo/api";
+import { APIError, Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
-import { HASH_TYPES } from "@repo/hashcat/data";
+import { HASH_TYPES, HashType } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
 import {
@@ -35,7 +35,7 @@ interface JobDataTableProps {
 const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   const [newJob, setNewJob] = useState<REQ<APIType["createInstanceJob"]>>({
     instanceID,
-    hashType: "" as any,
+    hashType: "" as HashType,
     projectIDs: [],
   });
 
@@ -84,7 +84,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
       sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
       row={({ JID, status, updatedAt }) => [
         JID,
-        <StatusBadge status={status as any} />,
+        <StatusBadge status={status as Status} />,
         <RelativeTime time={updatedAt} />,
       ]}
       addDialog={
@@ -92,7 +92,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
           <Select
             value={newJob.hashType}
             onValueChange={(value) =>
-              setNewJob({ ...newJob, hashType: value as any })
+              setNewJob({ ...newJob, hashType: value as HashType })
             }
           >
             <SelectTrigger>

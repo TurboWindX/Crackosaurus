@@ -74,9 +74,7 @@ export const ProjectsPage = () => {
           hasCollaborators ? (
             <div className="grid max-w-max grid-flow-col gap-2">
               {(members ?? []).map((member) => (
-                <Badge key={member.ID} variant="secondary">
-                  {member.username}
-                </Badge>
+                <Badge key={member.ID}>{member.username}</Badge>
               ))}
             </div>
           ) : null,

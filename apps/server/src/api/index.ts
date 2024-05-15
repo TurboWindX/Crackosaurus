@@ -8,6 +8,7 @@ import {
   Route,
   RouteRequest,
   RouteResponse,
+  STATUS,
   hasPermission,
 } from "@repo/api";
 import { ROUTES } from "@repo/api/server";
@@ -601,7 +602,7 @@ const HANDLERS: {
       });
     } catch (err) {}
 
-    const hashValue = toHashcatHash(hashType as HashType, hash);
+    const hashValue = toHashcatHash(hashType, hash);
 
     let seenHash;
     try {
@@ -867,7 +868,7 @@ const HANDLERS: {
 
     const hashes = projects.flatMap((project) =>
       project.hashes.filter(
-        (hash) => hash.hashType === hashType && hash.status === "NOT_FOUND"
+        (hash) => hash.hashType === hashType && hash.status === STATUS.NotFound
       )
     );
     if (hashes.length === 0)

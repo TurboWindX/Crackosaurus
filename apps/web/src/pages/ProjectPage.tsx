@@ -3,7 +3,7 @@ import { TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { ACTIVE_STATUSES, APIError, type Status } from "@repo/api";
+import { APIError, Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { ProjectJob } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
@@ -98,7 +98,7 @@ const HashDataTable = ({
         row={({ hash, hashType, status, updatedAt }) => [
           hash,
           hashType,
-          <StatusBadge status={status as any} />,
+          <StatusBadge status={status as Status} />,
           <RelativeTime time={updatedAt} />,
         ]}
         rowClick={
@@ -187,7 +187,7 @@ const JobDataTable = ({ values, isLoading }: JobDataTableProps) => {
       row={({ JID, status, updatedAt, instance }) => [
         JID,
         instance.name || instance.IID,
-        <StatusBadge status={status as any} />,
+        <StatusBadge status={status as Status} />,
         <RelativeTime time={updatedAt} />,
       ]}
       noAdd

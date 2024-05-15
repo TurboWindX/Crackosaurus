@@ -2,6 +2,8 @@
 
 Crackosaurus is the world's first open source password recovery platform. Powered by [hashcat](https://hashcat.net/hashcat/), Crackosaurus can recover almost any type of password hash with great speed and ease. Crackosaurus is a must have tool for any security team!
 
+![Preview](.github/images/preview.png)
+
 ## 📦 Deployment
 
 Crackosaurus is designed to be deployable anywhere. Find your favorite infrastructure below. If it's not there, PRs are open!
@@ -16,7 +18,7 @@ Install the following dependencies:
 
 - [Docker](https://www.docker.com/)
 - [Node](https://nodejs.org/en)
-    - [NPM](https://www.npmjs.com/)
+  - [NPM](https://www.npmjs.com/)
 
 For Docker, make sure that the deployment user is part of the `docker` group:
 
@@ -48,7 +50,7 @@ Docker is recommended to deploy locally. Currently, this is only intended for pr
 Install the following dependencies:
 
 - [Docker](https://www.docker.com/)
-    - [Docker Compose](https://docs.docker.com/compose/)
+  - [Docker Compose](https://docs.docker.com/compose/)
 
 Deploy using the following commands:
 
@@ -74,12 +76,12 @@ Development of the app is done via [feature branches](https://www.atlassian.com/
 Crackosaurus is a full TypeScript Monorepo. The following is required:
 
 - [Node](https://nodejs.org/en)
-    - [NPM](https://www.npmjs.com/)
+  - [NPM](https://www.npmjs.com/)
 
 The following is only necessary for deployment:
 
 - [Docker](https://www.docker.com/)
-    - [Docker Compose](https://docs.docker.com/compose/)
+  - [Docker Compose](https://docs.docker.com/compose/)
 
 ### 🎨 Format
 

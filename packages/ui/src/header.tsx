@@ -1,7 +1,7 @@
 import {
   CpuIcon,
   FolderIcon,
-  HardHatIcon,
+  LockIcon,
   UserIcon,
   UsersIcon,
 } from "lucide-react";
@@ -21,7 +21,6 @@ import {
   SheetClose,
   SheetContent,
   SheetDescription,
-  SheetFooter,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -40,7 +39,7 @@ const LINKS: readonly HeaderLinkProps[] = [
   {
     text: "Crackosaurus",
     path: "/",
-    icon: HardHatIcon,
+    icon: LockIcon,
   },
   {
     text: "Projects",
@@ -68,25 +67,24 @@ export const Header = () => {
 
   return (
     <div>
-      <div className="ui-grid ui-grid-cols-2">
-        <div className="ui-hidden md:ui-block">
+      <div className="ui-flex">
+        <div className="ui-hidden ui-flex-grow md:ui-block">
           <NavigationMenu>
             <NavigationMenuList>
               {LINKS.map(
                 (link) =>
                   (!link.permission || hasPermission(link.permission)) && (
                     <NavigationMenuItem key={link.path}>
-                      <Link to={link.path}>
-                        <NavigationMenuLink
-                          className={navigationMenuTriggerStyle()}
-                        >
-                          <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
-                            <link.icon />
-                            <span className="ui-hidden md:ui-block">
-                              {link.text}
-                            </span>
-                          </div>
-                        </NavigationMenuLink>
+                      <Link
+                        className={navigationMenuTriggerStyle()}
+                        to={link.path}
+                      >
+                        <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
+                          <link.icon />
+                          <span className="ui-hidden md:ui-block">
+                            {link.text}
+                          </span>
+                        </div>
                       </Link>
                     </NavigationMenuItem>
                   )
@@ -94,7 +92,7 @@ export const Header = () => {
             </NavigationMenuList>
           </NavigationMenu>
         </div>
-        <div className="ui-block md:ui-hidden">
+        <div className="ui-block ui-flex-grow md:ui-hidden">
           <NavigationMenu>
             <NavigationMenuList>
               <NavigationMenuItem>
@@ -105,7 +103,7 @@ export const Header = () => {
                         navigationMenuTriggerStyle() + " ui-cursor-pointer"
                       }
                     >
-                      <HardHatIcon />
+                      <LockIcon />
                     </NavigationMenuLink>
                   </SheetTrigger>
                   <SheetContent side="left">
@@ -113,8 +111,8 @@ export const Header = () => {
                       <SheetTitle>Crackosaurus</SheetTitle>
                       <SheetDescription></SheetDescription>
                     </SheetHeader>
-                    <SheetFooter>
-                      {[...LINKS].reverse().map(
+                    <div className="ui-grid ui-gap-2">
+                      {[...LINKS].map(
                         (link) =>
                           (!link.permission ||
                             hasPermission(link.permission)) && (
@@ -127,24 +125,25 @@ export const Header = () => {
                             </SheetClose>
                           )
                       )}
-                    </SheetFooter>
+                    </div>
                   </SheetContent>
                 </Sheet>
               </NavigationMenuItem>
             </NavigationMenuList>
           </NavigationMenu>
         </div>
-        <div className="ui-grid ui-justify-end">
+        <div className="ui-grid ui-flex-grow-0 ui-justify-end">
           <NavigationMenu>
             <NavigationMenuList>
               <NavigationMenuItem>
-                <Link to={`/users/${uid}`}>
-                  <NavigationMenuLink className={navigationMenuTriggerStyle()}>
-                    <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
-                      <UserIcon />
-                      <span className="ui-hidden md:ui-block">{username}</span>
-                    </div>
-                  </NavigationMenuLink>
+                <Link
+                  className={navigationMenuTriggerStyle()}
+                  to={`/users/${uid}`}
+                >
+                  <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
+                    <UserIcon />
+                    <span className="ui-hidden md:ui-block">{username}</span>
+                  </div>
                 </Link>
               </NavigationMenuItem>
             </NavigationMenuList>

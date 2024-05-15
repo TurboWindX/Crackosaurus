@@ -3,6 +3,7 @@ import { Outlet, createBrowserRouter } from "react-router-dom";
 import { AuthProvider, AuthRoute, PermissionRoute } from "@repo/ui/auth";
 import { Header } from "@repo/ui/header";
 
+import { ErrorPage } from "./ErrorPage.tsx";
 import { HomePage } from "./HomePage.tsx";
 import { InstancePage } from "./InstancePage.tsx";
 import { InstancesPage } from "./InstancesPage.tsx";
@@ -15,7 +16,7 @@ import { UsersPage } from "./UsersPage.tsx";
 
 export const router = createBrowserRouter([
   {
-    errorElement: <h1>Something went wrong...</h1>,
+    errorElement: <ErrorPage />,
     element: (
       <AuthProvider>
         <Outlet />
