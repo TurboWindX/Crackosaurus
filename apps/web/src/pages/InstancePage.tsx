@@ -1,13 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlayIcon, SquareIcon, TrashIcon } from "lucide-react";
+import { TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { APIError, Status } from "@repo/api";
+import { APIError, STATUS, Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
 import { HASH_TYPES, HashType } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
+import { Input } from "@repo/shadcn/components/ui/input";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
 import {
   Select,
@@ -35,6 +36,7 @@ interface JobDataTableProps {
 const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   const [newJob, setNewJob] = useState<REQ<APIType["createInstanceJob"]>>({
     instanceID,
+    wordlist: "",
     hashType: "" as HashType,
     projectIDs: [],
   });
@@ -107,6 +109,12 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
               </SelectGroup>
             </SelectContent>
           </Select>
+          <Input
+            type="text"
+            placeholder="Wordlist"
+            value={newJob.wordlist}
+            onChange={(e) => setNewJob({ ...newJob, wordlist: e.target.value })}
+          />
           <MultiSelect
             label="Project"
             values={(projectList ?? []).map(({ PID, name }) => [PID, name])}
@@ -117,7 +125,9 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
           />
         </>
       }
-      addValidate={() => newJob.hashType?.length > 0}
+      addValidate={() =>
+        newJob.hashType?.length > 0 && newJob.wordlist.length > 0
+      }
       onAdd={async () => {
         await createInstanceJob({ ...newJob, instanceID });
         return true;
@@ -138,8 +148,6 @@ export const InstancePage = () => {
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
-  const [startOpen, setStartOpen] = useState(false);
-  const [stopOpen, setStopOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
 
   const API = useAPI();
@@ -158,6 +166,8 @@ export const InstancePage = () => {
       if (error instanceof APIError && error.status === 401) return false;
       return count < 3;
     },
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   });
 
   useEffect(() => {
@@ -179,68 +189,15 @@ export const InstancePage = () => {
   return (
     <div className="grid gap-8 p-4">
       <div className="grid grid-cols-2 gap-4">
-        <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-          {instance?.name || instance?.IID || "Instance"}
-        </span>
+        <div className="grid gap-2">
+          <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
+            {instance?.name || instance?.IID || "Instance"}
+          </span>
+          <div>
+            <StatusBadge status={(instance?.status ?? STATUS.Unknown) as any} />
+          </div>
+        </div>
         <div className="grid grid-flow-col justify-end gap-4">
-          {hasPermission("instances:start") && (
-            <div className="w-max">
-              <DrawerDialog
-                title="Start Instance"
-                open={startOpen}
-                setOpen={setStartOpen}
-                trigger={
-                  <Button variant="outline">
-                    <div className="grid grid-flow-col items-center gap-2">
-                      <PlayIcon />
-                      <span>Start</span>
-                    </div>
-                  </Button>
-                }
-              >
-                <form
-                  className="grid gap-4"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-
-                    // TODO: Start
-                  }}
-                >
-                  <span>Do you want to start this instance?</span>
-                  <Button>Start</Button>
-                </form>
-              </DrawerDialog>
-            </div>
-          )}
-          {hasPermission("instances:stop") && (
-            <div className="w-max">
-              <DrawerDialog
-                title="Stop Instance"
-                open={stopOpen}
-                setOpen={setStopOpen}
-                trigger={
-                  <Button variant="outline">
-                    <div className="grid grid-flow-col items-center gap-2">
-                      <SquareIcon />
-                      <span>Stop</span>
-                    </div>
-                  </Button>
-                }
-              >
-                <form
-                  className="grid gap-4"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-
-                    // TODO: Stop
-                  }}
-                >
-                  <span>Do you want to stop this instance?</span>
-                  <Button>Stop</Button>
-                </form>
-              </DrawerDialog>
-            </div>
-          )}
           {hasPermission("instances:remove") && (
             <div className="w-max">
               <DrawerDialog

@@ -301,6 +301,8 @@ export const ProjectPage = () => {
       if (error instanceof APIError && error.status === 401) return false;
       return count < 3;
     },
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: false,
   });
 
   useEffect(() => {

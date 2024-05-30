@@ -737,7 +737,7 @@ const HANDLERS: {
     const tag = await cluster.createInstance(type);
     if (!tag) throw new APIError("Instance not created");
 
-    let instanceId: string;
+    let instanceID: string;
     try {
       const instance = await prisma.instance.create({
         select: {
@@ -750,12 +750,12 @@ const HANDLERS: {
         },
       });
 
-      instanceId = instance.IID;
+      instanceID = instance.IID;
     } catch (e) {
       throw new APIError("Instance not created");
     }
 
-    return instanceId;
+    return instanceID;
   },
   getInstance: async ({ prisma, instanceID }) => {
     try {
@@ -821,6 +821,7 @@ const HANDLERS: {
     instanceID,
     hashType,
     projectIDs,
+    wordlist,
   }) => {
     let instance;
     try {
@@ -876,6 +877,7 @@ const HANDLERS: {
 
     const jobID = await cluster.createJob(
       instance.tag,
+      wordlist,
       hashType,
       hashes.map(({ hash }) => hash)
     );

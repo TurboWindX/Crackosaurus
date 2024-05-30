@@ -1,9 +1,9 @@
 {
-  "name": "@repo/cluster",
+  "name": "@repo/instance",
   "version": "0.0.0",
   "scripts": {
     "dev": "npm run build && npm run dev:watch",
-    "dev:watch": "concurrently \"rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild --watch\" \"nodemon -w dist/index.js dist/index.js\"",
+    "dev:watch": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild --watch",
     "build": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild",
     "check": "tsc --noEmit"
   },
@@ -13,16 +13,12 @@
     "@repo/app-config": "*",
     "@repo/hashcat": "*",
     "@repo/plugins": "*",
-    "@repo/typescript-config": "*",
-    "aws-sdk": "^2.1553.0",
-    "fastify": "^4.0.0",
-    "fastify-plugin": "^4.5.1"
+    "@repo/typescript-config": "*"
   },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-replace": "^5.0.5",
     "concurrently": "^8.2.2",
-    "nodemon": "^3.1.0",
     "rollup": "^4.17.2",
     "rollup-plugin-esbuild": "^6.1.1"
   }

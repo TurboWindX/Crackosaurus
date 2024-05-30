@@ -1,4 +1,4 @@
-import child_process from "node:child_process";
+import childProcess from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -10,6 +10,8 @@ interface HashcatConfig {
   outputFile: string;
   hashType: HashType;
   wordlistFile: string;
+  cwd?: string;
+  stdio?: "inherit";
 }
 
 export function hashcat({
@@ -18,6 +20,8 @@ export function hashcat({
   outputFile,
   hashType,
   wordlistFile,
+  cwd,
+  stdio,
 }: HashcatConfig) {
   const exe = path.basename(exePath);
   const exeCwd = path.dirname(exePath);
@@ -34,8 +38,9 @@ export function hashcat({
     wordlistFile,
   ];
 
-  const process = child_process.spawn(exe, args, {
-    cwd: exeCwd,
+  const process = childProcess.spawn(exe, args, {
+    cwd,
+    stdio,
   });
 
   return process;

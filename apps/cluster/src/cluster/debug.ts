@@ -13,7 +13,11 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
     return true;
   }
 
-  public async tick(): Promise<void> {}
+  public async getStatus(): Promise<ClusterStatus> {
+    return {
+      instances: {},
+    };
+  }
 
   public async createInstance(
     instanceType?: string | undefined
@@ -25,32 +29,29 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
     return uuid;
   }
 
+  public async deleteInstance(instanceID: string): Promise<boolean> {
+    console.log(`Terminating instance ${instanceID}`);
+
+    return true;
+  }
+
   public async createJob(
     instanceID: string,
+    wordlist: string,
     _hashType: HashType,
     _hashes: string[]
   ): Promise<string | null> {
     const jobID = crypto.randomUUID();
 
-    console.log(`Queued job ${jobID} on ${instanceID}`);
+    console.log(
+      `Queued job ${jobID} using wordlist ${wordlist} on ${instanceID}`
+    );
 
     return jobID;
   }
 
-  public async deleteJob(instanceId: string, jobId: string): Promise<boolean> {
-    console.log(`Dequeued job ${jobId} on ${instanceId}`);
-
-    return true;
-  }
-
-  public async getStatus(): Promise<ClusterStatus> {
-    return {
-      instances: {},
-    };
-  }
-
-  public async deleteInstance(instanceId: string): Promise<boolean> {
-    console.log(`Terminating instance ${instanceId}`);
+  public async deleteJob(instanceID: string, jobID: string): Promise<boolean> {
+    console.log(`Dequeued job ${jobID} on ${instanceID}`);
 
     return true;
   }

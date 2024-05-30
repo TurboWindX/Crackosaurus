@@ -14,9 +14,6 @@
     "format": {
       "dependsOn": ["^format"],
       "cache": false
-    },
-    "lint": {
-      "dependsOn": ["^lint"]
     }
   }
 }

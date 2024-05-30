@@ -7,7 +7,6 @@ export abstract class Cluster<TConfig = undefined> {
   public abstract getStatus(): Promise<ClusterStatus>;
 
   public abstract load(): Promise<boolean>;
-  public abstract tick(): Promise<void>;
 
   public abstract createInstance(
     instanceType?: string | null
@@ -16,6 +15,7 @@ export abstract class Cluster<TConfig = undefined> {
 
   public abstract createJob(
     instanceID: string,
+    wordlist: string,
     hashType: HashType,
     hashes: string[]
   ): Promise<string | null>;

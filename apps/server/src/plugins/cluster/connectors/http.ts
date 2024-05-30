@@ -45,12 +45,14 @@ export class HTTPClusterConnector extends ClusterConnector<HTTPClusterConnectorC
 
   public async createJob(
     instanceID: string,
+    wordlist: string,
     hashType: HashType,
     hashes: string[]
   ): Promise<string | null> {
     try {
       return await this.API.createJob({
         instanceID,
+        wordlist,
         hashType,
         hashes,
       });

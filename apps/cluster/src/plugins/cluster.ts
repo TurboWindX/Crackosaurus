@@ -5,7 +5,7 @@ import { type ClusterConfig } from "@repo/app-config/cluster";
 import { AWSCluster } from "../cluster/aws";
 import { Cluster } from "../cluster/cluster";
 import { DebugCluster } from "../cluster/debug";
-import { FileSystemCluster } from "../cluster/fs";
+import { NodeCluster } from "../cluster/node";
 
 export type ClusterPluginConfig = ClusterConfig["type"];
 
@@ -17,26 +17,16 @@ export const clusterPlugin = fp<ClusterPluginConfig>(
       cluster = new AWSCluster(options);
     } else if (options.name === "debug") {
       cluster = new DebugCluster(options);
-    } else if (options.name === "filesystem") {
-      cluster = new FileSystemCluster(options);
+    } else if (options.name === "node") {
+      cluster = new NodeCluster(options);
     } else {
       throw new TypeError("Unhandled cluster type");
     }
 
     server.decorate("cluster", cluster);
 
-    let interval: NodeJS.Timeout | null = null;
-
     server.addHook("onReady", async () => {
-      await cluster.load();
-
-      interval = setInterval(() => {
-        cluster.tick();
-      }, 1000);
-    });
-
-    server.addHook("onClose", async () => {
-      if (interval) clearInterval(interval);
+      if (!(await cluster.load())) throw Error("Could not load cluster config");
     });
   }
 );

@@ -6,8 +6,7 @@
     "check": "turbo check",
     "dev": "turbo dev",
     "format": "turbo format",
-    "migrate": "npm run migrate -w apps/db",
-    "lint": "turbo lint"
+    "migrate": "npm run migrate -w apps/db"
   },
   "devDependencies": {
     "turbo": "latest",

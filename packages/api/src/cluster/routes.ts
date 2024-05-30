@@ -55,6 +55,7 @@ export const ROUTES = {
     path: "/instances/:instanceID/jobs",
     permissions: [],
     request: z.object({
+      wordlist: z.string(),
       hashType: z.enum(HASH_TYPES),
       hashes: z.string().array(),
     }),
