@@ -20,7 +20,7 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
-RUN turbo run build --filter=cluster
+RUN NODE_ENV=production turbo run build --filter=cluster
 
 FROM base AS runner
 

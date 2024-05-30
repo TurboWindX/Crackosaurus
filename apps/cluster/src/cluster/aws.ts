@@ -31,15 +31,18 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
   }
 
   protected async run(instanceID: string): Promise<void> {
-    const metadata = getInstanceMetadata(this.config.instanceRoot, instanceID);
+    const metadata = await getInstanceMetadata(
+      this.config.instanceRoot,
+      instanceID
+    );
     metadata.status = STATUS.Running;
 
-    writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
+    await writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
 
     try {
       const res = await this.ec2
         .runInstances({
-          ImageId: this.config.imageId,
+          ImageId: this.config.imageID,
           InstanceType: metadata.type ?? "t2.micro",
           MinCount: 1,
           MaxCount: 1,

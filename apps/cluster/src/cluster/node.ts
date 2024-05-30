@@ -12,7 +12,10 @@ import { FileSystemCluster } from "./filesystem";
 
 export class NodeCluster extends FileSystemCluster<NodeClusterConfig> {
   protected async run(instanceID: string): Promise<void> {
-    const metadata = getInstanceMetadata(this.config.instanceRoot, instanceID);
+    const metadata = await getInstanceMetadata(
+      this.config.instanceRoot,
+      instanceID
+    );
     metadata.status = STATUS.Running;
 
     writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
@@ -20,9 +23,7 @@ export class NodeCluster extends FileSystemCluster<NodeClusterConfig> {
     childProcess.spawn("node", [this.config.scriptPath], {
       env: envInstanceConfig({
         instanceID,
-        instanceRoot: this.config.instanceRoot,
-        hashcatPath: this.config.hashcatPath,
-        wordlistRoot: this.config.wordlistRoot,
+        ...this.config,
       }),
       stdio: "inherit",
     });

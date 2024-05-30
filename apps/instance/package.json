@@ -11,14 +11,13 @@
   "dependencies": {
     "@repo/api": "*",
     "@repo/app-config": "*",
+    "@repo/filesystem": "*",
     "@repo/hashcat": "*",
-    "@repo/plugins": "*",
     "@repo/typescript-config": "*"
   },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-replace": "^5.0.5",
-    "concurrently": "^8.2.2",
     "rollup": "^4.17.2",
     "rollup-plugin-esbuild": "^6.1.1"
   }

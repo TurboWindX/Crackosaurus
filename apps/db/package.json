@@ -13,6 +13,9 @@
     "migrate:run": "node dist/schema.js && node dist/migrate.js",
     "check": "tsc --noEmit"
   },
+  "dependencies": {
+    "@repo/app-config": "*"
+  },
   "devDependencies": {
     "@repo/typescript-config": "*",
     "@rollup/plugin-node-resolve": "^15.2.3",

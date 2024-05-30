@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { type ClusterStatus, STATUS } from "@repo/api";
-import { type FileSystemConfig } from "@repo/app-config/cluster";
+import { type FileSystemClusterConfig } from "@repo/app-config/cluster";
 import {
   createClusterFolder,
   createInstanceFolder,
@@ -22,7 +22,7 @@ import { type HashType } from "@repo/hashcat/data";
 import { Cluster } from "./cluster";
 
 export abstract class FileSystemCluster<
-  TConfig extends FileSystemConfig,
+  TConfig extends FileSystemClusterConfig,
 > extends Cluster<TConfig> {
   protected abstract run(instanceID: string): Promise<void>;
 
@@ -33,39 +33,46 @@ export abstract class FileSystemCluster<
     )
       return false;
 
-    createClusterFolder(this.config.instanceRoot);
-    createWordlistFolder(this.config.wordlistRoot);
+    await createClusterFolder(this.config.instanceRoot);
+    await createWordlistFolder(this.config.wordlistRoot);
 
     Promise.all(
-      getClusterFolderInstances(this.config.instanceRoot).map(
+      (await getClusterFolderInstances(this.config.instanceRoot)).map(
         async (instanceID) => {
-          const instanceMetadata = getInstanceMetadata(
+          const instanceMetadata = await getInstanceMetadata(
             this.config.instanceRoot,
             instanceID
           );
           if (instanceMetadata.status === STATUS.Stopped) return;
           instanceMetadata.status = STATUS.Pending;
 
-          writeInstanceMetadata(
+          await writeInstanceMetadata(
             this.config.instanceRoot,
             instanceID,
             instanceMetadata
           );
 
-          const activeJobs = getInstanceFolderJobs(
-            this.config.instanceRoot,
-            instanceID
-          ).some((jobID) => {
-            const jobMetadata = getJobMetadata(
-              this.config.instanceRoot,
-              instanceID,
-              jobID
-            );
-            return !(
-              jobMetadata.status === STATUS.Complete ||
-              jobMetadata.status === STATUS.Stopped
-            );
-          });
+          const activeJobs = (
+            await Promise.all(
+              (
+                await getInstanceFolderJobs(
+                  this.config.instanceRoot,
+                  instanceID
+                )
+              ).map(async (jobID) => {
+                const jobMetadata = await getJobMetadata(
+                  this.config.instanceRoot,
+                  instanceID,
+                  jobID
+                );
+
+                return !(
+                  jobMetadata.status === STATUS.Complete ||
+                  jobMetadata.status === STATUS.Stopped
+                );
+              })
+            )
+          ).some((_) => _);
 
           if (activeJobs) await this.run(instanceID);
         }
@@ -82,7 +89,7 @@ export abstract class FileSystemCluster<
   public async createInstance(instanceType: string): Promise<string | null> {
     const instanceID = crypto.randomUUID();
 
-    createInstanceFolder(this.config.instanceRoot, instanceID, {
+    await createInstanceFolder(this.config.instanceRoot, instanceID, {
       type: instanceType,
     });
 
@@ -90,13 +97,16 @@ export abstract class FileSystemCluster<
   }
 
   public async deleteInstance(instanceID: string): Promise<boolean> {
-    const metadata = getInstanceMetadata(this.config.instanceRoot, instanceID);
+    const metadata = await getInstanceMetadata(
+      this.config.instanceRoot,
+      instanceID
+    );
 
     if (metadata.status === STATUS.Unknown) return true;
 
     metadata.status = STATUS.Stopped;
 
-    writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
+    await writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
 
     return true;
   }
@@ -109,13 +119,13 @@ export abstract class FileSystemCluster<
   ): Promise<string | null> {
     const jobID = crypto.randomUUID();
 
-    createJobFolder(this.config.instanceRoot, instanceID, jobID, {
+    await createJobFolder(this.config.instanceRoot, instanceID, jobID, {
       wordlist,
       hashes,
       hashType,
     });
 
-    const instanceMetadata = getInstanceMetadata(
+    const instanceMetadata = await getInstanceMetadata(
       this.config.instanceRoot,
       instanceID
     );
@@ -126,7 +136,7 @@ export abstract class FileSystemCluster<
   }
 
   public async deleteJob(instanceID: string, jobID: string): Promise<boolean> {
-    const metadata = getJobMetadata(
+    const metadata = await getJobMetadata(
       this.config.instanceRoot,
       instanceID,
       jobID
@@ -136,7 +146,12 @@ export abstract class FileSystemCluster<
 
     metadata.status = STATUS.Stopped;
 
-    writeJobMetadata(this.config.instanceRoot, instanceID, jobID, metadata);
+    await writeJobMetadata(
+      this.config.instanceRoot,
+      instanceID,
+      jobID,
+      metadata
+    );
 
     return true;
   }

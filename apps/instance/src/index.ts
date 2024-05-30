@@ -4,6 +4,7 @@ import process from "node:process";
 import { STATUS } from "@repo/api";
 import {
   CLUSTER_FILESYSTEM_TYPE,
+  createInstanceFolder,
   getInstanceFolderJobs,
   getInstanceMetadata,
   getJobHashPath,
@@ -18,170 +19,241 @@ import { hashcat } from "@repo/hashcat/exe";
 
 import config from "./config";
 
-const INTERVAL_MS = 1000;
-const COOLDOWN_SEC = 15;
+const EXIT_CASES = [0, 1, 2] as const;
+type ExitCase = (typeof EXIT_CASES)[number];
+
+const EXIT_CASE = {
+  Stop: EXIT_CASES[0],
+  Error: EXIT_CASES[1],
+  Cooldown: EXIT_CASES[2],
+} as const;
+
+function innerMain(): Promise<ExitCase> {
+  return new Promise(async (resolve, reject) => {
+    let instanceMetadata = await getInstanceMetadata(
+      config.instanceRoot,
+      config.instanceID
+    );
+    if (instanceMetadata.status === STATUS.Stopped) resolve(EXIT_CASE.Stop);
+    else if (instanceMetadata.status === STATUS.Pending) {
+      instanceMetadata.status = STATUS.Running;
+
+      await writeInstanceMetadata(
+        config.instanceRoot,
+        config.instanceID,
+        instanceMetadata
+      );
+    } else if (instanceMetadata.status === STATUS.Unknown) {
+      await createInstanceFolder(config.instanceRoot, config.instanceID, {
+        type: "external",
+      });
+
+      instanceMetadata = await getInstanceMetadata(
+        config.instanceRoot,
+        config.instanceID
+      );
+    }
+
+    let jobID: string | null = null;
+    let jobProcess: ChildProcess | null = null;
+    let jobQueue: string[] = await Promise.all(
+      (
+        await getInstanceFolderJobs(config.instanceRoot, config.instanceID)
+      ).filter(async (jobID) => {
+        const metadata = await getJobMetadata(
+          config.instanceRoot,
+          config.instanceID,
+          jobID
+        );
+
+        if (
+          metadata.status === STATUS.Complete ||
+          metadata.status === STATUS.Stopped
+        )
+          return false;
+
+        metadata.status = STATUS.Pending;
+        await writeJobMetadata(
+          config.instanceRoot,
+          config.instanceID,
+          jobID,
+          metadata
+        );
+
+        return true;
+      })
+    );
+
+    watchInstanceFolder(
+      config.instanceRoot,
+      config.instanceID,
+      async (event) => {
+        if (event.type === CLUSTER_FILESYSTEM_TYPE.InstanceUpdate) {
+          instanceMetadata = event.metadata;
+
+          if (instanceMetadata.status === STATUS.Stopped)
+            resolve(EXIT_CASE.Stop);
+          else if (instanceMetadata.status === STATUS.Error)
+            resolve(EXIT_CASE.Error);
+        } else if (event.type === CLUSTER_FILESYSTEM_TYPE.JobUpdate) {
+          const metadata = event.metadata.status;
+          if (metadata === STATUS.Pending) {
+            if (jobQueue.findIndex((jID) => jID === event.jobID) == -1) {
+              jobQueue.push(event.jobID);
+            }
+          } else if (metadata === STATUS.Stopped) {
+            if (jobID === event.jobID) {
+              console.log(
+                `[Instance ${config.instanceID}] [Job ${jobID}] Stopped`
+              );
+
+              jobProcess?.kill();
+              jobProcess = null;
+              jobID = null;
+            } else {
+              jobQueue = jobQueue.filter((jID) => jID !== jobID);
+            }
+          }
+        }
+      }
+    );
+
+    let lastRun = new Date().getTime();
+    setInterval(async () => {
+      if (jobID === null) {
+        const nextJobID = jobQueue.shift();
+        if (nextJobID === undefined) {
+          if (
+            config.instanceCooldown >= 0 &&
+            new Date().getTime() - lastRun > config.instanceCooldown * 1000
+          ) {
+            instanceMetadata.status = STATUS.Pending;
+
+            await writeInstanceMetadata(
+              config.instanceRoot,
+              config.instanceID,
+              instanceMetadata
+            );
+
+            console.log(`[Instance ${config.instanceID}] Cooldown`);
+
+            resolve(EXIT_CASE.Cooldown);
+          }
+
+          return;
+        } else {
+          lastRun = new Date().getTime();
+        }
+
+        jobID = nextJobID;
+      }
+
+      if (jobProcess === null) {
+        const jobMetadata = await getJobMetadata(
+          config.instanceRoot,
+          config.instanceID,
+          jobID
+        );
+
+        if (jobMetadata.status !== STATUS.Pending) {
+          jobID = null;
+          return;
+        }
+
+        jobMetadata.status = STATUS.Running;
+
+        console.log(`[Instance ${config.instanceID}] [Job ${jobID}] Started`);
+
+        await writeJobMetadata(
+          config.instanceRoot,
+          config.instanceID,
+          jobID,
+          jobMetadata
+        );
+
+        jobProcess = hashcat({
+          exePath: config.hashcatPath,
+          inputFile: getJobHashPath(
+            config.instanceRoot,
+            config.instanceID,
+            jobID
+          ),
+          outputFile: getJobOutputPath(
+            config.instanceRoot,
+            config.instanceID,
+            jobID
+          ),
+          hashType: jobMetadata.hashType,
+          wordlistFile: getWordlistPath(
+            config.wordlistRoot,
+            jobMetadata.wordlist
+          ),
+        });
+      } else if (jobProcess.exitCode !== null) {
+        const jobMetadata = await getJobMetadata(
+          config.instanceRoot,
+          config.instanceID,
+          jobID
+        );
+
+        if (jobProcess.exitCode === 0) jobMetadata.status = STATUS.Complete;
+        else jobMetadata.status = STATUS.Error;
+
+        console.log(
+          `[Instance ${config.instanceID}] [Job ${jobID}] Exit with code ${jobProcess.exitCode}`
+        );
+
+        await writeJobMetadata(
+          config.instanceRoot,
+          config.instanceID,
+          jobID,
+          jobMetadata
+        );
+
+        jobProcess = null;
+        jobID = null;
+      }
+    }, config.instanceInterval * 1000);
+
+    console.log(`[Instance ${config.instanceID}] Started`);
+  });
+}
 
 async function main() {
-  let instanceMetadata = getInstanceMetadata(
+  let status;
+  let err = null;
+  try {
+    switch (await innerMain()) {
+      case EXIT_CASE.Stop:
+        status = STATUS.Stopped;
+        break;
+      case EXIT_CASE.Cooldown:
+        status = STATUS.Pending;
+        break;
+      case EXIT_CASE.Error:
+        status = STATUS.Error;
+        break;
+    }
+  } catch (err) {
+    status = STATUS.Error;
+    err = null;
+  }
+
+  const metadata = await getInstanceMetadata(
     config.instanceRoot,
     config.instanceID
   );
-  if (instanceMetadata.status === STATUS.Stopped) process.exit(0);
-  else if (instanceMetadata.status === STATUS.Error) process.exit(1);
-  else if (instanceMetadata.status === STATUS.Pending) {
-    instanceMetadata.status = STATUS.Running;
+  if (metadata.status !== STATUS.Unknown) {
+    metadata.status = status;
 
-    writeInstanceMetadata(
+    await writeInstanceMetadata(
       config.instanceRoot,
       config.instanceID,
-      instanceMetadata
+      metadata
     );
   }
 
-  let jobID: string | null = null;
-  let jobProcess: ChildProcess | null = null;
-  let jobQueue: string[] = getInstanceFolderJobs(
-    config.instanceRoot,
-    config.instanceID
-  ).filter((jobID) => {
-    const metadata = getJobMetadata(
-      config.instanceRoot,
-      config.instanceID,
-      jobID
-    );
-
-    if (
-      metadata.status === STATUS.Complete ||
-      metadata.status === STATUS.Stopped
-    )
-      return false;
-
-    metadata.status = STATUS.Pending;
-    writeJobMetadata(config.instanceRoot, config.instanceID, jobID, metadata);
-
-    return true;
-  });
-
-  watchInstanceFolder(config.instanceRoot, config.instanceID, (event) => {
-    if (event.type === CLUSTER_FILESYSTEM_TYPE.InstanceUpdate) {
-      instanceMetadata = event.metadata;
-
-      if (instanceMetadata.status === STATUS.Stopped) process.exit(0);
-      else if (instanceMetadata.status === STATUS.Error) process.exit(1);
-    } else if (event.type === CLUSTER_FILESYSTEM_TYPE.JobUpdate) {
-      const metadata = event.metadata.status;
-      if (metadata === STATUS.Pending) {
-        if (jobQueue.findIndex((jID) => jID === event.jobID) == -1) {
-          jobQueue.push(event.jobID);
-        }
-      } else if (metadata === STATUS.Stopped) {
-        if (jobID === event.jobID) {
-          console.log(`[Instance ${config.instanceID}] [Job ${jobID}] Stopped`);
-
-          jobProcess?.kill();
-          jobProcess = null;
-          jobID = null;
-        } else {
-          jobQueue = jobQueue.filter((jID) => jID !== jobID);
-        }
-      }
-    }
-  });
-
-  let cooldown = 0;
-  setInterval(() => {
-    if (jobID === null) {
-      const nextJobID = jobQueue.shift();
-      if (nextJobID === undefined) {
-        if (cooldown++ > COOLDOWN_SEC) {
-          instanceMetadata.status = STATUS.Pending;
-          writeInstanceMetadata(
-            config.instanceRoot,
-            config.instanceID,
-            instanceMetadata
-          );
-
-          console.log(`[Instance ${config.instanceID}] Cooldown`);
-
-          process.exit(0);
-        }
-
-        return;
-      } else {
-        cooldown = 0;
-      }
-
-      jobID = nextJobID;
-    }
-
-    if (jobProcess === null) {
-      const jobMetadata = getJobMetadata(
-        config.instanceRoot,
-        config.instanceID,
-        jobID
-      );
-
-      if (jobMetadata.status !== STATUS.Pending) {
-        jobID = null;
-        return;
-      }
-
-      jobMetadata.status = STATUS.Running;
-
-      console.log(`[Instance ${config.instanceID}] [Job ${jobID}] Started`);
-
-      writeJobMetadata(
-        config.instanceRoot,
-        config.instanceID,
-        jobID,
-        jobMetadata
-      );
-
-      jobProcess = hashcat({
-        exePath: config.hashcatPath,
-        inputFile: getJobHashPath(
-          config.instanceRoot,
-          config.instanceID,
-          jobID
-        ),
-        outputFile: getJobOutputPath(
-          config.instanceRoot,
-          config.instanceID,
-          jobID
-        ),
-        hashType: jobMetadata.hashType,
-        wordlistFile: getWordlistPath(
-          config.wordlistRoot,
-          jobMetadata.wordlist
-        ),
-      });
-    } else if (jobProcess.exitCode !== null) {
-      const jobMetadata = getJobMetadata(
-        config.instanceRoot,
-        config.instanceID,
-        jobID
-      );
-
-      if (jobProcess.exitCode === 0) jobMetadata.status = STATUS.Complete;
-      else jobMetadata.status = STATUS.Error;
-
-      console.log(
-        `[Instance ${config.instanceID}] [Job ${jobID}] Exit with code ${jobProcess.exitCode}`
-      );
-
-      writeJobMetadata(
-        config.instanceRoot,
-        config.instanceID,
-        jobID,
-        jobMetadata
-      );
-
-      jobProcess = null;
-      jobID = null;
-    }
-  }, INTERVAL_MS);
-
-  console.log(`[Instance ${config.instanceID}] Started`);
+  if (err) throw err;
 }
 
 if (require.main === module) main();

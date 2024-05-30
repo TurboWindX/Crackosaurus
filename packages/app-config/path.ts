@@ -8,6 +8,7 @@ export const DEFAULT_INSTANCE_ROOT = path.join(
   "crackosaurus",
   "instances"
 );
+
 export const DEFAULT_WORDLIST_ROOT = path.join(
   tmpRoot,
   "crackosaurus",

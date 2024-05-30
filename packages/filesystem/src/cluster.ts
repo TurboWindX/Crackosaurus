@@ -72,7 +72,57 @@ export const CLUSTER_FILESYSTEM_EVENT = z.union([
 ]);
 export type ClusterFileSystemEvent = z.infer<typeof CLUSTER_FILESYSTEM_EVENT>;
 
-export function getClusterFolderStatus(instanceRoot: string): ClusterStatus {
+async function safeReadFileAsync(filePath: string): Promise<string> {
+  const lockFile = filePath + ".lock";
+
+  await new Promise<void>((resolve) => {
+    let interval = setInterval(() => {
+      if (!fs.existsSync(lockFile)) {
+        clearInterval(interval);
+        resolve();
+      }
+    }, 100);
+  });
+
+  const data = await new Promise<string>((resolve, reject) =>
+    fs.readFile(filePath, { encoding: "utf-8" }, (err, data) => {
+      if (err) reject(err);
+      resolve(data);
+    })
+  );
+
+  return data;
+}
+
+async function safeWriteFileAsync(
+  filePath: string,
+  data: string
+): Promise<void> {
+  const lockFile = filePath + ".lock";
+
+  await new Promise<void>((resolve) => {
+    let interval = setInterval(() => {
+      if (!fs.existsSync(lockFile)) {
+        fs.writeFileSync(lockFile, "");
+        clearInterval(interval);
+        resolve();
+      }
+    }, 100);
+  });
+
+  await new Promise<void>((resolve, reject) =>
+    fs.writeFile(filePath, data, {}, (err) => {
+      if (err) reject(err);
+      resolve();
+    })
+  );
+
+  fs.rmSync(lockFile);
+}
+
+export async function getClusterFolderStatus(
+  instanceRoot: string
+): Promise<ClusterStatus> {
   if (!fs.existsSync(instanceRoot))
     return {
       instances: {},
@@ -80,55 +130,69 @@ export function getClusterFolderStatus(instanceRoot: string): ClusterStatus {
 
   return {
     instances: Object.fromEntries(
-      getClusterFolderInstances(instanceRoot).map((instanceID) => {
-        const instanceMetadata = getInstanceMetadata(instanceRoot, instanceID);
+      await Promise.all(
+        (await getClusterFolderInstances(instanceRoot)).map(
+          async (instanceID) => {
+            const instanceMetadata = await getInstanceMetadata(
+              instanceRoot,
+              instanceID
+            );
 
-        return [
-          instanceID,
-          {
-            status: instanceMetadata.status,
-            jobs: Object.fromEntries(
-              getInstanceFolderJobs(instanceRoot, instanceID).map((jobID) => {
-                const jobMetadata = getJobMetadata(
-                  instanceRoot,
-                  instanceID,
-                  jobID
-                );
-                const jobOutput = path.join(
-                  instanceRoot,
-                  instanceID,
-                  JOBS_FOLDER,
-                  OUTPUT_FILE
-                );
+            return [
+              instanceID,
+              {
+                status: instanceMetadata.status,
+                jobs: Object.fromEntries(
+                  await Promise.all(
+                    (await getInstanceFolderJobs(instanceRoot, instanceID)).map(
+                      async (jobID) => {
+                        const jobMetadata = await getJobMetadata(
+                          instanceRoot,
+                          instanceID,
+                          jobID
+                        );
 
-                let hashes = {};
-                if (fs.existsSync(jobOutput)) {
-                  hashes = readHashcatPot(jobOutput);
-                }
+                        const jobOutput = path.join(
+                          instanceRoot,
+                          instanceID,
+                          JOBS_FOLDER,
+                          OUTPUT_FILE
+                        );
 
-                return [
-                  jobID,
-                  {
-                    status: jobMetadata.status,
-                    hashes,
-                  },
-                ];
-              })
-            ),
-          },
-        ];
-      })
+                        let hashes = {};
+                        if (fs.existsSync(jobOutput)) {
+                          hashes = readHashcatPot(jobOutput);
+                        }
+
+                        return [
+                          jobID,
+                          {
+                            status: jobMetadata.status,
+                            hashes,
+                          },
+                        ];
+                      }
+                    )
+                  )
+                ),
+              },
+            ];
+          }
+        )
+      )
     ),
   };
 }
 
-export function createClusterFolder(instanceRoot: string): void {
+export async function createClusterFolder(instanceRoot: string): Promise<void> {
   if (fs.existsSync(instanceRoot)) return;
 
   fs.mkdirSync(instanceRoot, { recursive: true });
 }
 
-export function getClusterFolderInstances(instanceRoot: string): string[] {
+export async function getClusterFolderInstances(
+  instanceRoot: string
+): Promise<string[]> {
   return fs
     .readdirSync(instanceRoot, { withFileTypes: true })
     .filter((f) => f.isDirectory())
@@ -144,66 +208,70 @@ export function watchInstanceFolder(
 
   const instanceMetadata = path.resolve(path.join(instancePath, METADATA_FILE));
 
-  return fs.watch(instancePath, { recursive: true }, (event, filename) => {
-    const filePath = path.join(instancePath, filename ?? "/");
+  return fs.watch(
+    instancePath,
+    { recursive: true },
+    async (event, filename) => {
+      const filePath = path.join(instancePath, filename ?? "/");
 
-    if (!fs.existsSync(filePath)) return;
+      if (!fs.existsSync(filePath)) return;
 
-    if (filePath === instanceMetadata) {
-      callback({
-        type: CLUSTER_FILESYSTEM_TYPE.InstanceUpdate,
-        instanceID: instanceID,
-        metadata: getInstanceMetadata(instanceRoot, instanceID),
-      });
-    } else if (filePath.endsWith(METADATA_FILE)) {
-      const jobID = path.basename(path.dirname(filePath));
+      if (filePath === instanceMetadata) {
+        callback({
+          type: CLUSTER_FILESYSTEM_TYPE.InstanceUpdate,
+          instanceID: instanceID,
+          metadata: await getInstanceMetadata(instanceRoot, instanceID),
+        });
+      } else if (filePath.endsWith(METADATA_FILE)) {
+        const jobID = path.basename(path.dirname(filePath));
 
-      callback({
-        type: CLUSTER_FILESYSTEM_TYPE.JobUpdate,
-        jobID: jobID,
-        metadata: getJobMetadata(instanceRoot, instanceID, jobID),
-      });
+        callback({
+          type: CLUSTER_FILESYSTEM_TYPE.JobUpdate,
+          jobID: jobID,
+          metadata: await getJobMetadata(instanceRoot, instanceID, jobID),
+        });
+      }
     }
-  });
+  );
 }
 
-export function getInstanceMetadata(
+export async function getInstanceMetadata(
   instanceRoot: string,
   instanceID: string
-): InstanceMetadata {
+): Promise<InstanceMetadata> {
   const metadataFile = path.join(instanceRoot, instanceID, METADATA_FILE);
 
   if (!fs.existsSync(metadataFile)) return UNKNOWN_INSTANCE_METADATA;
 
   return INSTANCE_METADATA.parse(
-    JSON.parse(fs.readFileSync(metadataFile, { encoding: "utf-8" }))
+    JSON.parse(await safeReadFileAsync(metadataFile))
   );
 }
 
-export function writeInstanceMetadata(
+export async function writeInstanceMetadata(
   instanceRoot: string,
   instanceID: string,
   metadata: InstanceMetadata
-): void {
+): Promise<void> {
   const metadataFile = path.join(instanceRoot, instanceID, METADATA_FILE);
 
-  fs.writeFileSync(metadataFile, JSON.stringify(metadata));
+  await safeWriteFileAsync(metadataFile, JSON.stringify(metadata));
 }
 
-export function createInstanceFolder(
+export async function createInstanceFolder(
   instanceRoot: string,
   instanceID: string,
   props: {
     type: string;
   }
-): void {
+): Promise<void> {
   const instancePath = path.join(instanceRoot, instanceID);
 
   fs.mkdirSync(instancePath, { recursive: true });
 
   fs.mkdirSync(path.join(instancePath, JOBS_FOLDER));
 
-  fs.writeFileSync(
+  await safeWriteFileAsync(
     path.join(instancePath, METADATA_FILE),
     JSON.stringify(
       INSTANCE_METADATA.parse({
@@ -214,17 +282,17 @@ export function createInstanceFolder(
   );
 }
 
-export function deleteInstanceFolder(
+export async function deleteInstanceFolder(
   instanceRoot: string,
   instanceID: string
-): void {
+): Promise<void> {
   fs.rmdirSync(path.join(instanceRoot, instanceID), { recursive: true });
 }
 
-export function getInstanceFolderJobs(
+export async function getInstanceFolderJobs(
   instanceRoot: string,
   instanceID: string
-): string[] {
+): Promise<string[]> {
   const jobsPath = path.join(instanceRoot, instanceID, JOBS_FOLDER);
 
   return fs
@@ -233,12 +301,12 @@ export function getInstanceFolderJobs(
     .map((f) => f.name);
 }
 
-export function writeJobMetadata(
+export async function writeJobMetadata(
   instanceRoot: string,
   instanceID: string,
   jobID: string,
   metadata: JobMetadata
-): void {
+): Promise<void> {
   const metadataFile = path.join(
     instanceRoot,
     instanceID,
@@ -250,11 +318,11 @@ export function writeJobMetadata(
   fs.writeFileSync(metadataFile, JSON.stringify(metadata));
 }
 
-export function getJobMetadata(
+export async function getJobMetadata(
   instanceRoot: string,
   instanceID: string,
   jobID: string
-): JobMetadata {
+): Promise<JobMetadata> {
   const metadataFile = path.join(
     instanceRoot,
     instanceID,
@@ -265,9 +333,7 @@ export function getJobMetadata(
 
   if (!fs.existsSync(metadataFile)) return UNKNOWN_JOB_METADATA;
 
-  return JOB_METADATA.parse(
-    JSON.parse(fs.readFileSync(metadataFile, { encoding: "utf-8" }))
-  );
+  return JOB_METADATA.parse(JSON.parse(await safeReadFileAsync(metadataFile)));
 }
 
 export function getJobHashPath(
@@ -290,12 +356,12 @@ export function getJobOutputPath(
   );
 }
 
-export function createJobFolder(
+export async function createJobFolder(
   instanceRoot: string,
   instanceID: string,
   jobID: string,
   props: { hashType: HashType; hashes: string[]; wordlist: string }
-): void {
+): Promise<void> {
   const jobPath = path.join(instanceRoot, instanceID, JOBS_FOLDER, jobID);
 
   fs.mkdirSync(jobPath, { recursive: true });
@@ -314,10 +380,10 @@ export function createJobFolder(
   );
 }
 
-export function deleteJobFolder(
+export async function deleteJobFolder(
   instanceRoot: string,
   instanceID: string,
   jobID: string
-): void {
+): Promise<void> {
   fs.rmdirSync(path.join(instanceRoot, instanceID, jobID), { recursive: true });
 }

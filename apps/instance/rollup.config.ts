@@ -18,6 +18,7 @@ const bundle: RollupOptions = {
       platform: "node",
       target: "node12",
       include: [/.ts/],
+      legalComments: isDev ? undefined : "none",
       sourceMap: isDev,
       minify: !isDev,
     }),

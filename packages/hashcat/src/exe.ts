@@ -23,9 +23,6 @@ export function hashcat({
   cwd,
   stdio,
 }: HashcatConfig) {
-  const exe = path.basename(exePath);
-  const exeCwd = path.dirname(exePath);
-
   const args = [
     "-a",
     "0",
@@ -38,7 +35,7 @@ export function hashcat({
     wordlistFile,
   ];
 
-  const process = childProcess.spawn(exe, args, {
+  const process = childProcess.spawn(exePath, args, {
     cwd,
     stdio,
   });

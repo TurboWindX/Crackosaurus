@@ -9,6 +9,8 @@ services:
       POSTGRES_PASSWORD: postgres
     networks:
       - app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
   prisma:
     container_name: prisma
     restart: on-failure
@@ -23,6 +25,22 @@ services:
       - app
     depends_on:
       - database
+  instance:
+    container_name: instance
+    restart: always
+    build:
+      context: .
+      dockerfile: packages/container/instance/Containerfile
+    environment:
+      INSTANCE_ID: docker
+      INSTANCE_ROOT: /data/instances
+      WORDLIST_ROOT: /data/wordlists
+    user: 0:0
+    networks:
+      - app
+    volumes:
+      - instances:/data/instances
+      - wordlists:/data/wordlists
   cluster:
     container_name: cluster
     restart: always
@@ -33,9 +51,15 @@ services:
         CLUSTER_PORT: 8080
     environment:
       CLUSTER_HOST: cluster
-      CLUSTER_TYPE: debug
+      CLUSTER_TYPE: external
+      CLUSTER_INSTANCE_ROOT: /data/instances
+      CLUSTER_WORDLIST_ROOT: /data/wordlists
+    user: 0:0
     networks:
       - app
+    volumes:
+      - instances:/data/instances
+      - wordlists:/data/wordlists
   server:
     container_name: server
     restart: always
@@ -64,3 +88,8 @@ services:
 networks:
   app:
     driver: bridge
+
+volumes:
+  instances:
+  pgdata:
+  wordlists:
