@@ -1,6 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 
 import { type ClusterStatus, STATUS } from "@repo/api";
 import { type FileSystemClusterConfig } from "@repo/app-config/cluster";
@@ -27,12 +25,6 @@ export abstract class FileSystemCluster<
   protected abstract run(instanceID: string): Promise<void>;
 
   public async load(): Promise<boolean> {
-    if (
-      path.dirname(this.config.hashcatPath) !== "." &&
-      !fs.existsSync(this.config.hashcatPath)
-    )
-      return false;
-
     await createClusterFolder(this.config.instanceRoot);
     await createWordlistFolder(this.config.wordlistRoot);
 

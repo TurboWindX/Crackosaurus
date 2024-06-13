@@ -5,7 +5,6 @@ import {
   InstanceClass,
   InstanceSize,
   InstanceType,
-  SecurityGroup,
 } from "aws-cdk-lib/aws-ec2";
 import { Key } from "aws-cdk-lib/aws-kms";
 import {
@@ -32,7 +31,6 @@ export interface DatabaseStackProps extends DatabaseStackConfig {
 }
 
 export class DatabaseStack extends Construct {
-  public readonly securityGroup: SecurityGroup;
   public readonly storageEncryptionKey: Key;
   public readonly instance: DatabaseInstance;
 
@@ -50,11 +48,6 @@ export class DatabaseStack extends Construct {
     const tag = (v: string) =>
       prefix !== undefined ? `${prefix}-${v}` : undefined;
 
-    this.securityGroup = new SecurityGroup(scope, "security-group", {
-      securityGroupName: tag("security-group"),
-      vpc: props.vpc,
-    });
-
     this.storageEncryptionKey = new Key(this, "key");
 
     const removal = props.removal ?? DatabaseStack.DEFAULT_REMOVAL_POLICY;
@@ -71,7 +64,6 @@ export class DatabaseStack extends Construct {
         version: PostgresEngineVersion.VER_16_2,
       }),
       storageEncryptionKey: this.storageEncryptionKey,
-      securityGroups: [this.securityGroup],
       credentials: Credentials.fromSecret(props.credentials),
       backupRetention: props.backup ?? DatabaseStack.DEFAULT_BACKUP_RETENTION,
       deleteAutomatedBackups: removal === RemovalPolicy.DESTROY,

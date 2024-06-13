@@ -1,5 +1,5 @@
 import { Duration } from "aws-cdk-lib";
-import { ISubnet, Peer, Port, SecurityGroup } from "aws-cdk-lib/aws-ec2";
+import { ISubnet, Port, SecurityGroup } from "aws-cdk-lib/aws-ec2";
 import { DockerImageAsset } from "aws-cdk-lib/aws-ecr-assets";
 import {
   ContainerImage,
@@ -34,15 +34,9 @@ export interface ServiceStackProps extends ServerStackConfig {
 }
 
 export class ServerStack extends Construct {
-  public readonly loadBalancerPort: number;
-
   public readonly taskDefinition: FargateTaskDefinition;
-
   public readonly service: FargateService;
-  public readonly serviceSG: SecurityGroup;
-
   public readonly loadBalancer: ApplicationLoadBalancer;
-  public readonly loadBalancerSG: SecurityGroup;
 
   public static readonly NAME = "server";
 
@@ -57,7 +51,12 @@ export class ServerStack extends Construct {
 
     const image = new DockerImageAsset(this, "docker-image", {
       directory: path.join(__dirname, "..", "..", ".."),
-      file: `packages/container/${ServerStack.NAME}/Containerfile`,
+      file: path.join(
+        "packages",
+        "container",
+        ServerStack.NAME,
+        "Containerfile"
+      ),
       buildArgs: argsBackendConfig(props.config),
     });
 
@@ -85,8 +84,8 @@ export class ServerStack extends Construct {
       }),
     });
 
-    this.serviceSG = new SecurityGroup(this, "security-group", {
-      securityGroupName: tag("security-group"),
+    const serviceSG = new SecurityGroup(this, "service-sg", {
+      securityGroupName: tag("service-sg"),
       vpc: props.cluster.vpc,
     });
 
@@ -97,37 +96,21 @@ export class ServerStack extends Construct {
       vpcSubnets: {
         subnets: props.serviceSubnets,
       },
-      securityGroups: [this.serviceSG],
+      securityGroups: [serviceSG],
     });
-
-    this.loadBalancerPort = 80;
-
-    this.loadBalancerSG = new SecurityGroup(this, "load-balancer-sg", {
-      securityGroupName: tag("load-balancer-sg"),
-      vpc: props.cluster.vpc,
-    });
-
-    this.serviceSG.addIngressRule(
-      Peer.securityGroupId(this.loadBalancerSG.securityGroupId),
-      Port.tcp(props.config.host.port),
-      "LoadBalancer to Server"
-    );
-
-    const internet = props.internet ?? false;
 
     this.loadBalancer = new ApplicationLoadBalancer(this, "load-balancer", {
       vpc: props.cluster.vpc,
       vpcSubnets: {
         subnets: props.loadBalancerSubnets,
       },
-      internetFacing: internet,
-      securityGroup: this.loadBalancerSG,
+      internetFacing: props.internet ?? false,
     });
 
     this.loadBalancer
       .addListener("load-balancer-http", {
         protocol: ApplicationProtocol.HTTP,
-        port: this.loadBalancerPort,
+        port: 80,
       })
       .addTargets("load-balancer-http-target", {
         protocol: ApplicationProtocol.HTTP,
@@ -137,5 +120,11 @@ export class ServerStack extends Construct {
       .configureHealthCheck({
         path: "/api/ping",
       });
+
+    this.service.connections.allowFrom(
+      this.loadBalancer.connections,
+      Port.tcp(props.config.host.port),
+      "LoadBalancer to Server"
+    );
   }
 }

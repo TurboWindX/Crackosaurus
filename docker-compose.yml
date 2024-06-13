@@ -30,7 +30,7 @@ services:
     restart: always
     build:
       context: .
-      dockerfile: packages/container/instance/Containerfile
+      dockerfile: packages/container/instance/docker/Containerfile
     environment:
       INSTANCE_ID: docker
       INSTANCE_ROOT: /data/instances

@@ -79,8 +79,8 @@ export function argsBackendConfig(
   config: BackendConfig
 ): Record<string, string> {
   return {
-    [BACKEND_ENV.webHost]: config.web.name,
-    [BACKEND_ENV.webPort]: config.web.port.toString(),
+    [BACKEND_ENV.backendHost]: config.host.name,
+    [BACKEND_ENV.backendPort]: config.host.port.toString(),
     [BACKEND_ENV.databaseProvider]: config.database.provider,
   };
 }

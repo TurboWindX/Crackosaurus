@@ -15,6 +15,12 @@ const CLUSTER_ENV = {
   instanceInterval: "CLUSTER_INSTANCE_INTERVAL",
   instanceCooldown: "CLUSTER_INSTANCE_COOLDOWN",
   instanceImage: "CLUSTER_INSTANCE_IMAGE",
+  subnetID: "CLUSTER_INSTANCE_SUBNET",
+  securityGroupID: "CLUSTER_INSTANCE_SG",
+  profileArn: "CLUSTER_INSTANCE_PROFILE",
+  fileSystemID: "CLUSTER_FILESYSTEM_ID",
+  fileSystemPath: "CLUSTER_FILESYSTEM_PATH",
+  assetPath: "CLUSTER_INSTANCE_ASSET",
 } as const;
 
 export const CLUSTER_TYPES = ["aws", "debug", "external", "node"] as const;
@@ -41,6 +47,12 @@ export const AWS_CLUSTER_CONFIG = z
   .object({
     name: z.literal(CLUSTER_TYPE.AWS),
     imageID: z.string(),
+    subnetID: z.string(),
+    securityGroupID: z.string(),
+    profileArn: z.string(),
+    fileSystemID: z.string(),
+    fileSystemPath: z.string(),
+    assetPath: z.string(),
   })
   .and(FILESYSTEM_CLUSTER_CONFIG);
 export type AWSClusterConfig = z.infer<typeof AWS_CLUSTER_CONFIG>;
@@ -103,6 +115,13 @@ function loadClusterTypeConfig(name: ClusterType) {
       return {
         name,
         imageID: process.env[CLUSTER_ENV.instanceImage] ?? "",
+        subnetID: process.env[CLUSTER_ENV.subnetID] ?? "",
+        securityGroupID: process.env[CLUSTER_ENV.securityGroupID] ?? "",
+        profileArn: process.env[CLUSTER_ENV.profileArn] ?? "",
+        fileSystemID: process.env[CLUSTER_ENV.fileSystemID] ?? "",
+        fileSystemPath:
+          process.env[CLUSTER_ENV.fileSystemPath] ?? "/crackosaurus",
+        assetPath: process.env[CLUSTER_ENV.assetPath] ?? "",
         ...loadFileSystemConfig(),
       } satisfies AWSClusterConfig;
     case CLUSTER_TYPE.Debug:
@@ -166,6 +185,12 @@ function envClusterTypeConfig(config: ClusterTypeConfig) {
     case CLUSTER_TYPE.AWS:
       return {
         [CLUSTER_ENV.instanceImage]: config.imageID,
+        [CLUSTER_ENV.subnetID]: config.subnetID,
+        [CLUSTER_ENV.securityGroupID]: config.securityGroupID,
+        [CLUSTER_ENV.profileArn]: config.profileArn,
+        [CLUSTER_ENV.fileSystemID]: config.fileSystemID,
+        [CLUSTER_ENV.fileSystemPath]: config.fileSystemPath,
+        [CLUSTER_ENV.assetPath]: config.assetPath,
         ...envFileSystemClusterConfig(config),
       };
 

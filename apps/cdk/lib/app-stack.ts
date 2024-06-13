@@ -1,24 +1,21 @@
 import { NestedStack, NestedStackProps } from "aws-cdk-lib";
-import {
-  ISubnet,
-  IVpc,
-  Peer,
-  Port,
-  SubnetType,
-  Vpc,
-} from "aws-cdk-lib/aws-ec2";
+import { ISubnet, IVpc, Port, SubnetType, Vpc } from "aws-cdk-lib/aws-ec2";
 import { Cluster } from "aws-cdk-lib/aws-ecs";
+import { FileSystem } from "aws-cdk-lib/aws-efs";
 import { IDatabaseInstance } from "aws-cdk-lib/aws-rds";
 import { ISecret, Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
+import path from "node:path";
 
 import { ClusterConfig } from "@repo/app-config/cluster";
 import { BackendConfig } from "@repo/app-config/server";
 
 import { ClusterStack, ClusterStackConfig } from "./cluster-stack";
 import { DatabaseStack, DatabaseStackConfig } from "./database-stack";
+import { InstanceStack } from "./instance-stack";
 import { PrismaStack, PrismaStackConfig } from "./prisma-stack";
 import { ServerStack, ServerStackConfig } from "./server-stack";
+import { StorageStack } from "./storage-stack";
 
 interface AppStackRequiredConfig {
   databaseName?: string;
@@ -74,21 +71,29 @@ interface AppStackPrefixProps {
   prefix?: string;
 }
 
+interface AppStackInstanceProps {
+  instanceInterval?: number;
+  instanceCooldown?: number;
+}
+
 export type AppStackProps = NestedStackProps &
   AppStackPrefixProps &
   AppStackRequiredConfig &
   (AppStackVpcProps | AppStackVpcConfig) &
   (AppStackDatabaseProps | AppStackDatabaseConfig) &
-  (AppStackDatabaseCredentialsProps | AppStackDatabaseCredentialsConfig);
+  (AppStackDatabaseCredentialsProps | AppStackDatabaseCredentialsConfig) &
+  AppStackInstanceProps;
 
 export class AppStack extends NestedStack {
   public readonly database?: DatabaseStack;
 
   public readonly appCluster: Cluster;
 
-  public readonly prisma: PrismaStack;
-  public readonly server: ServerStack;
   public readonly cluster: ClusterStack;
+  public readonly instance: InstanceStack;
+  public readonly server: ServerStack;
+  public readonly storage: StorageStack;
+  public readonly prisma: PrismaStack;
 
   public static readonly DEFAULT_DATABASE_USER = "postgres";
   public static readonly DEFAULT_DATABASE_NAME = "crackosaurus";
@@ -214,8 +219,23 @@ export class AppStack extends NestedStack {
     });
 
     /**
+     * Storage
+     */
+
+    this.storage = new StorageStack(this, {
+      prefix,
+      vpc,
+      subnets: subnets.app,
+    });
+
+    /**
      * Cluster Service
      */
+
+    this.instance = new InstanceStack(this, {
+      prefix,
+      vpc,
+    });
 
     const clusterConfig: ClusterConfig = {
       host: {
@@ -223,7 +243,20 @@ export class AppStack extends NestedStack {
         port: 8080,
       },
       type: {
-        name: "debug",
+        name: "aws",
+        scriptPath: this.instance.scriptPath,
+        hashcatPath: this.instance.hashcatPath,
+        wordlistRoot: path.join(this.instance.fileSystemPath, "wordlists"),
+        instanceRoot: path.join(this.instance.fileSystemPath, "instances"),
+        instanceCooldown: props.instanceCooldown ?? 60,
+        instanceInterval: props.instanceInterval ?? 10,
+        imageID: this.instance.imageID,
+        subnetID: subnets.app[0]?.subnetId as any,
+        profileArn: this.instance.profile.instanceProfileArn,
+        securityGroupID: this.instance.securityGroup.securityGroupId,
+        fileSystemID: this.storage.fileSystem.fileSystemId,
+        fileSystemPath: this.instance.fileSystemPath,
+        assetPath: this.instance.asset.s3BucketName,
       },
     };
 
@@ -233,6 +266,9 @@ export class AppStack extends NestedStack {
       cluster: this.appCluster,
       subnets: subnets.app,
       config: clusterConfig,
+      fileSystem: this.storage.fileSystem,
+      fileSystemPath: this.instance.fileSystemPath,
+      accessPoint: this.storage.accessPoint,
     });
 
     /**
@@ -290,36 +326,68 @@ export class AppStack extends NestedStack {
       config: serverConfig,
     });
 
-    // Force database to be built before deploying.
-    if (this.database)
-      this.server.service.node.addDependency(this.database.instance);
-
     /**
-     * Security Group
+     * Permissions
      */
 
-    if (this.database) {
-      const databasePort = this.database.instance.instanceEndpoint.port;
+    this.instance.role.grantPassRole(
+      this.cluster.service.taskDefinition.taskRole
+    );
 
-      this.database.securityGroup.addIngressRule(
-        Peer.securityGroupId(this.prisma.securityGroup.securityGroupId),
-        Port.tcp(databasePort),
-        "Prisma to RDS"
-      );
+    this.storage.fileSystem.grantReadWrite(
+      this.cluster.service.taskDefinition.taskRole
+    );
 
-      this.database.securityGroup.addIngressRule(
-        Peer.securityGroupId(this.server.serviceSG.securityGroupId),
-        Port.tcp(databasePort),
-        "Server to RDS"
-      );
-    }
+    this.storage.fileSystem.grantReadWrite(this.instance.role);
 
-    if (this.cluster) {
-      this.cluster.loadBalancerSG.addIngressRule(
-        Peer.securityGroupId(this.server.serviceSG.securityGroupId),
-        Port.tcp(this.cluster.loadBalancerPort),
-        "Server to Cluster"
-      );
-    }
+    /**
+     * Network
+     */
+
+    const databasePort = Port.tcp(databaseInstance.instanceEndpoint.port);
+
+    databaseInstance.connections.allowFrom(
+      this.prisma.runTask.connections,
+      databasePort,
+      "Prisma to Database"
+    );
+
+    databaseInstance.connections.allowFrom(
+      this.server.service.connections,
+      databasePort,
+      "Server to Database"
+    );
+
+    const clusterPort = Port.tcp(80);
+
+    this.cluster.loadBalancer.connections.allowFrom(
+      this.server.service.connections,
+      clusterPort,
+      "Server to Cluster"
+    );
+
+    const fileSystemPort =
+      this.storage.fileSystem.connections.defaultPort ??
+      Port.tcp(FileSystem.DEFAULT_PORT);
+
+    this.storage.fileSystem.connections.allowFrom(
+      this.cluster.service.connections,
+      fileSystemPort,
+      "Cluster to FileSystem"
+    );
+
+    this.storage.fileSystem.connections.allowFrom(
+      this.instance.securityGroup,
+      fileSystemPort,
+      "Instance to FileSystem"
+    );
+
+    /**
+     * Dependencies
+     */
+
+    this.server.service.node.addDependency(databaseInstance);
+
+    this.cluster.service.node.addDependency(this.storage.fileSystem);
   }
 }
