@@ -11,7 +11,9 @@ import {
 import {
   ApplicationLoadBalancer,
   ApplicationProtocol,
+  ILoadBalancerV2,
 } from "aws-cdk-lib/aws-elasticloadbalancingv2";
+import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 import * as path from "node:path";
 
@@ -30,7 +32,8 @@ export interface ServiceStackProps extends ServerStackConfig {
   cluster: ICluster;
   serviceSubnets: ISubnet[];
   loadBalancerSubnets: ISubnet[];
-  config: BackendConfig;
+  clusterLoaderBalancer: ILoadBalancerV2;
+  databaseUrl: string;
 }
 
 export class ServerStack extends Construct {
@@ -49,6 +52,37 @@ export class ServerStack extends Construct {
     const tag = (v: string) =>
       prefix !== undefined ? `${prefix}-${v}` : undefined;
 
+    const secret = new Secret(this, "secret", {
+      secretName: tag("secret"),
+      description: "Server cookie secret",
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({}),
+        generateStringKey: "secret",
+        passwordLength: 32,
+        excludePunctuation: true,
+      },
+    });
+
+    const config: BackendConfig = {
+      host: {
+        name: "USE_WEB_HOST",
+        port: 8080,
+      },
+      web: {
+        name: "server",
+        port: 8080,
+      },
+      database: {
+        provider: "postgresql",
+        path: props.databaseUrl,
+      },
+      cluster: {
+        name: props.clusterLoaderBalancer.loadBalancerDnsName,
+        port: 80,
+      },
+      secret: secret.secretValueFromJson("secret").unsafeUnwrap(),
+    };
+
     const image = new DockerImageAsset(this, "docker-image", {
       directory: path.join(__dirname, "..", "..", ".."),
       file: path.join(
@@ -57,7 +91,7 @@ export class ServerStack extends Construct {
         ServerStack.NAME,
         "Containerfile"
       ),
-      buildArgs: argsBackendConfig(props.config),
+      buildArgs: argsBackendConfig(config),
     });
 
     this.taskDefinition = new FargateTaskDefinition(this, "task");
@@ -65,16 +99,16 @@ export class ServerStack extends Construct {
     this.taskDefinition.addContainer("container", {
       containerName: tag("container"),
       image: ContainerImage.fromDockerImageAsset(image),
-      environment: envBackendConfig(props.config),
+      environment: envBackendConfig(config),
       portMappings: [
         {
-          containerPort: props.config.host.port,
+          containerPort: config.host.port,
         },
       ],
       healthCheck: {
         command: [
           "CMD-SHELL",
-          `wget -q --tries=1 --spider http://localhost:${props.config.host.port}/api/ping || exit 1`,
+          `wget -q --tries=1 --spider http://localhost:${config.host.port}/api/ping || exit 1`,
         ],
         interval: Duration.seconds(30),
         retries: 2,
@@ -114,7 +148,7 @@ export class ServerStack extends Construct {
       })
       .addTargets("load-balancer-http-target", {
         protocol: ApplicationProtocol.HTTP,
-        port: props.config.host.port,
+        port: config.host.port,
         targets: [this.service],
       })
       .configureHealthCheck({
@@ -123,7 +157,7 @@ export class ServerStack extends Construct {
 
     this.service.connections.allowFrom(
       this.loadBalancer.connections,
-      Port.tcp(props.config.host.port),
+      Port.tcp(config.host.port),
       "LoadBalancer to Server"
     );
   }

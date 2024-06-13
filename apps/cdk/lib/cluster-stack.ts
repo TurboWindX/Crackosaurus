@@ -14,6 +14,7 @@ import {
   ApplicationProtocol,
 } from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
+import { IStateMachine } from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
 import * as path from "node:path";
 
@@ -29,10 +30,10 @@ export interface ClusterStackProps extends ClusterStackConfig {
   prefix?: string;
   cluster: ICluster;
   subnets: ISubnet[];
-  config: ClusterConfig;
   fileSystem: IFileSystem;
   accessPoint: IAccessPoint;
   fileSystemPath: string;
+  stepFunction: IStateMachine;
 }
 
 export class ClusterStack extends Construct {
@@ -51,6 +52,19 @@ export class ClusterStack extends Construct {
     const tag = (v: string) =>
       prefix !== undefined ? `${prefix}-${v}` : undefined;
 
+    const config: ClusterConfig = {
+      host: {
+        name: "cluster",
+        port: 8080,
+      },
+      type: {
+        name: "aws",
+        stepFunctionArn: props.stepFunction.stateMachineArn,
+        instanceRoot: path.join(props.fileSystemPath, "instances"),
+        wordlistRoot: path.join(props.fileSystemPath, "wordlists"),
+      },
+    };
+
     const image = new DockerImageAsset(this, "docker-image", {
       directory: path.join(__dirname, "..", "..", ".."),
       file: path.join(
@@ -59,7 +73,7 @@ export class ClusterStack extends Construct {
         ClusterStack.NAME,
         "Containerfile"
       ),
-      buildArgs: argsClusterConfig(props.config),
+      buildArgs: argsClusterConfig(config),
     });
 
     const volumeName = "crackosaurus";
@@ -82,19 +96,22 @@ export class ClusterStack extends Construct {
       ManagedPolicy.fromAwsManagedPolicyName("AmazonEC2FullAccess")
     );
 
+    props.stepFunction.grantStartExecution(this.taskDefinition.taskRole);
+    props.fileSystem.grantReadWrite(this.taskDefinition.taskRole);
+
     const container = this.taskDefinition.addContainer("container", {
       containerName: tag("container"),
       image: ContainerImage.fromDockerImageAsset(image),
-      environment: envClusterConfig(props.config),
+      environment: envClusterConfig(config),
       portMappings: [
         {
-          containerPort: props.config.host.port,
+          containerPort: config.host.port,
         },
       ],
       healthCheck: {
         command: [
           "CMD-SHELL",
-          `wget -q --tries=1 --spider http://localhost:${props.config.host.port}/ping || exit 1`,
+          `wget -q --tries=1 --spider http://localhost:${config.host.port}/ping || exit 1`,
         ],
         interval: Duration.seconds(30),
         retries: 2,
@@ -125,6 +142,9 @@ export class ClusterStack extends Construct {
       securityGroups: [serviceSG],
     });
 
+    this.service.node.addDependency(props.fileSystem);
+    this.service.node.addDependency(props.stepFunction);
+
     this.loadBalancer = new ApplicationLoadBalancer(this, "load-balancer", {
       vpc: props.cluster.vpc,
       vpcSubnets: {
@@ -141,7 +161,7 @@ export class ClusterStack extends Construct {
       })
       .addTargets("load-balancer-http-target", {
         protocol: ApplicationProtocol.HTTP,
-        port: props.config.host.port,
+        port: config.host.port,
         targets: [this.service],
       })
       .configureHealthCheck({
@@ -150,7 +170,7 @@ export class ClusterStack extends Construct {
 
     this.service.connections.allowFrom(
       this.loadBalancer.connections,
-      Port.tcp(props.config.host.port),
+      Port.tcp(config.host.port),
       "LoadBalancer to Cluster"
     );
   }

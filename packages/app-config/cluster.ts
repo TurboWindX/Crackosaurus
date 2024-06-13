@@ -14,13 +14,7 @@ const CLUSTER_ENV = {
   wordlistRoot: "CLUSTER_WORDLIST_ROOT",
   instanceInterval: "CLUSTER_INSTANCE_INTERVAL",
   instanceCooldown: "CLUSTER_INSTANCE_COOLDOWN",
-  instanceImage: "CLUSTER_INSTANCE_IMAGE",
-  subnetID: "CLUSTER_INSTANCE_SUBNET",
-  securityGroupID: "CLUSTER_INSTANCE_SG",
-  profileArn: "CLUSTER_INSTANCE_PROFILE",
-  fileSystemID: "CLUSTER_FILESYSTEM_ID",
-  fileSystemPath: "CLUSTER_FILESYSTEM_PATH",
-  assetPath: "CLUSTER_INSTANCE_ASSET",
+  stepFunctionArn: "CLUSTER_STEP_FUNCTION",
 } as const;
 
 export const CLUSTER_TYPES = ["aws", "debug", "external", "node"] as const;
@@ -34,25 +28,15 @@ export const CLUSTER_TYPE = {
 } as const;
 
 const FILESYSTEM_CLUSTER_CONFIG = z.object({
-  scriptPath: z.string(),
-  hashcatPath: z.string(),
   instanceRoot: z.string(),
   wordlistRoot: z.string(),
-  instanceInterval: z.number().min(0),
-  instanceCooldown: z.number(),
 });
 export type FileSystemClusterConfig = z.infer<typeof FILESYSTEM_CLUSTER_CONFIG>;
 
 export const AWS_CLUSTER_CONFIG = z
   .object({
     name: z.literal(CLUSTER_TYPE.AWS),
-    imageID: z.string(),
-    subnetID: z.string(),
-    securityGroupID: z.string(),
-    profileArn: z.string(),
-    fileSystemID: z.string(),
-    fileSystemPath: z.string(),
-    assetPath: z.string(),
+    stepFunctionArn: z.string(),
   })
   .and(FILESYSTEM_CLUSTER_CONFIG);
 export type AWSClusterConfig = z.infer<typeof AWS_CLUSTER_CONFIG>;
@@ -72,6 +56,10 @@ export type ExternalClusterConfig = z.infer<typeof EXTERNAL_CLUSTER_CONFIG>;
 export const NODE_CLUSTER_CONFIG = z
   .object({
     name: z.literal(CLUSTER_TYPE.Node),
+    scriptPath: z.string(),
+    hashcatPath: z.string(),
+    instanceInterval: z.number().min(0),
+    instanceCooldown: z.number(),
   })
   .and(FILESYSTEM_CLUSTER_CONFIG);
 export type NodeClusterConfig = z.infer<typeof NODE_CLUSTER_CONFIG>;
@@ -92,20 +80,10 @@ export type ClusterConfig = z.infer<typeof CLUSTER_CONFIG>;
 
 function loadFileSystemConfig(): FileSystemClusterConfig {
   return {
-    scriptPath:
-      process.env[CLUSTER_ENV.scriptPath] ??
-      path.join("..", "instance", "dist", "index.js"),
-    hashcatPath: process.env[CLUSTER_ENV.hashcatPath] ?? "hashcat",
     instanceRoot:
       process.env[CLUSTER_ENV.instanceRoot] ?? DEFAULT_INSTANCE_ROOT,
     wordlistRoot:
       process.env[CLUSTER_ENV.wordlistRoot] ?? DEFAULT_WORDLIST_ROOT,
-    instanceInterval: parseInt(
-      process.env[CLUSTER_ENV.instanceInterval] ?? "1"
-    ),
-    instanceCooldown: parseInt(
-      process.env[CLUSTER_ENV.instanceCooldown] ?? "-1"
-    ),
   };
 }
 
@@ -114,14 +92,7 @@ function loadClusterTypeConfig(name: ClusterType) {
     case CLUSTER_TYPE.AWS:
       return {
         name,
-        imageID: process.env[CLUSTER_ENV.instanceImage] ?? "",
-        subnetID: process.env[CLUSTER_ENV.subnetID] ?? "",
-        securityGroupID: process.env[CLUSTER_ENV.securityGroupID] ?? "",
-        profileArn: process.env[CLUSTER_ENV.profileArn] ?? "",
-        fileSystemID: process.env[CLUSTER_ENV.fileSystemID] ?? "",
-        fileSystemPath:
-          process.env[CLUSTER_ENV.fileSystemPath] ?? "/crackosaurus",
-        assetPath: process.env[CLUSTER_ENV.assetPath] ?? "",
+        stepFunctionArn: process.env[CLUSTER_ENV.stepFunctionArn] ?? "",
         ...loadFileSystemConfig(),
       } satisfies AWSClusterConfig;
     case CLUSTER_TYPE.Debug:
@@ -136,6 +107,16 @@ function loadClusterTypeConfig(name: ClusterType) {
     case CLUSTER_TYPE.Node:
       return {
         name,
+        scriptPath:
+          process.env[CLUSTER_ENV.scriptPath] ??
+          path.join("..", "instance", "dist", "index.js"),
+        hashcatPath: process.env[CLUSTER_ENV.hashcatPath] ?? "hashcat",
+        instanceInterval: parseInt(
+          process.env[CLUSTER_ENV.instanceInterval] ?? "1"
+        ),
+        instanceCooldown: parseInt(
+          process.env[CLUSTER_ENV.instanceCooldown] ?? "-1"
+        ),
         ...loadFileSystemConfig(),
       } satisfies NodeClusterConfig;
   }
@@ -171,12 +152,8 @@ export function argsClusterConfig(
 
 function envFileSystemClusterConfig(config: FileSystemClusterConfig) {
   return {
-    [CLUSTER_ENV.scriptPath]: config.scriptPath,
-    [CLUSTER_ENV.hashcatPath]: config.hashcatPath,
     [CLUSTER_ENV.instanceRoot]: config.instanceRoot,
     [CLUSTER_ENV.wordlistRoot]: config.wordlistRoot,
-    [CLUSTER_ENV.instanceInterval]: config.instanceInterval.toString(),
-    [CLUSTER_ENV.instanceCooldown]: config.instanceCooldown.toString(),
   };
 }
 
@@ -184,13 +161,7 @@ function envClusterTypeConfig(config: ClusterTypeConfig) {
   switch (config.name) {
     case CLUSTER_TYPE.AWS:
       return {
-        [CLUSTER_ENV.instanceImage]: config.imageID,
-        [CLUSTER_ENV.subnetID]: config.subnetID,
-        [CLUSTER_ENV.securityGroupID]: config.securityGroupID,
-        [CLUSTER_ENV.profileArn]: config.profileArn,
-        [CLUSTER_ENV.fileSystemID]: config.fileSystemID,
-        [CLUSTER_ENV.fileSystemPath]: config.fileSystemPath,
-        [CLUSTER_ENV.assetPath]: config.assetPath,
+        [CLUSTER_ENV.stepFunctionArn]: config.stepFunctionArn,
         ...envFileSystemClusterConfig(config),
       };
 
@@ -204,6 +175,10 @@ function envClusterTypeConfig(config: ClusterTypeConfig) {
 
     case CLUSTER_TYPE.Node:
       return {
+        [CLUSTER_ENV.scriptPath]: config.scriptPath,
+        [CLUSTER_ENV.hashcatPath]: config.hashcatPath,
+        [CLUSTER_ENV.instanceInterval]: config.instanceInterval.toString(),
+        [CLUSTER_ENV.instanceCooldown]: config.instanceCooldown.toString(),
         ...envFileSystemClusterConfig(config),
       };
   }

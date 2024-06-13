@@ -16,10 +16,10 @@ export interface StorageStackProps extends StorageStackConfig {
 
 export class StorageStack extends Construct {
   public readonly fileSystem: FileSystem;
+  public readonly fileSystemPath: string;
   public readonly accessPoint: AccessPoint;
 
   public static readonly NAME = "storage";
-  public static readonly PATH = "/crackosaurus";
 
   constructor(scope: Construct, props: StorageStackProps) {
     const id = `${StorageStack.NAME}-stack`;
@@ -29,6 +29,8 @@ export class StorageStack extends Construct {
       props.prefix !== undefined ? `${props.prefix}-${id}` : undefined;
     const tag = (v: string) =>
       prefix !== undefined ? `${prefix}-${v}` : undefined;
+
+    this.fileSystemPath = "/crackosaurus";
 
     this.fileSystem = new FileSystem(this, "file-system", {
       fileSystemName: tag("file-system"),
@@ -41,7 +43,7 @@ export class StorageStack extends Construct {
     });
 
     this.accessPoint = this.fileSystem.addAccessPoint("access-point", {
-      path: StorageStack.PATH,
+      path: this.fileSystemPath,
       posixUser: {
         gid: "1000",
         uid: "1000",

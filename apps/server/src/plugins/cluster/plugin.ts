@@ -100,15 +100,21 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
       async ([instanceTag, instanceStatus]) => {
         let instanceDB = instanceSearch[instanceTag];
         if (instanceDB === undefined) {
-          instanceDB = await prisma.instance.create({
-            select: instanceSelect,
-            data: {
-              name: instanceTag,
-              tag: instanceTag,
-              type: "external",
-              status: instanceStatus.status,
-            },
-          });
+          // Only track new instances if it in a valid state.
+          if (
+            instanceStatus.status === STATUS.Pending ||
+            instanceStatus.status === STATUS.Running
+          ) {
+            instanceDB = await prisma.instance.create({
+              select: instanceSelect,
+              data: {
+                name: instanceTag,
+                tag: instanceTag,
+                type: "external",
+                status: instanceStatus.status,
+              },
+            });
+          } else return;
         }
 
         if (instanceDB.status !== instanceStatus.status) {

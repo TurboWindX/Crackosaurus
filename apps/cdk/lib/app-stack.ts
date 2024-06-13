@@ -5,14 +5,10 @@ import { FileSystem } from "aws-cdk-lib/aws-efs";
 import { IDatabaseInstance } from "aws-cdk-lib/aws-rds";
 import { ISecret, Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
-import path from "node:path";
-
-import { ClusterConfig } from "@repo/app-config/cluster";
-import { BackendConfig } from "@repo/app-config/server";
 
 import { ClusterStack, ClusterStackConfig } from "./cluster-stack";
 import { DatabaseStack, DatabaseStackConfig } from "./database-stack";
-import { InstanceStack } from "./instance-stack";
+import { InstanceStack, InstanceStackConfig } from "./instance-stack";
 import { PrismaStack, PrismaStackConfig } from "./prisma-stack";
 import { ServerStack, ServerStackConfig } from "./server-stack";
 import { StorageStack } from "./storage-stack";
@@ -23,6 +19,7 @@ interface AppStackRequiredConfig {
   prisma: PrismaStackConfig;
   server: ServerStackConfig;
   cluster: ClusterStackConfig;
+  instance: InstanceStackConfig;
 }
 
 interface AppStackDatabaseConfig {
@@ -71,18 +68,12 @@ interface AppStackPrefixProps {
   prefix?: string;
 }
 
-interface AppStackInstanceProps {
-  instanceInterval?: number;
-  instanceCooldown?: number;
-}
-
 export type AppStackProps = NestedStackProps &
   AppStackPrefixProps &
   AppStackRequiredConfig &
   (AppStackVpcProps | AppStackVpcConfig) &
   (AppStackDatabaseProps | AppStackDatabaseConfig) &
-  (AppStackDatabaseCredentialsProps | AppStackDatabaseCredentialsConfig) &
-  AppStackInstanceProps;
+  (AppStackDatabaseCredentialsProps | AppStackDatabaseCredentialsConfig);
 
 export class AppStack extends NestedStack {
   public readonly database?: DatabaseStack;
@@ -209,7 +200,7 @@ export class AppStack extends NestedStack {
     }/${databaseName}?schema=public`;
 
     /**
-     * App Cluster
+     * Stacks
      */
 
     this.appCluster = new Cluster(this, "cluster", {
@@ -218,62 +209,31 @@ export class AppStack extends NestedStack {
       containerInsights: true,
     });
 
-    /**
-     * Storage
-     */
-
     this.storage = new StorageStack(this, {
       prefix,
       vpc,
       subnets: subnets.app,
     });
 
-    /**
-     * Cluster Service
-     */
-
     this.instance = new InstanceStack(this, {
+      ...props.instance,
       prefix,
       vpc,
+      subnets: subnets.app,
+      fileSystem: this.storage.fileSystem,
+      fileSystemPath: this.storage.fileSystemPath,
     });
-
-    const clusterConfig: ClusterConfig = {
-      host: {
-        name: "cluster",
-        port: 8080,
-      },
-      type: {
-        name: "aws",
-        scriptPath: this.instance.scriptPath,
-        hashcatPath: this.instance.hashcatPath,
-        wordlistRoot: path.join(this.instance.fileSystemPath, "wordlists"),
-        instanceRoot: path.join(this.instance.fileSystemPath, "instances"),
-        instanceCooldown: props.instanceCooldown ?? 60,
-        instanceInterval: props.instanceInterval ?? 10,
-        imageID: this.instance.imageID,
-        subnetID: subnets.app[0]?.subnetId as any,
-        profileArn: this.instance.profile.instanceProfileArn,
-        securityGroupID: this.instance.securityGroup.securityGroupId,
-        fileSystemID: this.storage.fileSystem.fileSystemId,
-        fileSystemPath: this.instance.fileSystemPath,
-        assetPath: this.instance.asset.s3BucketName,
-      },
-    };
 
     this.cluster = new ClusterStack(this, {
       ...props.cluster,
       prefix,
       cluster: this.appCluster,
       subnets: subnets.app,
-      config: clusterConfig,
       fileSystem: this.storage.fileSystem,
-      fileSystemPath: this.instance.fileSystemPath,
+      fileSystemPath: this.storage.fileSystemPath,
       accessPoint: this.storage.accessPoint,
+      stepFunction: this.instance.stepFunction,
     });
-
-    /**
-     * Prisma Service
-     */
 
     this.prisma = new PrismaStack(this, {
       prefix,
@@ -282,63 +242,18 @@ export class AppStack extends NestedStack {
       subnets: subnets.app,
     });
 
-    /**
-     * Server Service
-     */
-
-    const serverSecret = new Secret(this, "server-secret", {
-      secretName: tag("server-secret"),
-      description: "Server cookie secret",
-      generateSecretString: {
-        secretStringTemplate: JSON.stringify({}),
-        generateStringKey: "secret",
-        passwordLength: AppStack.DEFAULT_SECRET_LENGTH,
-        excludePunctuation: true,
-      },
-    });
-
-    const serverConfig: BackendConfig = {
-      host: {
-        name: "USE_WEB_HOST",
-        port: 8080,
-      },
-      web: {
-        name: "server",
-        port: 8080,
-      },
-      database: {
-        provider: "postgresql",
-        path: databaseUrl,
-      },
-      cluster: {
-        name: this.cluster.loadBalancer.loadBalancerDnsName,
-        port: 80,
-      },
-      secret: serverSecret.secretValueFromJson("secret").unsafeUnwrap(),
-    };
-
     this.server = new ServerStack(this, {
       ...props.server,
       prefix,
       cluster: this.appCluster,
       serviceSubnets: subnets.app,
       loadBalancerSubnets: subnets.internet,
-      config: serverConfig,
+      clusterLoaderBalancer: this.cluster.loadBalancer,
+      databaseUrl,
     });
 
-    /**
-     * Permissions
-     */
-
-    this.instance.role.grantPassRole(
-      this.cluster.service.taskDefinition.taskRole
-    );
-
-    this.storage.fileSystem.grantReadWrite(
-      this.cluster.service.taskDefinition.taskRole
-    );
-
-    this.storage.fileSystem.grantReadWrite(this.instance.role);
+    // Make sure database is built before running server.
+    this.server.service.node.addDependency(databaseInstance);
 
     /**
      * Network
@@ -377,17 +292,9 @@ export class AppStack extends NestedStack {
     );
 
     this.storage.fileSystem.connections.allowFrom(
-      this.instance.securityGroup,
+      this.instance.instanceSG,
       fileSystemPort,
       "Instance to FileSystem"
     );
-
-    /**
-     * Dependencies
-     */
-
-    this.server.service.node.addDependency(databaseInstance);
-
-    this.cluster.service.node.addDependency(this.storage.fileSystem);
   }
 }
