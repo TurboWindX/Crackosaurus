@@ -1,20 +1,19 @@
-import { Aws, DockerImage } from "aws-cdk-lib";
+import { DockerImage } from "aws-cdk-lib";
 import {
   ISubnet,
   IVpc,
   MachineImage,
+  Port,
   SecurityGroup,
 } from "aws-cdk-lib/aws-ec2";
 import { IFileSystem } from "aws-cdk-lib/aws-efs";
 import {
-  AccountPrincipal,
   InstanceProfile,
   ManagedPolicy,
   PolicyStatement,
   Role,
   ServicePrincipal,
 } from "aws-cdk-lib/aws-iam";
-import { Key } from "aws-cdk-lib/aws-kms";
 import { Asset } from "aws-cdk-lib/aws-s3-assets";
 import {
   DefinitionBody,
@@ -30,6 +29,7 @@ import { envInstanceConfig } from "@repo/app-config/instance";
 export interface InstanceStackConfig {
   interval?: number;
   cooldown?: number;
+  sshKey?: string;
 }
 
 export interface InstanceStackProps extends InstanceStackConfig {
@@ -61,6 +61,10 @@ export class InstanceStack extends Construct {
       securityGroupName: tag("security-group"),
       vpc: props.vpc,
     });
+
+    if (props.sshKey) {
+      this.instanceSG.connections.allowFromAnyIpv4(Port.SSH, "SSH");
+    }
 
     this.instanceRole = new Role(this, "role", {
       roleName: tag("role"),
@@ -108,6 +112,7 @@ export class InstanceStack extends Construct {
         InstanceType: JsonPath.stringAt("$.instanceType"),
         MinCount: 1,
         MaxCount: 1,
+        KeyName: props.sshKey,
         IamInstanceProfile: {
           Arn: instanceProfile.instanceProfileArn,
         },
@@ -186,8 +191,8 @@ export class InstanceStack extends Construct {
     const instanceEnv = envInstanceConfig({
       instanceID: formatTag,
       hashcatPath: hashcatPath,
-      instanceRoot: path.join(props.fileSystemPath, "instances"),
-      wordlistRoot: path.join(props.fileSystemPath, "wordlists"),
+      instanceRoot: path.join("efs", props.fileSystemPath, "instances"),
+      wordlistRoot: path.join("efs", props.fileSystemPath, "wordlists"),
       instanceCooldown: props.cooldown ?? 60,
       instanceInterval: props.interval ?? 10,
     });
@@ -197,30 +202,35 @@ export class InstanceStack extends Construct {
         ([key, value]) =>
           `${key}=${value === formatTag ? formatTag : JSON.stringify(value)}`
       )
-      .join("\n");
+      .join(" ");
 
     return `#!/bin/bash
 
-    # Environment
-    ${instanceEnvString}
-
     # Install Packages
-    yum install -y aws-cli amazon-efs-utils curl nodejs unzip
+    yum update -y
+    yum install -y aws-cli amazon-efs-utils nfs-utils
+
+    # Install Node
+    curl -fsSL https://rpm.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+    bash /tmp/nodesource_setup.sh
+    dnf install nodejs -y
+    rm -f /tmp/nodesource_setup.sh
 
     # Install App
-    aws s3 cp ${this.asset.s3ObjectUrl} /package.zip
-    uzip /package.zip -d /
-    rm /package.zip
+    aws s3 cp ${this.asset.s3ObjectUrl} /tmp/package.zip
+    unzip /tmp/package.zip -d /
+    rm -f /tmp/package.zip
     chmod +x ${hashcatPath}
 
     # Mount EFS
-    mount -t efs -o tls ${props.fileSystem.fileSystemId}:/ /
+    mkdir /efs
+    mount -t efs -o tls ${props.fileSystem.fileSystemId}:/ /efs
 
     # Run App
-    node ${scriptPath}
+    ${instanceEnvString} node ${scriptPath} 2>&1 > /tmp/session.log
 
     # Stop Instance
-    TOKEN=$(curl --request PUT "http://169.254.169.254/latest/api/token" --header "X-aws-ec2-metadata-token-ttl-seconds: 3600")
+    TOKEN=$(curl -s --request PUT "http://169.254.169.254/latest/api/token" --header "X-aws-ec2-metadata-token-ttl-seconds: 3600")
     EC2_INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id --header "X-aws-ec2-metadata-token: $TOKEN")
     aws ec2 terminate-instances --instance-ids $EC2_INSTANCE_ID
     `;

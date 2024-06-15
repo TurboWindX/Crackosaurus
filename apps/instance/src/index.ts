@@ -29,7 +29,7 @@ const EXIT_CASE = {
 } as const;
 
 function innerMain(): Promise<ExitCase> {
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async (resolve) => {
     let instanceMetadata = await getInstanceMetadata(
       config.instanceRoot,
       config.instanceID
@@ -119,7 +119,7 @@ function innerMain(): Promise<ExitCase> {
     );
 
     let lastRun = new Date().getTime();
-    setInterval(async () => {
+    const interval = setInterval(async () => {
       if (jobID === null) {
         const nextJobID = jobQueue.shift();
         if (nextJobID === undefined) {
@@ -137,6 +137,7 @@ function innerMain(): Promise<ExitCase> {
 
             console.log(`[Instance ${config.instanceID}] Cooldown`);
 
+            clearInterval(interval);
             resolve(EXIT_CASE.Cooldown);
           }
 
@@ -203,6 +204,12 @@ function innerMain(): Promise<ExitCase> {
           `[Instance ${config.instanceID}] [Job ${jobID}] Exit with code ${jobProcess.exitCode}`
         );
 
+        if (jobProcess.exitCode !== 0) {
+          console.error(
+            `[Instance ${config.instanceID}] [Job ${jobID}] Failed to run ${jobProcess.spawnargs}`
+          );
+        }
+
         await writeJobMetadata(
           config.instanceRoot,
           config.instanceID,
@@ -243,6 +250,7 @@ async function main() {
     config.instanceRoot,
     config.instanceID
   );
+
   if (metadata.status !== STATUS.Unknown) {
     metadata.status = status;
 
@@ -254,6 +262,7 @@ async function main() {
   }
 
   if (err) throw err;
+  else process.exit(0);
 }
 
 if (require.main === module) main();
