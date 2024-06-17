@@ -15,6 +15,7 @@ export abstract class ClusterConnector<TConfig = undefined> {
 
   public abstract createJob(
     instanceID: string,
+    wordlist: string,
     hashType: HashType,
     hashes: string[]
   ): Promise<string | null>;

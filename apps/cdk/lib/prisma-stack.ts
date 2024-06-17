@@ -1,5 +1,5 @@
 import { Duration } from "aws-cdk-lib";
-import { ISubnet, SecurityGroup } from "aws-cdk-lib/aws-ec2";
+import { ISubnet } from "aws-cdk-lib/aws-ec2";
 import { DockerImageAsset } from "aws-cdk-lib/aws-ecr-assets";
 import {
   ContainerImage,
@@ -25,7 +25,7 @@ export interface PrismaStackProps extends PrismaStackConfig {
 }
 
 export class PrismaStack extends Construct {
-  public readonly securityGroup: SecurityGroup;
+  public readonly runTask: EcsRunTask;
   public readonly taskDefinition: FargateTaskDefinition;
   public readonly stateMachine: StateMachine;
 
@@ -45,7 +45,12 @@ export class PrismaStack extends Construct {
 
     const image = new DockerImageAsset(this, "docker-image", {
       directory: path.join(__dirname, "..", "..", ".."),
-      file: `packages/container/${PrismaStack.NAME}/Containerfile`,
+      file: path.join(
+        "packages",
+        "container",
+        PrismaStack.NAME,
+        "Containerfile"
+      ),
       buildArgs: {
         DATABASE_PROVIDER: "postgresql",
       },
@@ -64,20 +69,15 @@ export class PrismaStack extends Construct {
       }),
     });
 
-    this.securityGroup = new SecurityGroup(this, "security-group", {
-      vpc: props.cluster.vpc,
-    });
-
-    const runTask = new EcsRunTask(this, "run-task", {
+    this.runTask = new EcsRunTask(this, "run-task", {
       cluster: props.cluster,
       taskDefinition: this.taskDefinition,
-      securityGroups: [this.securityGroup],
       launchTarget: new EcsFargateLaunchTarget(),
     });
 
     this.stateMachine = new StateMachine(this, "trigger-task", {
       stateMachineName: tag("trigger-task"),
-      definitionBody: DefinitionBody.fromChainable(runTask),
+      definitionBody: DefinitionBody.fromChainable(this.runTask),
       timeout: Duration.minutes(3),
     });
   }

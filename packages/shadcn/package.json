@@ -32,9 +32,8 @@
   "license": "MIT",
   "scripts": {
     "build": "tailwindcss -i ./src/index.css -o dist/index.css",
-    "lint": "eslint src/",
     "dev": "tailwindcss -i ./src/index.css -o ./dist/index.css --watch",
-    "type-check": "tsc --noEmit"
+    "check": "tsc --noEmit"
   },
   "peerDependencies": {
     "react": "^18.2.0"

@@ -9,7 +9,6 @@
     "./cluster/client/node": "./src/cluster/client/node.ts"
   },
   "license": "MIT",
-  "scripts": {},
   "dependencies": {
     "zod": "^3.22.4"
   }

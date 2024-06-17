@@ -4,12 +4,14 @@
   "scripts": {
     "dev": "npm run build && npm run dev:watch",
     "dev:watch": "concurrently \"rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild --watch\" \"nodemon -w dist/index.js dist/index.js\"",
-    "build": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild"
+    "build": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild",
+    "check": "tsc --noEmit"
   },
   "license": "MIT",
   "dependencies": {
     "@repo/api": "*",
     "@repo/app-config": "*",
+    "@repo/filesystem": "*",
     "@repo/hashcat": "*",
     "@repo/plugins": "*",
     "@repo/typescript-config": "*",

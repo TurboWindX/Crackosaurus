@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { type FastifyPluginOptions } from "fastify";
 import fp from "fastify-plugin";
 
-import { STATUS } from "@repo/api";
+import { ClusterStatus, STATUS } from "@repo/api";
 
 import { ClusterConnector } from "./connectors/connector";
 import {
@@ -52,84 +52,139 @@ export const clusterPlugin = fp<ClusterPluginConfig>(
 );
 
 async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
-  const instances = await prisma.instance.findMany({
-    select: {
-      IID: true,
-      tag: true,
-      status: true,
-      jobs: {
-        select: {
-          JID: true,
-          status: true,
-          hashes: {
-            select: {
-              HID: true,
-              hash: true,
-              hashType: true,
-              status: true,
-            },
+  let clusterStatus: ClusterStatus;
+  try {
+    const status = await cluster.getStatus();
+    if (status === null) return;
+
+    clusterStatus = status;
+  } catch (e) {
+    return;
+  }
+
+  const instanceSelect = {
+    IID: true,
+    tag: true,
+    status: true,
+    jobs: {
+      select: {
+        JID: true,
+        status: true,
+        hashes: {
+          select: {
+            HID: true,
+            hash: true,
+            hashType: true,
+            status: true,
           },
         },
       },
     },
+  } as const;
+
+  const instances = await prisma.instance.findMany({
+    select: instanceSelect,
+    where: {
+      tag: {
+        in: Object.keys(clusterStatus.instances),
+      },
+    },
   });
 
-  let clusterStatus;
-  try {
-    clusterStatus = await cluster.getStatus();
-  } catch (e) {
-    clusterStatus = {};
-  }
+  const instanceSearch = Object.fromEntries(
+    instances.map((instance) => [instance.tag, instance])
+  );
 
-  for (let instance of instances) {
-    const instanceInfo = clusterStatus?.instances?.[instance.tag];
-    const instanceStatus = instanceInfo?.status ?? STATUS.Unknown;
+  await Promise.all(
+    Object.entries(clusterStatus.instances).map(
+      async ([instanceTag, instanceStatus]) => {
+        let instanceDB = instanceSearch[instanceTag];
+        if (instanceDB === undefined) {
+          // Only track new instances if it in a valid state.
+          if (
+            instanceStatus.status === STATUS.Pending ||
+            instanceStatus.status === STATUS.Running
+          ) {
+            instanceDB = await prisma.instance.create({
+              select: instanceSelect,
+              data: {
+                name: instanceTag,
+                tag: instanceTag,
+                type: "external",
+                status: instanceStatus.status,
+              },
+            });
+          } else return;
+        }
 
-    if (instanceStatus !== instance.status) {
-      await prisma.instance.update({
-        where: {
-          IID: instance.IID,
-        },
-        data: {
-          status: instanceStatus,
-          updatedAt: new Date(),
-        },
-      });
-    }
-
-    for (let job of instance.jobs) {
-      const jobInfo = instanceInfo?.jobs?.[job.JID];
-      const jobStatus = jobInfo?.status ?? STATUS.Unknown;
-
-      if (jobStatus !== job.status) {
-        await prisma.job.update({
-          where: {
-            JID: job.JID,
-          },
-          data: {
-            status: jobStatus,
-            updatedAt: new Date(),
-          },
-        });
-      }
-
-      for (let hash of job.hashes) {
-        const value = jobInfo?.hashes?.[hash.hash];
-
-        if (hash.status === STATUS.NotFound && value) {
-          await prisma.hash.updateMany({
+        if (instanceDB.status !== instanceStatus.status) {
+          await prisma.instance.update({
             where: {
-              hash: hash.hash,
-              hashType: hash.hashType,
+              IID: instanceDB.IID,
             },
             data: {
-              status: STATUS.Found,
-              value,
+              status: instanceStatus.status,
               updatedAt: new Date(),
             },
           });
         }
+
+        const jobSearch = Object.fromEntries(
+          instanceDB.jobs.map((job) => [job.JID, job])
+        );
+
+        await Promise.all(
+          Object.entries(instanceStatus.jobs).map(
+            async ([jobID, jobStatus]) => {
+              const jobDB = jobSearch[jobID];
+
+              // Unsupported external jobs.
+              if (jobDB === undefined) return;
+
+              if (jobDB.status !== jobStatus.status) {
+                await prisma.job.update({
+                  where: {
+                    JID: jobDB.JID,
+                  },
+                  data: {
+                    status: jobStatus.status,
+                    updatedAt: new Date(),
+                  },
+                });
+              }
+
+              const hashSearch = Object.fromEntries(
+                jobDB.hashes.map((hash) => [hash.HID, hash])
+              );
+
+              await Promise.all(
+                Object.entries(jobStatus.hashes).map(
+                  async ([hashID, hashValue]) => {
+                    const hashDB = hashSearch[hashID];
+
+                    // Unsupported external hashes.
+                    if (hashDB === undefined) return;
+
+                    if (hashDB.status === STATUS.NotFound && hashValue) {
+                      await prisma.hash.updateMany({
+                        where: {
+                          hash: hashDB.hash,
+                          hashType: hashDB.hashType,
+                        },
+                        data: {
+                          status: STATUS.Found,
+                          value: hashValue,
+                          updatedAt: new Date(),
+                        },
+                      });
+                    }
+                  }
+                )
+              );
+            }
+          )
+        );
       }
-    }
-  }
+    )
+  );
 }

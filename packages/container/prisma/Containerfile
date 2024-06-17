@@ -9,7 +9,7 @@ FROM base AS builder
 
 COPY . .
 
-RUN turbo prune @repo/db @repo/web @repo/server --docker
+RUN turbo prune @repo/db --docker
 
 FROM base AS installer
 
@@ -20,7 +20,7 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
-RUN turbo run build --filter=db
+RUN NODE_ENV=production turbo run build --filter=db
 
 FROM base AS runner
 

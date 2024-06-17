@@ -5,6 +5,7 @@
     "./cluster": "./cluster.ts",
     "./db": "./db.ts",
     "./host": "./host.ts",
+    "./instance": "./instance.ts",
     "./server": "./server.ts",
     "./web": "./web.ts"
   },

@@ -12,8 +12,6 @@ export const PERMISSIONS = [
   "instances:list",
   "instances:add",
   "instances:remove",
-  "instances:start",
-  "instances:stop",
   "instances:jobs:*",
   "instances:jobs:get",
   "instances:jobs:add",

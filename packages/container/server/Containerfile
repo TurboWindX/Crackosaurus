@@ -20,7 +20,7 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
-RUN turbo run build --filter=db
+RUN NODE_ENV=production turbo run build --filter=db
 
 ARG DATABASE_PROVIDER
 
@@ -29,9 +29,9 @@ RUN DATABASE_PROVIDER=$DATABASE_PROVIDER npm run generate:run -w apps/db
 ARG BACKEND_HOST
 ARG BACKEND_PORT
 
-RUN BACKEND_HOST=$BACKEND_HOST BACKEND_PORT=$BACKEND_PORT turbo run build --filter=web
+RUN NODE_ENV=production BACKEND_HOST=$BACKEND_HOST BACKEND_PORT=$BACKEND_PORT turbo run build --filter=web
 
-RUN turbo run build --filter=server
+RUN NODE_ENV=production turbo run build --filter=server
 
 FROM base AS runner
 
