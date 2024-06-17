@@ -7,7 +7,6 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
@@ -42,7 +41,6 @@ export const InstanceSelect = ({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          <SelectLabel>Instance</SelectLabel>
           {(instanceList ?? [])
             .filter((instance) => filter?.(instance) ?? true)
             .map(({ IID, name }) => (

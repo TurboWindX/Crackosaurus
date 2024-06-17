@@ -1,17 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LogOutIcon, TrashIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { APIError } from "@repo/api";
+import { APIError, PermissionType } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type RES } from "@repo/api/server/client/web";
 import { Button } from "@repo/shadcn/components/ui/button";
+import { Separator } from "@repo/shadcn/components/ui/separator";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
+import { PermissionsSelect } from "@repo/ui/users";
 
 interface ProjectDataTableProps {
   values: RES<APIType["getUser"]>["projects"];
@@ -34,6 +36,97 @@ const ProjectDataTable = ({ values, isLoading }: ProjectDataTableProps) => {
       searchFilter={({ name }, search) =>
         name.toLowerCase().includes(search.toLowerCase())
       }
+    />
+  );
+};
+
+interface PermissionDataTableProps {
+  userID: string;
+  values: RES<APIType["getUser"]>["permissions"];
+  isLoading?: boolean;
+}
+
+const PermissionDataTable = ({
+  values,
+  isLoading,
+  userID,
+}: PermissionDataTableProps) => {
+  const permissions = useMemo(
+    () => (values ?? "").split(" "),
+    [values]
+  ) as PermissionType[];
+
+  const [selectedPermissions, setSelectedPermissions] = useState<
+    PermissionType[]
+  >([]);
+
+  const { uid, hasPermission } = useAuth();
+
+  const queryClient = useQueryClient();
+  const API = useAPI();
+  const { handleError } = useErrors();
+
+  const { mutateAsync: addUserPermissions } = useMutation({
+    mutationFn: API.addUserPermissions,
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["users", userID],
+      });
+    },
+    onError: handleError,
+  });
+
+  const { mutateAsync: removeUserPermissions } = useMutation({
+    mutationFn: API.removeUserPermissions,
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["users", userID],
+      });
+    },
+    onError: handleError,
+  });
+
+  return (
+    <DataTable
+      type="Permission"
+      values={permissions}
+      head={["Permission"]}
+      row={(permission) => [permission]}
+      sort={(a, b) => a.localeCompare(b)}
+      isLoading={isLoading}
+      valueKey={(permission) => permission}
+      searchFilter={(permission, search) =>
+        permission.includes(search.toLowerCase())
+      }
+      addDialog={
+        <>
+          <PermissionsSelect
+            value={selectedPermissions}
+            onValueChange={(value) => setSelectedPermissions(value)}
+          />
+        </>
+      }
+      onAdd={async () => {
+        await addUserPermissions({
+          userID,
+          permissions: selectedPermissions,
+        });
+
+        setSelectedPermissions([]);
+
+        return true;
+      }}
+      noAdd={!hasPermission("users:edit") || uid === userID}
+      addValidate={() => selectedPermissions.length > 0}
+      onRemove={async (permissions) => {
+        await removeUserPermissions({
+          userID,
+          permissions,
+        });
+
+        return true;
+      }}
+      noRemove={!hasPermission("users:edit") || uid === userID}
     />
   );
 };
@@ -85,6 +178,25 @@ export const UserPage = () => {
     },
     onError: handleError,
   });
+
+  const tables = [
+    <ProjectDataTable
+      key="project"
+      values={user?.projects ?? []}
+      isLoading={isLoading}
+    />,
+    <PermissionDataTable
+      key="permission"
+      userID={user?.ID ?? ""}
+      values={user?.permissions ?? ""}
+      isLoading={isLoading}
+    />,
+  ];
+
+  const separatedTables = tables
+    .filter((value) => value)
+    .flatMap((value, i) => [value, <Separator key={i} />]);
+  separatedTables.pop();
 
   return (
     <div className="grid gap-8 p-4">
@@ -141,7 +253,7 @@ export const UserPage = () => {
           )}
         </div>
       </div>
-      <ProjectDataTable values={user?.projects ?? []} isLoading={isLoading} />
+      {separatedTables}
     </div>
   );
 };

@@ -59,21 +59,20 @@ export const MultiSelect = (props: MultiSelectProps) => {
           }}
           collisionPadding={10}
         >
-          {props.values.map(([_key, value]) => (
-            <>
-              <DropdownMenuCheckboxItem
-                checked={selectMap[value]}
-                onCheckedChange={(checked) => {
-                  updateSelect({
-                    ...selectMap,
-                    [value]: checked,
-                  });
-                }}
-                onSelect={(e) => e.preventDefault()}
-              >
-                {value}
-              </DropdownMenuCheckboxItem>
-            </>
+          {props.values.map(([key, value]) => (
+            <DropdownMenuCheckboxItem
+              key={key}
+              checked={selectMap[value]}
+              onCheckedChange={(checked) => {
+                updateSelect({
+                  ...selectMap,
+                  [value]: checked,
+                });
+              }}
+              onSelect={(e) => e.preventDefault()}
+            >
+              {value}
+            </DropdownMenuCheckboxItem>
           ))}
         </DropdownMenuContent>
       </DropdownMenu>

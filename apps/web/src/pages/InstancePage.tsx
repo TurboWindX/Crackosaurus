@@ -15,7 +15,6 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
@@ -102,7 +101,6 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
-                <SelectLabel>Hash Type</SelectLabel>
                 {HASH_TYPES.map((type) => (
                   <SelectItem value={type}>{type}</SelectItem>
                 ))}
