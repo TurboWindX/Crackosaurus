@@ -142,6 +142,8 @@ const LogoutButton = ({ userID }: LogoutButtonProps) => {
 
   const { uid, logout } = useAuth();
 
+  const queryClient = useQueryClient();
+
   if (userID !== uid) return <></>;
 
   return (
@@ -149,9 +151,11 @@ const LogoutButton = ({ userID }: LogoutButtonProps) => {
       <Button
         variant="outline"
         onClick={async () => {
-          navigate("/login");
-
           await logout({});
+
+          queryClient.invalidateQueries();
+
+          navigate("/login");
         }}
       >
         <div className="grid grid-flow-col items-center gap-2">
