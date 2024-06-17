@@ -112,6 +112,24 @@ export const ROUTES = {
     request: z.object({}).optional(),
     response: z.string(),
   },
+  addUserPermissions: {
+    method: "POST",
+    path: "/users/:userID/permissions",
+    permissions: ["users:edit"],
+    request: z.object({
+      permissions: z.enum(PERMISSIONS).array(),
+    }),
+    response: z.string(),
+  },
+  removeUserPermissions: {
+    method: "DELETE",
+    path: "/users/:userID/permissions",
+    permissions: ["users:edit"],
+    request: z.object({
+      permissions: z.enum(PERMISSIONS).array(),
+    }),
+    response: z.string(),
+  },
   addHash: {
     method: "POST",
     path: "/projects/:projectID/hashes",

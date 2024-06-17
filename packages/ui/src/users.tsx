@@ -1,15 +1,19 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { PERMISSION_PROFILES, type PermissionType } from "@repo/api";
+import {
+  PERMISSIONS,
+  PERMISSION_PROFILES,
+  type PermissionType,
+} from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type RES } from "@repo/api/server/client/web";
+import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
 import {
   Select,
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
@@ -49,7 +53,6 @@ export const UserSelect = ({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          <SelectLabel>User</SelectLabel>
           {filteredUserList.map(({ ID, username }) => (
             <SelectItem key={username} value={ID}>
               {username}
@@ -58,6 +61,25 @@ export const UserSelect = ({
         </SelectGroup>
       </SelectContent>
     </Select>
+  );
+};
+
+export interface PermissionsSelectProps {
+  value?: PermissionType[];
+  onValueChange?: (value: PermissionType[]) => void;
+}
+
+export const PermissionsSelect = ({
+  value,
+  onValueChange,
+}: PermissionsSelectProps) => {
+  return (
+    <MultiSelect
+      label="Permissions"
+      values={PERMISSIONS.map((permission) => [permission, permission])}
+      selectedValues={value ?? []}
+      onValueChange={(value) => onValueChange?.(value as PermissionType[])}
+    />
   );
 };
 
@@ -88,7 +110,6 @@ export const PermissionProfileSelect = ({
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
-          <SelectLabel>User</SelectLabel>
           {Object.keys(PERMISSION_PROFILES).map((key) => (
             <SelectItem key={key} value={key}>
               {key}

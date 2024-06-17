@@ -15,7 +15,6 @@ import {
   SelectContent,
   SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
@@ -153,7 +152,6 @@ const HashDataTable = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
-                  <SelectLabel>Type</SelectLabel>
                   {HASH_TYPES.map((type) => (
                     <SelectItem value={type}>{type}</SelectItem>
                   ))}

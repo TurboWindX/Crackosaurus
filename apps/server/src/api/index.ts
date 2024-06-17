@@ -192,9 +192,7 @@ const HANDLERS: {
     permissions,
   }) => {
     if ((permissions ?? []).some((permission) => !hasPermission(permission)))
-      throw new APIError(
-        "You must have the permission to provide these permissions"
-      );
+      throw new APIError("Cannot add permission without having it");
 
     let user;
     try {
@@ -275,6 +273,98 @@ const HANDLERS: {
     }
 
     return "User has been obliterated into oblivion";
+  },
+  addUserPermissions: async ({
+    prisma,
+    hasPermission,
+    currentUserID,
+    userID,
+    permissions,
+  }) => {
+    if (permissions.some((permission) => !hasPermission(permission)))
+      throw new APIError("Cannot add permission without having it");
+
+    if (userID === currentUserID)
+      throw new APIError("Cannot add permission to self");
+
+    let permissionSet = new Set<string>();
+    try {
+      const user = await prisma.user.findUniqueOrThrow({
+        select: {
+          permissions: true,
+        },
+        where: {
+          ID: userID,
+        },
+      });
+
+      permissionSet = new Set(user.permissions.split(" "));
+    } catch (err) {
+      throw new APIError("User error");
+    }
+
+    permissions.forEach((permission) => permissionSet.add(permission));
+
+    try {
+      await prisma.user.update({
+        where: {
+          ID: userID,
+        },
+        data: {
+          permissions: [...permissionSet].join(" "),
+        },
+      });
+    } catch (err) {
+      throw new APIError("User error");
+    }
+
+    return "User permissions added";
+  },
+  removeUserPermissions: async ({
+    prisma,
+    hasPermission,
+    currentUserID,
+    userID,
+    permissions,
+  }) => {
+    if (permissions.some((permission) => !hasPermission(permission)))
+      throw new APIError("Cannot remove permission without having it");
+
+    if (userID === currentUserID)
+      throw new APIError("Cannot remove permission from self");
+
+    let permissionSet = new Set<string>();
+    try {
+      const user = await prisma.user.findUniqueOrThrow({
+        select: {
+          permissions: true,
+        },
+        where: {
+          ID: userID,
+        },
+      });
+
+      permissionSet = new Set(user.permissions.split(" "));
+    } catch (err) {
+      throw new APIError("User error");
+    }
+
+    permissions.forEach((permission) => permissionSet.delete(permission));
+
+    try {
+      await prisma.user.update({
+        where: {
+          ID: userID,
+        },
+        data: {
+          permissions: [...permissionSet].join(" "),
+        },
+      });
+    } catch (err) {
+      throw new APIError("User error");
+    }
+
+    return "User permissions removed";
   },
   changePassword: async ({
     prisma,
