@@ -9,6 +9,7 @@ export const ROUTES = {
   ping: {
     method: "GET",
     path: "/ping",
+    type: "json",
     permissions: [],
     request: z.object({}).optional(),
     response: z.string(),
@@ -16,6 +17,7 @@ export const ROUTES = {
   status: {
     method: "GET",
     path: "/status",
+    type: "json",
     permissions: [],
     request: z.object({}).optional(),
     response: z.object({
@@ -37,6 +39,7 @@ export const ROUTES = {
   createInstance: {
     method: "POST",
     path: "/instances",
+    type: "json",
     permissions: [],
     request: z.object({
       instanceType: z.string().nullable().optional(),
@@ -46,6 +49,7 @@ export const ROUTES = {
   deleteInstance: {
     method: "DELETE",
     path: "/instances/:instanceID",
+    type: "json",
     permissions: [],
     request: z.object({}).optional(),
     response: z.boolean(),
@@ -53,6 +57,7 @@ export const ROUTES = {
   createJob: {
     method: "POST",
     path: "/instances/:instanceID/jobs",
+    type: "json",
     permissions: [],
     request: z.object({
       wordlist: z.string(),
@@ -64,6 +69,25 @@ export const ROUTES = {
   deleteJob: {
     method: "DELETE",
     path: "/instances/:instanceID/jobs/:jobID",
+    type: "json",
+    permissions: [],
+    request: z.object({}).optional(),
+    response: z.boolean(),
+  },
+  createWordlist: {
+    method: "POST",
+    path: "/wordlists",
+    type: "multipart",
+    permissions: [],
+    request: z.object({
+      data: z.string(),
+    }),
+    response: z.string().nullable(),
+  },
+  deleteWordlist: {
+    method: "DELETE",
+    path: "/wordlists/:wordlistID",
+    type: "json",
     permissions: [],
     request: z.object({}).optional(),
     response: z.boolean(),

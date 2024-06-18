@@ -343,7 +343,7 @@ const DataTableBody = <T,>({
         </TableCell>
       )}
       {row(value).map((column, index) =>
-        column ? (
+        column !== undefined && column !== null ? (
           <TableCell
             key={index}
             className={`${index === 0 ? "ui-font-medium" : ""} ${

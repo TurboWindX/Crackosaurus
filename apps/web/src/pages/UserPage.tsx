@@ -295,7 +295,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
     []
   );
 
-  if (!hasPermission("users:edit") && uid !== userID) return <></>;
+  if (!hasPermission("users:remove") && uid !== userID) return <></>;
 
   if (isLoading) return trigger;
 
@@ -312,7 +312,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
           onSubmit={async (e) => {
             e.preventDefault();
 
-            await deleteUser({ userID: userID ?? "" });
+            await deleteUser({ userID });
           }}
         >
           <span>Do you want to permanently remove this user?</span>

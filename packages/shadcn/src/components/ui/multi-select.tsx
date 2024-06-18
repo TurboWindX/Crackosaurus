@@ -19,7 +19,7 @@ export interface MultiSelectProps {
 
 export const MultiSelect = (props: MultiSelectProps) => {
   const [open, setOpen] = useState(false);
-  const menuRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLButtonElement>(null);
 
   function updateSelect(map: Record<string, boolean>) {
     if (props.onValueChange)
@@ -39,11 +39,18 @@ export const MultiSelect = (props: MultiSelectProps) => {
   return (
     <>
       <DropdownMenu open={open} onOpenChange={(state) => setOpen(state)}>
-        <DropdownMenuTrigger asChild ref={menuRef}>
-          <div className="scn-flex scn-h-10 scn-w-full scn-items-center scn-justify-between scn-rounded-md scn-border scn-border-input scn-bg-background scn-px-3 scn-py-2 scn-text-sm scn-ring-offset-background placeholder:scn-text-muted-foreground focus:scn-outline-none focus:scn-ring-2 focus:scn-ring-ring focus:scn-ring-offset-2 disabled:scn-cursor-not-allowed disabled:scn-opacity-50 [&>span]:scn-line-clamp-1">
+        <DropdownMenuTrigger
+          asChild
+          ref={menuRef}
+          disabled={props.values.length === 0}
+        >
+          <button
+            className="scn-flex scn-h-10 scn-w-full scn-items-center scn-justify-between scn-rounded-md scn-border scn-border-input scn-bg-background scn-px-3 scn-py-2 scn-text-sm scn-ring-offset-background placeholder:scn-text-muted-foreground focus:scn-outline-none focus:scn-ring-2 focus:scn-ring-ring focus:scn-ring-offset-2 disabled:scn-cursor-not-allowed disabled:scn-opacity-50 [&>span]:scn-line-clamp-1"
+            disabled={props.values.length === 0}
+          >
             {props.label}
             <ChevronDown className="scn-h-4 scn-w-4 scn-opacity-50" />
-          </div>
+          </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className={cn(
@@ -62,11 +69,11 @@ export const MultiSelect = (props: MultiSelectProps) => {
           {props.values.map(([key, value]) => (
             <DropdownMenuCheckboxItem
               key={key}
-              checked={selectMap[value]}
+              checked={selectMap[key]}
               onCheckedChange={(checked) => {
                 updateSelect({
                   ...selectMap,
-                  [value]: checked,
+                  [key]: checked,
                 });
               }}
               onSelect={(e) => e.preventDefault()}

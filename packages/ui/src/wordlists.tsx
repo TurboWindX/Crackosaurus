@@ -1,0 +1,70 @@
+import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
+
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@repo/shadcn/components/ui/select";
+
+import { useAPI } from "./api";
+
+const K = 1024;
+const LOG_K = Math.log(K);
+const MEMORY_SIZES = ["B", "KB", "MB", "GB", "TB", "PB", "EB"];
+
+export const MemorySize = ({ value }: { value: number }) => {
+  const size = useMemo(() => {
+    if (value === null || value === undefined) return "?";
+
+    if (value === 0) return "0 B";
+
+    const i = Math.floor(Math.log(value) / LOG_K);
+    const size = (value / Math.pow(K, i)).toFixed(2);
+
+    return `${size} ${MEMORY_SIZES[i]}`;
+  }, [value]);
+
+  return size;
+};
+
+export interface WordlistSelectProps {
+  value?: string | null;
+  onValueChange?: (value: string) => void;
+}
+
+export const WordlistSelect = ({
+  value,
+  onValueChange,
+}: WordlistSelectProps) => {
+  const API = useAPI();
+
+  const { data: wordlistList } = useQuery({
+    queryKey: ["wordlists", "list", "component"],
+    queryFn: API.getWordlistList,
+  });
+
+  return (
+    <Select
+      value={value?.toString()}
+      onValueChange={(value) => onValueChange?.(value)}
+      disabled={(wordlistList?.length ?? 0) === 0}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder="Wordlist" />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {(wordlistList ?? []).map(({ WID, name }) => (
+            <SelectItem key={WID} value={WID}>
+              {name ?? WID}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+};

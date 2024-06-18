@@ -47,6 +47,7 @@ export const UserSelect = ({
     <Select
       value={value?.toString()}
       onValueChange={(value) => onValueChange?.(value)}
+      disabled={filteredUserList.length === 0}
     >
       <SelectTrigger>
         <SelectValue placeholder="User" />

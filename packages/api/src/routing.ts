@@ -44,6 +44,7 @@ export interface Route<
 > {
   method: HTTPMethod;
   path: TPath;
+  type: "json" | "multipart";
   permissions: PermissionType[];
   request: TReq;
   response: TRes;
@@ -52,7 +53,7 @@ export interface Route<
 export type APIHandler<TRoute> =
   TRoute extends Route<infer TPath, infer TReq, any>
     ? (
-        req: Record<PathParams<TPath>, string> & z.infer<TReq>
+        req: (Record<PathParams<TPath>, string> & z.infer<TReq>) | FormData
       ) => Promise<RouteResponse<TRoute>["response"]>
     : never;
 

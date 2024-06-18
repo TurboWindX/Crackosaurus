@@ -206,7 +206,7 @@ function innerMain(): Promise<ExitCase> {
 
         if (jobProcess.exitCode !== 0) {
           console.error(
-            `[Instance ${config.instanceID}] [Job ${jobID}] Failed to run ${jobProcess.spawnargs}`
+            `[Instance ${config.instanceID}] [Job ${jobID}] Failed to run "${jobProcess.spawnargs.join(" ")}"`
           );
         }
 

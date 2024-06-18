@@ -156,6 +156,7 @@ export async function getClusterFolderStatus(
                           instanceRoot,
                           instanceID,
                           JOBS_FOLDER,
+                          jobID,
                           OUTPUT_FILE
                         );
 
@@ -386,4 +387,23 @@ export async function deleteJobFolder(
   jobID: string
 ): Promise<void> {
   fs.rmdirSync(path.join(instanceRoot, instanceID, jobID), { recursive: true });
+}
+
+export async function writeWordlistFile(
+  wordlistRoot: string,
+  wordlistID: string,
+  data: Buffer
+): Promise<void> {
+  const wordlistFile = path.join(wordlistRoot, wordlistID);
+
+  fs.writeFileSync(wordlistFile, data);
+}
+
+export async function deleteWordlistFile(
+  wordlistRoot: string,
+  wordlistID: string
+): Promise<void> {
+  const wordlistFile = path.join(wordlistRoot, wordlistID);
+
+  fs.rmSync(wordlistFile);
 }

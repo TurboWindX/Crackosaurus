@@ -30,6 +30,16 @@ CREATE TABLE "Hash" (
 );
 
 -- CreateTable
+CREATE TABLE "Wordlist" (
+    "WID" TEXT NOT NULL PRIMARY KEY,
+    "name" TEXT,
+    "size" INTEGER NOT NULL,
+    "checksum" TEXT NOT NULL,
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- CreateTable
 CREATE TABLE "Instance" (
     "IID" TEXT NOT NULL PRIMARY KEY,
     "name" TEXT,
@@ -44,10 +54,12 @@ CREATE TABLE "Instance" (
 CREATE TABLE "Job" (
     "JID" TEXT NOT NULL PRIMARY KEY,
     "instanceId" TEXT NOT NULL,
+    "wordlistId" TEXT,
     "status" TEXT NOT NULL DEFAULT 'PENDING',
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT "Job_instanceId_fkey" FOREIGN KEY ("instanceId") REFERENCES "Instance" ("IID") ON DELETE RESTRICT ON UPDATE CASCADE
+    CONSTRAINT "Job_instanceId_fkey" FOREIGN KEY ("instanceId") REFERENCES "Instance" ("IID") ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT "Job_wordlistId_fkey" FOREIGN KEY ("wordlistId") REFERENCES "Wordlist" ("WID") ON DELETE SET NULL ON UPDATE CASCADE
 );
 
 -- CreateTable

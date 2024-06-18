@@ -11,6 +11,7 @@ export abstract class Cluster<TConfig = undefined> {
   public abstract createInstance(
     instanceType?: string | null
   ): Promise<string | null>;
+
   public abstract deleteInstance(instanceID: string): Promise<boolean>;
 
   public abstract createJob(
@@ -19,8 +20,13 @@ export abstract class Cluster<TConfig = undefined> {
     hashType: HashType,
     hashes: string[]
   ): Promise<string | null>;
+
   public abstract deleteJob(
     instanceID: string,
     jobID: string
   ): Promise<boolean>;
+
+  public abstract createWordlist(data: Buffer): Promise<string | null>;
+
+  public abstract deleteWordlist(wordlistID: string): Promise<boolean>;
 }

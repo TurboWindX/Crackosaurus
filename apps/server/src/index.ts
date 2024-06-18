@@ -1,5 +1,6 @@
 import { fastifyCookie } from "@fastify/cookie";
 import cors from "@fastify/cors";
+import fastifyMultipart from "@fastify/multipart";
 import { fastifySession } from "@fastify/session";
 import fastifyStatic from "@fastify/static";
 import Fastify from "fastify";
@@ -20,6 +21,11 @@ fastify.register(fastifySession, {
   cookie: {
     secure: false,
     maxAge: 24 * 60 * 60,
+  },
+});
+fastify.register(fastifyMultipart, {
+  limits: {
+    fileSize: 4_194_304_000,
   },
 });
 

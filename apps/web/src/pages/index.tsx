@@ -13,6 +13,8 @@ import { ProjectsPage } from "./ProjectsPage.tsx";
 import { SetupPage } from "./SetupPage.tsx";
 import { UserPage } from "./UserPage.tsx";
 import { UsersPage } from "./UsersPage.tsx";
+import { WordlistPage } from "./WordlistPage.tsx";
+import { WordlistsPage } from "./WordlistsPage.tsx";
 
 export const router = createBrowserRouter([
   {
@@ -93,6 +95,22 @@ export const router = createBrowserRouter([
             element: (
               <PermissionRoute permission="instances:get">
                 <InstancePage />
+              </PermissionRoute>
+            ),
+          },
+          {
+            path: "wordlists",
+            element: (
+              <PermissionRoute permission="wordlists:get">
+                <WordlistsPage />
+              </PermissionRoute>
+            ),
+          },
+          {
+            path: "wordlists/:wordlistID",
+            element: (
+              <PermissionRoute permission="wordlists:get">
+                <WordlistPage />
               </PermissionRoute>
             ),
           },
