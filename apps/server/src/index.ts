@@ -25,7 +25,7 @@ fastify.register(fastifySession, {
 });
 fastify.register(fastifyMultipart, {
   limits: {
-    fileSize: 4_194_304_000,
+    fileSize: 268_435_456_000,
   },
 });
 

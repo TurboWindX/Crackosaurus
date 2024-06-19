@@ -197,14 +197,14 @@ function innerMain(): Promise<ExitCase> {
           jobID
         );
 
-        if (jobProcess.exitCode === 0) jobMetadata.status = STATUS.Complete;
+        if (jobProcess.exitCode !== 255) jobMetadata.status = STATUS.Complete;
         else jobMetadata.status = STATUS.Error;
 
         console.log(
           `[Instance ${config.instanceID}] [Job ${jobID}] Exit with code ${jobProcess.exitCode}`
         );
 
-        if (jobProcess.exitCode !== 0) {
+        if (jobProcess.exitCode === 255) {
           console.error(
             `[Instance ${config.instanceID}] [Job ${jobID}] Failed to run "${jobProcess.spawnargs.join(" ")}"`
           );
