@@ -48,7 +48,13 @@ export const MultiSelect = (props: MultiSelectProps) => {
             className="scn-flex scn-h-10 scn-w-full scn-items-center scn-justify-between scn-rounded-md scn-border scn-border-input scn-bg-background scn-px-3 scn-py-2 scn-text-sm scn-ring-offset-background placeholder:scn-text-muted-foreground focus:scn-outline-none focus:scn-ring-2 focus:scn-ring-ring focus:scn-ring-offset-2 disabled:scn-cursor-not-allowed disabled:scn-opacity-50 [&>span]:scn-line-clamp-1"
             disabled={props.values.length === 0}
           >
-            {props.label}
+            <span className="scn-shrink scn-truncate">
+              {props.selectedValues.length === 0
+                ? props.label
+                : props.selectedValues
+                    .map((v) => props.values.find(([ov, _]) => v === ov)?.[1])
+                    .join(", ")}
+            </span>
             <ChevronDown className="scn-h-4 scn-w-4 scn-opacity-50" />
           </button>
         </DropdownMenuTrigger>

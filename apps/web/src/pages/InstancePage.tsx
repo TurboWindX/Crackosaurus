@@ -124,7 +124,9 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
         </>
       }
       addValidate={() =>
-        newJob.hashType?.length > 0 && newJob.wordlistID.length > 0
+        newJob.hashType?.length > 0 &&
+        newJob.wordlistID.length > 0 &&
+        newJob.projectIDs.length > 0
       }
       onAdd={async () => {
         await createInstanceJob({ ...newJob, instanceID });

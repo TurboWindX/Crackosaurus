@@ -60,7 +60,9 @@ export const WordlistsPage = () => {
         row={({ WID, name, size, checksum, updatedAt }) => [
           name ?? WID,
           <MemorySize value={size} />,
-          checksum,
+          <div className="max-w-32 truncate md:max-w-64 lg:max-w-[50vw]">
+            {checksum}
+          </div>,
           <RelativeTime time={updatedAt} />,
         ]}
         isLoading={isLoading}
