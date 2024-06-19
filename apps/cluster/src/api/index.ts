@@ -1,4 +1,5 @@
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
+import { type Readable } from "node:stream";
 
 import { HTTPMethod, Route, RouteRequest, RouteResponse } from "@repo/api";
 import { ROUTES } from "@repo/api/cluster";
@@ -12,16 +13,39 @@ declare module "fastify" {
   }
 }
 
-function validate(validator: { parse?: (data: any) => any }) {
+async function streamToBuffer(stream: Readable): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: any[] = [];
+
+    stream.on("data", (chunk) => chunks.push(chunk));
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("error", (err) => reject(err));
+  });
+}
+
+function validate(
+  validator: { parse?: (data: any) => any },
+  type: "json" | "multipart"
+) {
   return (
     request: FastifyRequest,
     _reply: FastifyReply,
     next: (err?: Error | undefined) => void
   ) => {
-    try {
-      if (validator.parse) validator.parse(request.body ?? {});
-    } catch (e) {
-      throw new APIError("Invalid input");
+    if (type === "json") {
+      if (request.isMultipart())
+        throw new APIError("Only supports application/json");
+
+      try {
+        if (validator.parse) validator.parse(request.body ?? {});
+      } catch (e) {
+        throw new APIError("Invalid input");
+      }
+    } else if (type === "multipart") {
+      if (!request.isMultipart())
+        throw new APIError("Only supports multipart/form-data");
+
+      // TODO: Validate body.
     }
 
     next();
@@ -66,6 +90,19 @@ const ROUTER: {
 
     return request.server.cluster.deleteJob(instanceID, jobID);
   },
+  createWordlist: async (request) => {
+    const multipart = await request.file();
+    if (multipart === undefined) throw new APIError("Unable to read file");
+
+    const buffer = await streamToBuffer(multipart.file);
+
+    return request.server.cluster.createWordlist(buffer);
+  },
+  deleteWordlist: async (request) => {
+    const { wordlistID } = request.params;
+
+    return request.server.cluster.deleteWordlist(wordlistID);
+  },
 };
 
 const api: FastifyPluginCallback = (instance, _options, next) => {
@@ -78,7 +115,7 @@ const api: FastifyPluginCallback = (instance, _options, next) => {
     instance[method](
       route.path,
       {
-        preValidation: [validate(route.request)],
+        preValidation: [validate(route.request, route.type)],
       },
       async (request: any) => ({ response: await router(request) })
     );

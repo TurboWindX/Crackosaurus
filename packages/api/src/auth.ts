@@ -30,6 +30,11 @@ export const PERMISSIONS = [
   "users:add",
   "users:edit",
   "users:remove",
+  "wordlists:*",
+  "wordlists:get",
+  "wordlists:list",
+  "wordlists:add",
+  "wordlists:remove",
 ] as const;
 export type PermissionType = (typeof PERMISSIONS)[number];
 
@@ -44,6 +49,7 @@ export const PERMISSION_PROFILES = {
     "projects:remove",
     "projects:users:*",
     "users:list",
+    "wordlists:*",
   ],
   viewer: ["auth", "hashes:get"],
 } satisfies Record<string, PermissionType[]>;

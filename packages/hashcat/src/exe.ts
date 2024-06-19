@@ -28,9 +28,9 @@ export function hashcat({
     "0",
     "-m",
     getHashcatMode(hashType).toString(),
+    "--potfile-disable",
     "-o",
     outputFile,
-    "--potfile-disable",
     inputFile,
     wordlistFile,
   ];

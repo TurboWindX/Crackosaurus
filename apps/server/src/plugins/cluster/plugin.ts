@@ -153,33 +153,37 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
                 });
               }
 
-              const hashSearch = Object.fromEntries(
-                jobDB.hashes.map((hash) => [hash.HID, hash])
-              );
+              const hashSearch: Record<string, (typeof jobDB)["hashes"]> = {};
+              jobDB.hashes.forEach((hash) => {
+                const entry = hashSearch[hash.hash];
+                if (entry) entry.push(hash);
+                else hashSearch[hash.hash] = [hash];
+              });
 
               await Promise.all(
-                Object.entries(jobStatus.hashes).map(
-                  async ([hashID, hashValue]) => {
-                    const hashDB = hashSearch[hashID];
+                Object.entries(jobStatus.hashes).map(async ([hash, plain]) => {
+                  const hashDBs = hashSearch[hash];
 
-                    // Unsupported external hashes.
-                    if (hashDB === undefined) return;
+                  // Unsupported external hashes.
+                  if (hashDBs === undefined) return;
 
-                    if (hashDB.status === STATUS.NotFound && hashValue) {
-                      await prisma.hash.updateMany({
+                  await Promise.all(
+                    hashDBs.map(async (hashDB) => {
+                      if (hashDB.status !== STATUS.NotFound) return;
+
+                      await prisma.hash.update({
                         where: {
-                          hash: hashDB.hash,
-                          hashType: hashDB.hashType,
+                          HID: hashDB.HID,
                         },
                         data: {
                           status: STATUS.Found,
-                          value: hashValue,
+                          value: plain,
                           updatedAt: new Date(),
                         },
                       });
-                    }
-                  }
-                )
+                    })
+                  );
+                })
               );
             }
           )

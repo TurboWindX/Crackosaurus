@@ -295,7 +295,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
     []
   );
 
-  if (!hasPermission("users:edit") && uid !== userID) return <></>;
+  if (!hasPermission("users:remove") && uid !== userID) return <></>;
 
   if (isLoading) return trigger;
 
@@ -312,7 +312,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
           onSubmit={async (e) => {
             e.preventDefault();
 
-            await deleteUser({ userID: userID ?? "" });
+            await deleteUser({ userID });
           }}
         >
           <span>Do you want to permanently remove this user?</span>
@@ -379,7 +379,7 @@ export const UserPage = () => {
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
           {user?.username ?? "Username"}
         </span>
-        <div className="grid grid-flow-col justify-end gap-4">
+        <div className="grid grid-flow-col justify-end gap-2">
           <LogoutButton userID={userID ?? ""} isLoading={isLoading} />
           <PasswordUpdateButton userID={userID ?? ""} isLoading={isLoading} />
           <RemoveButton

@@ -2,8 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
+body {
+  color-scheme: dark;
+}
+
 ::-webkit-scrollbar {
-  width: 0.5rem;
+  width: 0.25rem;
+  height: 0.25rem;
 }
   
 ::-webkit-scrollbar-track {

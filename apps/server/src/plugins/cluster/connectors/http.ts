@@ -1,3 +1,5 @@
+import { type Readable } from "node:stream";
+
 import { type APIType } from "@repo/api/cluster";
 import { makeAPI } from "@repo/api/cluster/client/node";
 import { type HashType } from "@repo/hashcat/data";
@@ -67,6 +69,26 @@ export class HTTPClusterConnector extends ClusterConnector<HTTPClusterConnectorC
         instanceID,
         jobID,
       });
+    } catch (e) {
+      return false;
+    }
+  }
+
+  public async createWordlist(buffer: Buffer): Promise<string | null> {
+    try {
+      const formData = new FormData();
+
+      formData.set("data", new Blob([buffer], { type: "text/plain" }));
+
+      return await this.API.createWordlist(formData);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  public async deleteWordlist(wordlistID: string): Promise<boolean> {
+    try {
+      return await this.API.deleteWordlist({ wordlistID });
     } catch (e) {
       return false;
     }

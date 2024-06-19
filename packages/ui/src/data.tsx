@@ -48,7 +48,7 @@ export const AddDialog = ({
       }
     >
       <form
-        className="ui-grid ui-gap-4"
+        className="ui-flex ui-flex-col ui-gap-4 md:ui-max-w-[380px]"
         onSubmit={(e) => {
           e.preventDefault();
           onSubmit?.();
@@ -223,55 +223,57 @@ export function DataTable<T>({
           )}
         </div>
       )}
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {hasSelect && (
-                <TableHead key="select" className="ui-w-[50px]">
-                  <Checkbox
-                    checked={
-                      searchValues.length === selectedValues.length &&
-                      searchValues.length > 0
-                    }
-                    onCheckedChange={(state) => {
-                      const val = !!state.valueOf();
+      <div className="ui-max-w-[100vw] ui-overflow-x-hidden">
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {hasSelect && (
+                  <TableHead key="select" className="ui-w-[50px]">
+                    <Checkbox
+                      checked={
+                        searchValues.length === selectedValues.length &&
+                        searchValues.length > 0
+                      }
+                      onCheckedChange={(state) => {
+                        const val = !!state.valueOf();
 
-                      setSelects({
-                        ...selects,
-                        ...Object.fromEntries(
-                          searchValues.map(
-                            (value) => [valueKey(value), val] as const
-                          )
-                        ),
-                      });
-                    }}
-                  />
-                </TableHead>
-              )}
-              {head
-                .filter((label) => label)
-                .map((label) => (
-                  <TableHead key={label}>{label}</TableHead>
-                ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            <DataTableBody
-              values={searchValues}
-              head={head}
-              row={row}
-              rowClick={rowClick}
-              hasSelect={hasSelect}
-              plural={plural}
-              valueKey={valueKey}
-              selects={selects}
-              setSelects={setSelects}
-              isLoading={isLoading}
-            />
-          </TableBody>
-        </Table>
-      </Card>
+                        setSelects({
+                          ...selects,
+                          ...Object.fromEntries(
+                            searchValues.map(
+                              (value) => [valueKey(value), val] as const
+                            )
+                          ),
+                        });
+                      }}
+                    />
+                  </TableHead>
+                )}
+                {head
+                  .filter((label) => label)
+                  .map((label) => (
+                    <TableHead key={label}>{label}</TableHead>
+                  ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <DataTableBody
+                values={searchValues}
+                head={head}
+                row={row}
+                rowClick={rowClick}
+                hasSelect={hasSelect}
+                plural={plural}
+                valueKey={valueKey}
+                selects={selects}
+                setSelects={setSelects}
+                isLoading={isLoading}
+              />
+            </TableBody>
+          </Table>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -343,7 +345,7 @@ const DataTableBody = <T,>({
         </TableCell>
       )}
       {row(value).map((column, index) =>
-        column ? (
+        column !== undefined && column !== null ? (
           <TableCell
             key={index}
             className={`${index === 0 ? "ui-font-medium" : ""} ${

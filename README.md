@@ -103,12 +103,6 @@ npm run migrate
 
 ### 👣 Run
 
-A development version can be run using:
-
-```
-npm run dev
-```
-
 The admin account can be setup using:
 
 http://localhost:5174/setup
@@ -118,3 +112,11 @@ The microservices can be found at:
 - Web: http://localhost:5174/
 - Backend: http://localhost:8080/
 - Cluster: http://localhost:13337/
+
+#### Debug
+
+This is a dummy cluster that prints API commands.
+
+```
+npm run dev
+```

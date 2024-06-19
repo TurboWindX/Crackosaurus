@@ -55,4 +55,18 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
 
     return true;
   }
+
+  public async createWordlist(data: Buffer): Promise<string | null> {
+    const wordlistID = crypto.randomUUID();
+
+    console.log(`Creating wordlist ${wordlistID} of size ${data.length}`);
+
+    return wordlistID;
+  }
+
+  public async deleteWordlist(wordlistID: string): Promise<boolean> {
+    console.log(`Deleted wordlist ${wordlistID}`);
+
+    return true;
+  }
 }

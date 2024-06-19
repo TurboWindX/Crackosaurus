@@ -30,6 +30,16 @@ model Hash {
   updatedAt DateTime @default(now()) @updatedAt
 }
 
+model Wordlist {
+  WID       String   @id @default(uuid())
+  name      String?
+  size      Int
+  checksum  String
+  jobs      Job[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
 model Instance {
   IID       String   @id @default(uuid())
   name      String?
@@ -42,11 +52,13 @@ model Instance {
 }
 
 model Job {
-  JID        String   @id @default(uuid())
+  JID        String    @id @default(uuid())
   instanceId String
-  instance   Instance @relation(fields: [instanceId], references: [IID])
+  instance   Instance  @relation(fields: [instanceId], references: [IID])
+  wordlistId String?
+  wordlist   Wordlist? @relation(fields: [wordlistId], references: [WID])
   hashes     Hash[]
-  status     String   @default("PENDING")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
+  status     String    @default("PENDING")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now()) @updatedAt
 }

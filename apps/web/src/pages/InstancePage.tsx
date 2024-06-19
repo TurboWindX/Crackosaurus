@@ -8,7 +8,6 @@ import { type APIType } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
 import { HASH_TYPES, HashType } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
-import { Input } from "@repo/shadcn/components/ui/input";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
 import {
   Select,
@@ -25,6 +24,7 @@ import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
+import { WordlistSelect } from "@repo/ui/wordlists";
 
 interface JobDataTableProps {
   instanceID: string;
@@ -35,7 +35,7 @@ interface JobDataTableProps {
 const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   const [newJob, setNewJob] = useState<REQ<APIType["createInstanceJob"]>>({
     instanceID,
-    wordlist: "",
+    wordlistID: "",
     hashType: "" as HashType,
     projectIDs: [],
   });
@@ -107,11 +107,11 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
               </SelectGroup>
             </SelectContent>
           </Select>
-          <Input
-            type="text"
-            placeholder="Wordlist"
-            value={newJob.wordlist}
-            onChange={(e) => setNewJob({ ...newJob, wordlist: e.target.value })}
+          <WordlistSelect
+            value={newJob.wordlistID}
+            onValueChange={(value) =>
+              setNewJob({ ...newJob, wordlistID: value })
+            }
           />
           <MultiSelect
             label="Project"
@@ -124,7 +124,9 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
         </>
       }
       addValidate={() =>
-        newJob.hashType?.length > 0 && newJob.wordlist.length > 0
+        newJob.hashType?.length > 0 &&
+        newJob.wordlistID.length > 0 &&
+        newJob.projectIDs.length > 0
       }
       onAdd={async () => {
         await createInstanceJob({ ...newJob, instanceID });

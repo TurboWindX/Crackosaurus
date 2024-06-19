@@ -15,7 +15,8 @@
     "./header": "./src/header.tsx",
     "./status": "./src/status.tsx",
     "./time": "./src/time.tsx",
-    "./users": "./src/users.tsx"
+    "./users": "./src/users.tsx",
+    "./wordlists": "./src/wordlists.tsx"
   },
   "license": "MIT",
   "scripts": {

@@ -118,6 +118,9 @@ export const UsersPage = () => {
         noAdd={!hasPermission("users:add")}
         onAdd={async () => {
           await register(newUser);
+
+          setNewUser({ ...newUser, username: "", password: "" });
+
           return true;
         }}
       />

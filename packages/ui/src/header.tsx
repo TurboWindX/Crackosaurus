@@ -1,4 +1,5 @@
 import {
+  ALargeSmallIcon,
   CpuIcon,
   FolderIcon,
   LockIcon,
@@ -51,6 +52,12 @@ const LINKS: readonly HeaderLinkProps[] = [
     path: "/instances",
     icon: CpuIcon,
     permission: "instances:get",
+  },
+  {
+    text: "Wordlists",
+    path: "/wordlists",
+    icon: ALargeSmallIcon,
+    permission: "wordlists:get",
   },
   {
     text: "Users",

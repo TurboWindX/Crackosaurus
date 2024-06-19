@@ -1,6 +1,10 @@
+import { type MultipartFile } from "@fastify/multipart";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
+import * as crypto from "node:crypto";
+import path from "node:path";
+import { type Readable } from "node:stream";
 
 import {
   HTTPMethod,
@@ -12,7 +16,7 @@ import {
   hasPermission,
 } from "@repo/api";
 import { ROUTES } from "@repo/api/server";
-import { HashType, toHashcatHash } from "@repo/hashcat/data";
+import { toHashcatHash } from "@repo/hashcat/data";
 import { APIError, AuthError, errorHandler } from "@repo/plugins/error";
 
 import { ClusterConnector } from "../plugins/cluster/connectors/connector";
@@ -35,12 +39,23 @@ function checkPassword(inputPassword: string, dbPassword: string): boolean {
   return bcrypt.compareSync(inputPassword, dbPassword);
 }
 
+async function streamToBuffer(stream: Readable): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: any[] = [];
+
+    stream.on("data", (chunk) => chunks.push(chunk));
+    stream.on("end", () => resolve(Buffer.concat(chunks)));
+    stream.on("error", (err) => reject(err));
+  });
+}
+
 type RouteHandler<TRoute> =
   TRoute extends Route<infer _TPath, infer _TReq, infer _TRes>
     ? (
         data: RouteRequest<TRoute>["Params"] &
           RouteRequest<TRoute>["Body"] & {
             request: FastifyRequest;
+            multipart?: MultipartFile;
             prisma: PrismaClient;
             cluster: ClusterConnector;
             currentUserID: string;
@@ -407,6 +422,7 @@ const HANDLERS: {
         },
         data: {
           password: hashPassword(newPassword),
+          updatedAt: new Date(),
         },
       });
     } catch (err) {
@@ -911,7 +927,7 @@ const HANDLERS: {
     instanceID,
     hashType,
     projectIDs,
-    wordlist,
+    wordlistID,
   }) => {
     let instance;
     try {
@@ -957,6 +973,20 @@ const HANDLERS: {
       throw new APIError("Project error");
     }
 
+    let wordlist;
+    try {
+      wordlist = await prisma.wordlist.findUniqueOrThrow({
+        select: {
+          WID: true,
+        },
+        where: {
+          WID: wordlistID,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Wordlist error");
+    }
+
     const hashes = projects.flatMap((project) =>
       project.hashes.filter(
         (hash) => hash.hashType === hashType && hash.status === STATUS.NotFound
@@ -967,7 +997,7 @@ const HANDLERS: {
 
     const jobID = await cluster.createJob(
       instance.tag,
-      wordlist,
+      wordlist.WID,
       hashType,
       hashes.map(({ hash }) => hash)
     );
@@ -977,6 +1007,11 @@ const HANDLERS: {
       await prisma.job.create({
         data: {
           JID: jobID,
+          wordlist: {
+            connect: {
+              WID: wordlist.WID,
+            },
+          },
           instance: {
             connect: {
               IID: instanceID,
@@ -1042,6 +1077,91 @@ const HANDLERS: {
 
     return "Job destroyed";
   },
+  getWordlist: async ({ prisma, wordlistID }) => {
+    try {
+      return prisma.wordlist.findUniqueOrThrow({
+        select: {
+          WID: true,
+          name: true,
+          size: true,
+          checksum: true,
+          updatedAt: true,
+        },
+        where: {
+          WID: wordlistID,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Wordlist error");
+    }
+  },
+  getWordlists: async ({ prisma }) => {
+    try {
+      return prisma.wordlist.findMany({
+        select: {
+          WID: true,
+          name: true,
+          size: true,
+          checksum: true,
+          updatedAt: true,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Wordlist error");
+    }
+  },
+  getWordlistList: async ({ prisma }) => {
+    try {
+      return prisma.wordlist.findMany({
+        select: {
+          WID: true,
+          name: true,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Wordlist error");
+    }
+  },
+  createWordlist: async ({ prisma, cluster, multipart }) => {
+    if (multipart === undefined) throw new APIError("No file");
+
+    const buffer = await streamToBuffer(multipart.file);
+    const size = buffer.length;
+    const checksum = crypto.createHash("md5").update(buffer).digest("hex");
+
+    const wordlistID = await cluster.createWordlist(buffer);
+    if (wordlistID === null) throw new APIError("Could not create wordlist");
+
+    const fileName = path.basename(multipart.filename);
+
+    try {
+      await prisma.wordlist.create({
+        data: {
+          WID: wordlistID,
+          name: fileName,
+          size,
+          checksum,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Could not create wordlist");
+    }
+
+    return wordlistID;
+  },
+  deleteWordlist: async ({ prisma, cluster, wordlistID }) => {
+    await cluster.deleteWordlist(wordlistID);
+
+    try {
+      await prisma.wordlist.delete({
+        where: {
+          WID: wordlistID,
+        },
+      });
+    } catch (e) {}
+
+    return "Wordlist destroyed";
+  },
 } as const;
 
 function checkPermission(permission: PermissionType) {
@@ -1057,16 +1177,29 @@ function checkPermission(permission: PermissionType) {
   };
 }
 
-function validate(validator: { parse?: (data: any) => any }) {
+function validate(
+  validator: { parse?: (data: any) => any },
+  type: "json" | "multipart"
+) {
   return (
     request: FastifyRequest,
     _reply: FastifyReply,
     next: (err?: Error | undefined) => void
   ) => {
-    try {
-      if (validator.parse) validator.parse(request.body ?? {});
-    } catch (e) {
-      throw new APIError("Invalid input");
+    if (type === "json") {
+      if (request.isMultipart())
+        throw new APIError("Only supports application/json");
+
+      try {
+        if (validator.parse) validator.parse(request.body ?? {});
+      } catch (e) {
+        throw new APIError("Invalid input");
+      }
+    } else if (type === "multipart") {
+      if (!request.isMultipart())
+        throw new APIError("Only supports multipart/form-data");
+
+      // TODO: Validate body.
     }
 
     next();
@@ -1086,20 +1219,33 @@ export const api: FastifyPluginCallback<{}> = (instance, _opts, next) => {
         preHandler: route.permissions.map((permission) =>
           checkPermission(permission)
         ),
-        preValidation: [validate(route.request)],
+        preValidation: [validate(route.request, route.type)],
       },
-      async (request: FastifyRequest) => ({
-        response: await handler({
-          ...(request.body as any),
-          ...(request.params as any),
-          request,
-          prisma: request.server.prisma,
-          cluster: request.server.cluster,
-          hasPermission: (permission: PermissionType) =>
-            hasPermission(request.session.permissions ?? [], permission),
-          currentUserID: request.session.uid ?? "",
-        }),
-      })
+      async (request: FastifyRequest) => {
+        let body: any = {};
+        let multipart: MultipartFile | undefined = undefined;
+        if (request.isMultipart()) {
+          multipart = await request.file();
+
+          // TODO: Handle body.
+        } else {
+          body = request.body;
+        }
+
+        return {
+          response: await handler({
+            ...(request.params as any),
+            ...body,
+            request,
+            multipart,
+            prisma: request.server.prisma,
+            cluster: request.server.cluster,
+            hasPermission: (permission: PermissionType) =>
+              hasPermission(request.session.permissions ?? [], permission),
+            currentUserID: request.session.uid ?? "",
+          }),
+        };
+      }
     );
   }
 

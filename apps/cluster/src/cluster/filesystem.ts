@@ -6,6 +6,7 @@ import {
   createClusterFolder,
   createInstanceFolder,
   createJobFolder,
+  deleteWordlistFile,
   getClusterFolderInstances,
   getClusterFolderStatus,
   getInstanceFolderJobs,
@@ -13,6 +14,7 @@ import {
   getJobMetadata,
   writeInstanceMetadata,
   writeJobMetadata,
+  writeWordlistFile,
 } from "@repo/filesystem/cluster";
 import { createWordlistFolder } from "@repo/filesystem/wordlist";
 import { type HashType } from "@repo/hashcat/data";
@@ -144,6 +146,20 @@ export abstract class FileSystemCluster<
       jobID,
       metadata
     );
+
+    return true;
+  }
+
+  public async createWordlist(data: Buffer): Promise<string | null> {
+    const wordlistID = crypto.randomUUID();
+
+    await writeWordlistFile(this.config.wordlistRoot, wordlistID, data);
+
+    return wordlistID;
+  }
+
+  public async deleteWordlist(wordlistID: string): Promise<boolean> {
+    await deleteWordlistFile(this.config.wordlistRoot, wordlistID);
 
     return true;
   }

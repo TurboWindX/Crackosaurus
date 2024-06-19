@@ -95,7 +95,9 @@ const HashDataTable = ({
         valueKey={({ HID }) => HID}
         isLoading={isLoading}
         row={({ hash, hashType, status, updatedAt }) => [
-          hash,
+          <div className="max-w-32 truncate md:max-w-64 lg:max-w-[50vw]">
+            {hash}
+          </div>,
           hashType,
           <StatusBadge status={status as Status} />,
           <RelativeTime time={updatedAt} />,
@@ -111,6 +113,9 @@ const HashDataTable = ({
         noAdd={!hasPermission("hashes:add")}
         onAdd={async () => {
           await addHash(newHash);
+
+          setNewHash({ ...newHash, hash: "" });
+
           return true;
         }}
         noRemove={!hasPermission("hashes:remove")}
@@ -266,6 +271,9 @@ const UserDataTable = ({
       noAdd={!hasPermission("projects:users:add")}
       onAdd={async () => {
         await addUser(newUser);
+
+        setNewUser({ ...newUser, userID: "" });
+
         return true;
       }}
       noRemove={!hasPermission("projects:users:remove")}
