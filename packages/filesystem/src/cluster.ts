@@ -3,7 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { ClusterStatus, STATUS } from "@repo/api";
-import { HASH_TYPES, HashType } from "@repo/hashcat/data";
+import { HASH_TYPE, HASH_TYPES, HashType } from "@repo/hashcat/data";
 import { readHashcatPot } from "@repo/hashcat/exe";
 
 export const INSTANCE_METADATA = z.object({
@@ -39,7 +39,7 @@ export type JobMetadata = z.infer<typeof JOB_METADATA>;
 
 const UNKNOWN_JOB_METADATA: JobMetadata = {
   status: STATUS.Unknown,
-  hashType: "NTLM",
+  hashType: HASH_TYPE.ntlm,
   wordlist: "",
 };
 
@@ -212,7 +212,7 @@ export function watchInstanceFolder(
   return fs.watch(
     instancePath,
     { recursive: true },
-    async (event, filename) => {
+    async (_event, filename) => {
       const filePath = path.join(instancePath, filename ?? "/");
 
       if (!fs.existsSync(filePath)) return;
@@ -386,7 +386,9 @@ export async function deleteJobFolder(
   instanceID: string,
   jobID: string
 ): Promise<void> {
-  fs.rmdirSync(path.join(instanceRoot, instanceID, jobID), { recursive: true });
+  const jobFolder = path.join(instanceRoot, instanceID, jobID);
+
+  if (fs.existsSync(jobFolder)) fs.rmdirSync(jobFolder, { recursive: true });
 }
 
 export async function writeWordlistFile(
@@ -405,5 +407,5 @@ export async function deleteWordlistFile(
 ): Promise<void> {
   const wordlistFile = path.join(wordlistRoot, wordlistID);
 
-  fs.rmSync(wordlistFile);
+  if (fs.existsSync(wordlistFile)) fs.rmSync(wordlistFile);
 }

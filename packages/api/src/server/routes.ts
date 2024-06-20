@@ -66,6 +66,7 @@ export const ROUTES = {
         ID: z.string(),
         username: z.string(),
         permissions: z.string(),
+        updatedAt: z.date(),
       })
       .array(),
   },
@@ -113,12 +114,14 @@ export const ROUTES = {
     }),
     response: z.string(),
   },
-  deleteUser: {
+  deleteUsers: {
     method: "DELETE",
-    path: "/users/:userID",
+    path: "/users",
     type: "json",
-    permissions: ["users:remove"],
-    request: z.object({}).optional(),
+    permissions: ["auth"],
+    request: z.object({
+      userIDs: z.string().array(),
+    }),
     response: z.string(),
   },
   addUserPermissions: {
@@ -141,32 +144,30 @@ export const ROUTES = {
     }),
     response: z.string(),
   },
-  addHash: {
+  addHashes: {
     method: "POST",
     path: "/projects/:projectID/hashes",
     type: "json",
     permissions: ["hashes:add"],
     request: z.object({
-      hash: z.string(),
-      hashType: z.enum(HASH_TYPES),
+      data: z
+        .object({
+          hash: z.string(),
+          hashType: z.enum(HASH_TYPES),
+        })
+        .array(),
     }),
-    response: z.string(),
+    response: z.string().nullable().array(),
   },
-  removeHash: {
+  removeHashes: {
     method: "DELETE",
-    path: "/projects/:projectID/hashes/:hashID",
+    path: "/projects/:projectID/hashes",
     type: "json",
     permissions: ["hashes:remove"],
-    request: z.object({}).optional(),
+    request: z.object({
+      hashIDs: z.string().array(),
+    }),
     response: z.string(),
-  },
-  viewHash: {
-    method: "GET",
-    path: "/projects/:projectID/hashes/:hashID/view",
-    type: "json",
-    permissions: ["hashes:view"],
-    request: z.object({}).optional(),
-    response: z.string().nullable(),
   },
   getInstance: {
     method: "GET",
@@ -217,12 +218,14 @@ export const ROUTES = {
       })
       .array(),
   },
-  deleteInstance: {
+  deleteInstances: {
     method: "DELETE",
-    path: "/instances/:instanceID",
+    path: "/instances",
     type: "json",
     permissions: ["instances:remove"],
-    request: z.object({}).optional(),
+    request: z.object({
+      instanceIDs: z.string().array(),
+    }),
     response: z.string(),
   },
   createInstance: {
@@ -248,12 +251,14 @@ export const ROUTES = {
     }),
     response: z.string(),
   },
-  deleteInstanceJob: {
+  deleteInstanceJobs: {
     method: "DELETE",
-    path: "/instances/:instanceID/jobs/:jobID",
+    path: "/instances/:instanceID/jobs",
     type: "json",
     permissions: ["instances:jobs:remove"],
-    request: z.object({}).optional(),
+    request: z.object({
+      jobIDs: z.string().array(),
+    }),
     response: z.string(),
   },
   getProject: {
@@ -278,6 +283,7 @@ export const ROUTES = {
           HID: z.string(),
           hash: z.string(),
           hashType: z.string(),
+          value: z.string().nullable().optional(),
           status: z.string(),
           updatedAt: z.date(),
           jobs: PROJECT_JOB.array().optional(),
@@ -330,12 +336,14 @@ export const ROUTES = {
     }),
     response: z.string(),
   },
-  deleteProject: {
+  deleteProjects: {
     method: "DELETE",
-    path: "/projects/:projectID",
+    path: "/projects",
     type: "json",
     permissions: ["projects:remove"],
-    request: z.object({}).optional(),
+    request: z.object({
+      projectIDs: z.string().array(),
+    }),
     response: z.string(),
   },
   getWordlist: {
@@ -389,28 +397,34 @@ export const ROUTES = {
     request: z.object({}).optional(),
     response: z.string(),
   },
-  deleteWordlist: {
+  deleteWordlists: {
     method: "DELETE",
-    path: "/wordlists/:wordlistID",
+    path: "/wordlists",
     type: "json",
     permissions: ["wordlists:remove"],
-    request: z.object({}).optional(),
+    request: z.object({
+      wordlistIDs: z.string().array(),
+    }),
     response: z.string(),
   },
-  addUserToProject: {
+  addUsersToProject: {
     method: "POST",
-    path: "/projects/:projectID/users/:userID",
+    path: "/projects/:projectID/users",
     type: "json",
     permissions: ["projects:users:add"],
-    request: z.object({}).optional(),
+    request: z.object({
+      userIDs: z.string().array(),
+    }),
     response: z.string(),
   },
-  removeUserFromProject: {
+  removeUsersFromProject: {
     method: "DELETE",
-    path: "/projects/:projectID/users/:userID",
+    path: "/projects/:projectID/users",
     type: "json",
     permissions: ["projects:users:remove"],
-    request: z.object({}).optional(),
+    request: z.object({
+      userIDs: z.string().array(),
+    }),
     response: z.string(),
   },
   changePassword: {

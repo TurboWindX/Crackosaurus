@@ -16,6 +16,8 @@
     "./components/ui/checkbox": "./src/components/ui/checkbox.tsx",
     "./components/ui/dialog": "./src/components/ui/dialog.tsx",
     "./components/ui/drawer": "./src/components/ui/drawer.tsx",
+    "./components/ui/dropdown-menu": "./src/components/ui/dropdown-menu.tsx",
+    "./components/ui/file-picker": "./src/components/ui/file-picker.tsx",
     "./components/ui/input": "./src/components/ui/input.tsx",
     "./components/ui/menubar": "./src/components/ui/menubar.tsx",
     "./components/ui/multi-select": "./src/components/ui/multi-select.tsx",

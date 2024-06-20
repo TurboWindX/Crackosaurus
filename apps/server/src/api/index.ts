@@ -181,6 +181,7 @@ const HANDLERS: {
           ID: true,
           username: true,
           permissions: true,
+          updatedAt: true,
         },
       });
     } catch (err) {
@@ -227,65 +228,43 @@ const HANDLERS: {
 
     return user.ID;
   },
-  deleteUser: async ({
+  deleteUsers: async ({
     request,
     prisma,
     hasPermission,
     currentUserID,
-    userID,
+    userIDs,
   }) => {
-    if (!hasPermission("users:remove") && userID !== currentUserID)
+    if (
+      !(
+        hasPermission("users:remove") ||
+        userIDs.every((userID) => userID === currentUserID)
+      )
+    )
       throw new APIError("Cannot remove user");
 
-    let user;
+    let count = 0;
     try {
-      user = await prisma.user.findUniqueOrThrow({
-        select: {
-          projects: {
-            select: {
-              PID: true,
-              members: {
-                select: {
-                  ID: true,
-                },
-              },
-            },
+      const res = await prisma.user.deleteMany({
+        where: {
+          ID: {
+            in: userIDs,
+          },
+          permissions: {
+            notIn: ["root"],
           },
         },
-        where: {
-          ID: userID,
-        },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
 
-    try {
-      await prisma.user.delete({
-        where: {
-          ID: userID,
-        },
-      });
+      count = res.count;
     } catch (err) {
       throw new APIError("Delete error");
     }
 
-    if (userID === currentUserID) await request.session.destroy();
+    if (count === 0) throw new APIError("No users deleted");
 
-    const emptyProjectIDs = user.projects
-      .filter(({ members }) => members.length === 1)
-      .map(({ PID }) => PID);
-    if (emptyProjectIDs.length > 0) {
-      try {
-        user = await prisma.project.deleteMany({
-          where: {
-            PID: {
-              in: emptyProjectIDs,
-            },
-          },
-        });
-      } catch (err) {}
-    }
+    if (userIDs.some((userID) => userID === currentUserID))
+      await request.session.destroy();
 
     return "User has been obliterated into oblivion";
   },
@@ -503,6 +482,7 @@ const HANDLERS: {
                   HID: true,
                   hash: true,
                   hashType: true,
+                  value: hasPermission("hashes:view"),
                   status: true,
                   updatedAt: true,
                   jobs: hasPermission("instances:jobs:get")
@@ -561,24 +541,22 @@ const HANDLERS: {
 
     return project.PID;
   },
-  deleteProject: async ({
+  deleteProjects: async ({
     prisma,
     hasPermission,
     currentUserID,
-    projectID,
+    projectIDs,
   }) => {
-    let project;
+    let projects;
     try {
-      project = await prisma.project.findUniqueOrThrow({
+      projects = await prisma.project.findMany({
         select: {
-          hashes: {
-            select: {
-              HID: true,
-            },
-          },
+          PID: true,
         },
         where: {
-          PID: projectID,
+          PID: {
+            in: projectIDs,
+          },
           members: hasPermission("root")
             ? undefined
             : {
@@ -595,8 +573,8 @@ const HANDLERS: {
     try {
       await prisma.hash.deleteMany({
         where: {
-          HID: {
-            in: project.hashes.map(({ HID }) => HID),
+          projectId: {
+            in: projects.map((project) => project.PID),
           },
         },
       });
@@ -605,9 +583,11 @@ const HANDLERS: {
     }
 
     try {
-      await prisma.project.delete({
+      await prisma.project.deleteMany({
         where: {
-          PID: projectID,
+          PID: {
+            in: projects.map((project) => project.PID),
+          },
         },
       });
     } catch (err) {
@@ -616,12 +596,12 @@ const HANDLERS: {
 
     return "Project has been deleted";
   },
-  addUserToProject: async ({
+  addUsersToProject: async ({
     prisma,
     hasPermission,
     currentUserID,
     projectID,
-    userID,
+    userIDs,
   }) => {
     try {
       await prisma.project.update({
@@ -637,9 +617,7 @@ const HANDLERS: {
         },
         data: {
           members: {
-            connect: {
-              ID: userID,
-            },
+            connect: userIDs.map((ID) => ({ ID })),
           },
         },
       });
@@ -647,14 +625,14 @@ const HANDLERS: {
       throw new APIError("Project error");
     }
 
-    return "User has been added to the project";
+    return "Users have been added to the project";
   },
-  removeUserFromProject: async ({
+  removeUsersFromProject: async ({
     prisma,
     hasPermission,
     currentUserID,
     projectID,
-    userID,
+    userIDs,
   }) => {
     try {
       await prisma.project.update({
@@ -670,9 +648,9 @@ const HANDLERS: {
         },
         data: {
           members: {
-            disconnect: {
-              ID: userID,
-            },
+            disconnect: userIDs
+              .filter((ID) => ID !== currentUserID)
+              .map((ID) => ({ ID })),
           },
         },
       });
@@ -680,15 +658,14 @@ const HANDLERS: {
       throw new APIError("Project error");
     }
 
-    return "User has been removed from the project";
+    return "Users have been removed from the project";
   },
-  addHash: async ({
+  addHashes: async ({
     prisma,
     hasPermission,
     currentUserID,
     projectID,
-    hash,
-    hashType,
+    data,
   }) => {
     try {
       await prisma.project.update({
@@ -706,19 +683,25 @@ const HANDLERS: {
           updatedAt: new Date(),
         },
       });
-    } catch (err) {}
+    } catch (err) {
+      throw new APIError("Project error");
+    }
 
-    const hashValue = toHashcatHash(hashType, hash);
+    const hashValueMap = Object.fromEntries(
+      data.map((hash) => [hash.hash, toHashcatHash(hash.hashType, hash.hash)])
+    );
 
-    let seenHash;
+    let seenHashes;
     try {
-      seenHash = await prisma.hash.findFirst({
+      seenHashes = await prisma.hash.findMany({
         select: {
+          hash: true,
           value: true,
         },
         where: {
-          hash: hashValue,
-          hashType,
+          hash: {
+            in: Object.values(hashValueMap),
+          },
           status: "FOUND",
         },
       });
@@ -726,36 +709,46 @@ const HANDLERS: {
       throw new APIError("Hash error");
     }
 
-    let outHash;
+    const seenHashMap = Object.fromEntries(
+      seenHashes.map((hash) => [hash.hash, hash.value ?? ""])
+    );
+
+    let outHashes;
     try {
-      outHash = await prisma.hash.create({
+      outHashes = await prisma.hash.createManyAndReturn({
         select: {
           HID: true,
+          hash: true,
         },
-        data: {
-          hash: hashValue,
-          hashType,
-          value: seenHash ? seenHash.value : undefined,
-          status: seenHash ? "FOUND" : undefined,
-          project: {
-            connect: {
-              PID: projectID,
-            },
-          },
-        },
+        data: data.map((hash) => {
+          const hashValue = hashValueMap[hash.hash]!;
+          const seenHash = seenHashMap[hashValue];
+
+          return {
+            hash: hashValue,
+            hashType: hash.hashType,
+            value: seenHash,
+            status: seenHash ? STATUS.Found : undefined,
+            projectId: projectID,
+          };
+        }),
       });
     } catch (err) {
       throw new APIError("Hash error");
     }
 
-    return outHash.HID;
+    const outHashMap = Object.fromEntries(
+      outHashes.map((hash) => [hash.hash, hash.HID])
+    );
+
+    return data.map((hash) => outHashMap[hashValueMap[hash.hash]!] ?? null);
   },
-  removeHash: async ({
+  removeHashes: async ({
     prisma,
     hasPermission,
     currentUserID,
     projectID,
-    hashID,
+    hashIDs,
   }) => {
     try {
       await prisma.project.update({
@@ -773,45 +766,24 @@ const HANDLERS: {
           updatedAt: new Date(),
         },
       });
-    } catch (err) {}
+    } catch (err) {
+      throw new APIError("Project error");
+    }
 
     try {
-      await prisma.hash.delete({
+      await prisma.hash.deleteMany({
         where: {
-          HID: hashID,
+          HID: {
+            in: hashIDs,
+          },
+          projectId: projectID,
         },
       });
     } catch (err) {
       throw new APIError("Hash error");
     }
 
-    return "Hash has been removed";
-  },
-  viewHash: async ({ prisma, hasPermission, currentUserID, hashID }) => {
-    let hash;
-    try {
-      hash = await prisma.hash.findUniqueOrThrow({
-        select: {
-          value: true,
-        },
-        where: {
-          HID: hashID,
-          project: {
-            members: {
-              some: hasPermission("root")
-                ? undefined
-                : {
-                    ID: currentUserID,
-                  },
-            },
-          },
-        },
-      });
-    } catch (e) {
-      throw new APIError("Hash error");
-    }
-
-    return hash.value;
+    return "Hashes have been removed";
   },
   getInstances: async ({ prisma }) => {
     try {
@@ -877,29 +849,46 @@ const HANDLERS: {
       throw new APIError("Instance error");
     }
   },
-  deleteInstance: async ({ prisma, cluster, instanceID }) => {
-    let instance;
+  deleteInstances: async ({ prisma, cluster, instanceIDs }) => {
+    let instances;
     try {
-      instance = await prisma.instance.findUniqueOrThrow({
+      instances = await prisma.instance.findMany({
         select: {
+          IID: true,
           tag: true,
         },
         where: {
-          IID: instanceID,
+          IID: {
+            in: instanceIDs,
+          },
         },
       });
     } catch (e) {
       throw new APIError("Instance error");
     }
 
-    if (!(await cluster.deleteInstance(instance.tag)))
-      throw new APIError("Could not terminate instance");
+    const results = await Promise.allSettled(
+      instances.map(
+        async (instance) =>
+          [instance.IID, await cluster.deleteInstance(instance.tag)] as const
+      )
+    );
+    const deletedIDs = results
+      .map(
+        (res) =>
+          (res.status === "fulfilled" && res.value[1]
+            ? res.value[0]
+            : null) as string
+      )
+      .filter((value) => value !== null);
 
     try {
       await prisma.job.deleteMany({
         where: {
           instance: {
-            IID: instanceID,
+            IID: {
+              in: deletedIDs,
+            },
           },
         },
       });
@@ -908,16 +897,18 @@ const HANDLERS: {
     }
 
     try {
-      await prisma.instance.delete({
+      await prisma.instance.deleteMany({
         where: {
-          IID: instanceID,
+          IID: {
+            in: deletedIDs,
+          },
         },
       });
     } catch (e) {
       throw new APIError("Instance error");
     }
 
-    return "Instance has been destroy";
+    return "Instances have been destroy";
   },
   createInstanceJob: async ({
     prisma,
@@ -1028,20 +1019,32 @@ const HANDLERS: {
 
     return jobID;
   },
-  deleteInstanceJob: async ({ prisma, cluster, instanceID, jobID }) => {
-    let job;
+  deleteInstanceJobs: async ({ prisma, cluster, instanceID, jobIDs }) => {
+    let instance;
     try {
-      job = await prisma.job.findUniqueOrThrow({
+      instance = await prisma.instance.findUniqueOrThrow({
         select: {
-          instance: {
-            select: {
-              IID: true,
-              tag: true,
-            },
-          },
+          IID: true,
+          tag: true,
         },
         where: {
-          JID: jobID,
+          IID: instanceID,
+        },
+      });
+    } catch (e) {
+      throw new APIError("Instance error");
+    }
+
+    let jobs;
+    try {
+      jobs = await prisma.job.findMany({
+        select: {
+          JID: true,
+        },
+        where: {
+          JID: {
+            in: jobIDs,
+          },
           instance: {
             IID: instanceID,
           },
@@ -1051,13 +1054,27 @@ const HANDLERS: {
       throw new APIError("Job error");
     }
 
-    if (!(await cluster.deleteJob(job.instance.tag, jobID)))
-      throw new APIError("Could not dequeue job");
+    const results = await Promise.allSettled(
+      jobs.map(
+        async ({ JID }) =>
+          [JID, await cluster.deleteJob(instance.tag, JID)] as const
+      )
+    );
+    const deletedIDs = results
+      .map(
+        (res) =>
+          (res.status === "fulfilled" && res.value[1]
+            ? res.value[0]
+            : null) as string
+      )
+      .filter((value) => value !== null);
 
     try {
-      await prisma.job.delete({
+      await prisma.job.deleteMany({
         where: {
-          JID: jobID,
+          JID: {
+            in: deletedIDs,
+          },
         },
       });
     } catch (e) {
@@ -1067,7 +1084,7 @@ const HANDLERS: {
     try {
       await prisma.instance.update({
         where: {
-          IID: job.instance.IID,
+          IID: instanceID,
         },
         data: {
           updatedAt: new Date(),
@@ -1075,7 +1092,7 @@ const HANDLERS: {
       });
     } catch (e) {}
 
-    return "Job destroyed";
+    return "Jobs destroyed";
   },
   getWordlist: async ({ prisma, wordlistID }) => {
     try {
@@ -1149,16 +1166,22 @@ const HANDLERS: {
 
     return wordlistID;
   },
-  deleteWordlist: async ({ prisma, cluster, wordlistID }) => {
-    await cluster.deleteWordlist(wordlistID);
+  deleteWordlists: async ({ prisma, cluster, wordlistIDs }) => {
+    await Promise.all(
+      wordlistIDs.map((wordlistID) => cluster.deleteWordlist(wordlistID))
+    );
 
     try {
-      await prisma.wordlist.delete({
+      await prisma.wordlist.deleteMany({
         where: {
-          WID: wordlistID,
+          WID: {
+            in: wordlistIDs,
+          },
         },
       });
-    } catch (e) {}
+    } catch (e) {
+      throw new APIError("Wordlist could not be deleted");
+    }
 
     return "Wordlist destroyed";
   },

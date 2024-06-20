@@ -5,8 +5,8 @@ import { Button } from "@repo/shadcn/components/ui/button";
 export const ErrorPage = () => {
   return (
     <div className="grid h-screen content-center justify-items-center">
-      <div className="grid justify-items-center gap-8">
-        <div className="grid justify-items-center gap-4">
+      <div className="grid justify-items-center gap-4">
+        <div className="grid justify-items-center gap-2">
           <svg
             xmlns="http://www.w3.org/2000/svg"
             className="w-24"

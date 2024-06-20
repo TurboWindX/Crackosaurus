@@ -56,6 +56,16 @@ export const InstancesPage = () => {
     onError: handleError,
   });
 
+  const { mutateAsync: deleteInstances } = useMutation({
+    mutationFn: (instanceIDs: string[]) => API.deleteInstances({ instanceIDs }),
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["instances", "list"],
+      });
+    },
+    onError: handleError,
+  });
+
   return (
     <div className="p-4">
       <DataTable
@@ -80,7 +90,7 @@ export const InstancesPage = () => {
             <Input
               placeholder="Name"
               type="text"
-              value={newInstance.name ?? ""}
+              value={newInstance.name!}
               onChange={(e) =>
                 setNewInstance({
                   ...newInstance,
@@ -91,7 +101,7 @@ export const InstancesPage = () => {
             <Input
               placeholder="Type"
               type="text"
-              value={newInstance.type ?? ""}
+              value={newInstance.type!}
               onChange={(e) =>
                 setNewInstance({
                   ...newInstance,
@@ -104,6 +114,11 @@ export const InstancesPage = () => {
         noAdd={!hasPermission("instances:add")}
         onAdd={async () => {
           await createInstance(newInstance);
+          return true;
+        }}
+        noRemove={!hasPermission("root")}
+        onRemove={async (instances) => {
+          await deleteInstances(instances.map(({ IID }) => IID));
           return true;
         }}
       />

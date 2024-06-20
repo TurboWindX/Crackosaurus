@@ -64,10 +64,8 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   });
 
   const { mutateAsync: deleteInstanceJobs } = useMutation({
-    mutationFn: async (ids: string[]) =>
-      Promise.all(
-        ids.map((jobID) => API.deleteInstanceJob({ instanceID, jobID }))
-      ),
+    mutationFn: async (jobIDs: string[]) =>
+      API.deleteInstanceJobs({ instanceID, jobIDs }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["instances", instanceID],
@@ -102,7 +100,9 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
             <SelectContent>
               <SelectGroup>
                 {HASH_TYPES.map((type) => (
-                  <SelectItem value={type}>{type}</SelectItem>
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
                 ))}
               </SelectGroup>
             </SelectContent>
@@ -161,7 +161,7 @@ export const InstancePage = () => {
     isLoadingError,
   } = useQuery({
     queryKey: ["instances", instanceID],
-    queryFn: async () => API.getInstance({ instanceID: instanceID ?? "" }),
+    queryFn: async () => API.getInstance({ instanceID: instanceID! }),
     retry(count, error) {
       if (error instanceof APIError && error.status === 401) return false;
       return count < 3;
@@ -175,7 +175,8 @@ export const InstancePage = () => {
   }, [isLoadingError, error]);
 
   const { mutateAsync: deleteInstance } = useMutation({
-    mutationFn: API.deleteInstance,
+    mutationFn: (instanceID: string) =>
+      API.deleteInstances({ instanceIDs: [instanceID] }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["instances", "list"],
@@ -187,8 +188,8 @@ export const InstancePage = () => {
   });
 
   return (
-    <div className="grid gap-8 p-4">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="grid gap-4 p-4">
+      <div className="grid grid-cols-2 gap-2">
         <div className="grid gap-2">
           <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
             {instance?.name || instance?.IID || "Instance"}
@@ -197,7 +198,7 @@ export const InstancePage = () => {
             <StatusBadge status={(instance?.status ?? STATUS.Unknown) as any} />
           </div>
         </div>
-        <div className="grid grid-flow-col justify-end gap-4">
+        <div className="grid grid-flow-col justify-end gap-2">
           {hasPermission("instances:remove") && (
             <div className="w-max">
               <DrawerDialog
@@ -214,11 +215,11 @@ export const InstancePage = () => {
                 }
               >
                 <form
-                  className="grid gap-4"
+                  className="grid gap-2"
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    await deleteInstance({ instanceID: instanceID ?? "" });
+                    await deleteInstance(instanceID!);
                   }}
                 >
                   <span>Do you want to permanently remove this instance?</span>

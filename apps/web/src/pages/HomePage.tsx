@@ -1,6 +1,6 @@
 export const HomePage = () => {
   return (
-    <div className="grid gap-4 p-4 text-justify">
+    <div className="grid gap-2 p-4 text-justify">
       <h1 className="text-center text-2xl font-bold md:text-left">
         Welcome to Crackosaurus
       </h1>

@@ -216,7 +216,7 @@ const PasswordUpdateButton = ({
         trigger={trigger}
       >
         <form
-          className="grid gap-4"
+          className="grid gap-2"
           onSubmit={async (e) => {
             e.preventDefault();
 
@@ -266,7 +266,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
   const { handleError } = useErrors();
 
   const { mutateAsync: deleteUser } = useMutation({
-    mutationFn: API.deleteUser,
+    mutationFn: (userID: string) => API.deleteUsers({ userIDs: [userID] }),
     onSuccess() {
       if (uid === userID) {
         queryClient.invalidateQueries();
@@ -308,11 +308,11 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
         trigger={trigger}
       >
         <form
-          className="grid gap-4"
+          className="grid gap-2"
           onSubmit={async (e) => {
             e.preventDefault();
 
-            await deleteUser({ userID });
+            await deleteUser(userID);
           }}
         >
           <span>Do you want to permanently remove this user?</span>
@@ -336,7 +336,7 @@ export const UserPage = () => {
     isLoadingError,
   } = useQuery({
     queryKey: ["users", userID],
-    queryFn: async () => API.getUser({ userID: userID ?? "" }),
+    queryFn: async () => API.getUser({ userID: userID! }),
     retry(count, error) {
       if (error instanceof APIError && error.status === 401) return false;
       return count < 3;
@@ -374,8 +374,8 @@ export const UserPage = () => {
   }, [tables]);
 
   return (
-    <div className="grid gap-8 p-4">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="grid gap-4 p-4">
+      <div className="grid grid-cols-2 gap-2">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
           {user?.username ?? "Username"}
         </span>

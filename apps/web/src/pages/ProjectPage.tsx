@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { TrashIcon } from "lucide-react";
+import { PlayIcon, TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { z } from "zod";
 
 import { APIError, Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
@@ -21,12 +22,21 @@ import {
 import { Separator } from "@repo/shadcn/components/ui/separator";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
+import { InstanceSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 import { UserSelect } from "@repo/ui/users";
+import { WordlistSelect } from "@repo/ui/wordlists";
+
+const HASH_IMPORT_VALIDATOR = z
+  .object({
+    hash: z.string(),
+    type: z.enum(HASH_TYPES),
+  })
+  .array();
 
 interface HashDataTableProps {
   projectID: string;
@@ -41,8 +51,9 @@ const HashDataTable = ({
 }: HashDataTableProps) => {
   const { hasPermission } = useAuth();
 
-  const [newHash, setNewHash] = useState<REQ<APIType["addHash"]>>({
-    projectID,
+  const [newHash, setNewHash] = useState<
+    REQ<APIType["addHashes"]>["data"][number]
+  >({
     hash: "",
     hashType: "" as HashType,
   });
@@ -53,14 +64,13 @@ const HashDataTable = ({
 
   const [viewOpen, setViewOpen] = useState(false);
   const [viewHashID, setViewHashID] = useState<string | null>(null);
-  const { data: viewHash } = useQuery({
-    queryKey: ["hashes", viewHashID],
-    queryFn: async () =>
-      viewHashID ? await API.viewHash({ projectID, hashID: viewHashID }) : null,
-  });
+  const viewHash = useMemo(
+    () => values?.find((hash) => hash.HID === viewHashID)?.value,
+    [viewHashID]
+  );
 
-  const { mutateAsync: addHash } = useMutation({
-    mutationFn: API.addHash,
+  const { mutateAsync: addHashes } = useMutation({
+    mutationFn: API.addHashes,
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["projects", projectID],
@@ -70,10 +80,7 @@ const HashDataTable = ({
   });
 
   const { mutateAsync: removeHashes } = useMutation({
-    mutationFn: (ids: string[]) =>
-      Promise.allSettled(
-        ids.map((hashID) => API.removeHash({ projectID, hashID }))
-      ),
+    mutationFn: (hashIDs: string[]) => API.removeHashes({ projectID, hashIDs }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["projects", projectID],
@@ -112,7 +119,10 @@ const HashDataTable = ({
         }
         noAdd={!hasPermission("hashes:add")}
         onAdd={async () => {
-          await addHash(newHash);
+          await addHashes({
+            projectID,
+            data: [newHash],
+          });
 
           setNewHash({ ...newHash, hash: "" });
 
@@ -122,6 +132,30 @@ const HashDataTable = ({
         onRemove={async (hashes) => {
           await removeHashes(hashes.map(({ HID }) => HID));
           return true;
+        }}
+        noImport={!hasPermission("hashes:add")}
+        onImport={async (data) => {
+          const result = HASH_IMPORT_VALIDATOR.safeParse(data);
+          if (result.error) return false;
+
+          await addHashes({
+            projectID,
+            data: result.data.map(({ hash, type }) => ({
+              hash: hash,
+              hashType: type,
+            })),
+          });
+
+          return true;
+        }}
+        exportPrefix={`hashes-${projectID}`}
+        noExport={!hasPermission("hashes:get")}
+        onExport={async (data) => {
+          return data.map(({ hash, hashType, value }) => ({
+            hash,
+            type: hashType,
+            value,
+          }));
         }}
         searchFilter={({ hash, hashType }, search) =>
           hash.toLowerCase().includes(search.toLowerCase()) ||
@@ -158,7 +192,9 @@ const HashDataTable = ({
               <SelectContent>
                 <SelectGroup>
                   {HASH_TYPES.map((type) => (
-                    <SelectItem value={type}>{type}</SelectItem>
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
                   ))}
                 </SelectGroup>
               </SelectContent>
@@ -212,17 +248,15 @@ const UserDataTable = ({
 }: UserDataTableProps) => {
   const { hasPermission } = useAuth();
 
-  const [newUser, setNewUser] = useState<REQ<APIType["addUserToProject"]>>({
-    projectID,
-    userID: "",
-  });
+  const [newUserID, setNewUserID] = useState<string>("");
 
   const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
   const { mutateAsync: addUser } = useMutation({
-    mutationFn: API.addUserToProject,
+    mutationFn: (userID: string) =>
+      API.addUsersToProject({ projectID, userIDs: [userID] }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["projects", projectID],
@@ -232,10 +266,8 @@ const UserDataTable = ({
   });
 
   const { mutateAsync: removeUsers } = useMutation({
-    mutationFn: (ids: string[]) =>
-      Promise.allSettled(
-        ids.map((userID) => API.removeUserFromProject({ projectID, userID }))
-      ),
+    mutationFn: (userIDs: string[]) =>
+      API.removeUsersFromProject({ projectID, userIDs }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["projects", projectID],
@@ -256,12 +288,12 @@ const UserDataTable = ({
         username.toLowerCase().includes(search)
       }
       sort={(a, b) => a.username.localeCompare(b.username)}
-      addValidate={() => addUser !== null}
+      addValidate={() => newUserID.length > 0}
       addDialog={
         <>
           <UserSelect
-            value={newUser.userID}
-            onValueChange={(userID) => setNewUser({ ...newUser, userID })}
+            value={newUserID}
+            onValueChange={(userID) => setNewUserID(userID)}
             filter={({ ID }) =>
               (values ?? []).every((member) => ID !== member.ID) === true
             }
@@ -270,9 +302,9 @@ const UserDataTable = ({
       }
       noAdd={!hasPermission("projects:users:add")}
       onAdd={async () => {
-        await addUser(newUser);
+        await addUser(newUserID);
 
-        setNewUser({ ...newUser, userID: "" });
+        setNewUserID("");
 
         return true;
       }}
@@ -285,14 +317,169 @@ const UserDataTable = ({
   );
 };
 
-export const ProjectPage = () => {
-  const { projectID } = useParams();
+interface StartButtonProps {
+  projectID: string;
+  hashes: RES<APIType["getProject"]>["hashes"];
+  isLoading: boolean;
+}
+
+const StartButton = ({ projectID, isLoading, hashes }: StartButtonProps) => {
+  const [open, setOpen] = useState(false);
+
+  const [instanceID, setInstanceID] = useState("");
+  const [wordlistID, setWordlistID] = useState("");
+
+  const todoHashes = useMemo(
+    () => (hashes ?? []).filter((hash) => typeof hash.value !== "string"),
+    [hashes]
+  );
+  const hasTodoHashes = useMemo(() => todoHashes.length > 0, [todoHashes]);
+
+  const isValid = useMemo(
+    () => instanceID.length > 0 && wordlistID.length > 0 && hasTodoHashes,
+    [instanceID, wordlistID, hasTodoHashes]
+  );
 
   const { hasPermission } = useAuth();
+
+  const API = useAPI();
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const { mutateAsync: addJobs } = useMutation({
+    mutationFn: ({
+      instanceID,
+      wordlistID,
+      hashTypes,
+    }: {
+      instanceID: string;
+      wordlistID: string;
+      hashTypes: HashType[];
+    }) =>
+      Promise.all(
+        hashTypes.map((hashType) =>
+          API.createInstanceJob({
+            instanceID,
+            wordlistID,
+            hashType,
+            projectIDs: [projectID],
+          })
+        )
+      ),
+    onSuccess() {
+      queryClient.invalidateQueries({ queryKey: ["projects", projectID] });
+    },
+    onError: handleError,
+  });
+
+  if (!hasPermission("instances:jobs:add")) return <></>;
+
+  return (
+    <DrawerDialog
+      title="Start Project"
+      open={open}
+      setOpen={setOpen}
+      trigger={
+        <Button variant="outline" disabled={isLoading || !hasTodoHashes}>
+          <div className="grid grid-flow-col items-center gap-2">
+            <PlayIcon />
+            <span>Start</span>
+          </div>
+        </Button>
+      }
+    >
+      <form
+        className="grid gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+
+          await addJobs({
+            instanceID,
+            wordlistID,
+            hashTypes: [
+              ...new Set(
+                todoHashes.map(({ hashType }) => hashType as HashType)
+              ),
+            ],
+          });
+
+          setInstanceID("");
+          setWordlistID("");
+          setOpen(false);
+        }}
+      >
+        <InstanceSelect value={instanceID} onValueChange={setInstanceID} />
+        <WordlistSelect value={wordlistID} onValueChange={setWordlistID} />
+        <Button disabled={!isValid}>Start</Button>
+      </form>
+    </DrawerDialog>
+  );
+};
+
+interface RemoveButtonProps {
+  projectID: string;
+  isLoading?: boolean;
+}
+
+const RemoveButton = ({ projectID, isLoading }: RemoveButtonProps) => {
+  const [open, setOpen] = useState(false);
+
+  const { hasPermission } = useAuth();
+
   const navigate = useNavigate();
 
   const API = useAPI();
   const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const { mutateAsync: deleteProject } = useMutation({
+    mutationFn: async (projectID: string) =>
+      API.deleteProjects({ projectIDs: [projectID] }),
+    onSuccess() {
+      queryClient.invalidateQueries({ queryKey: ["projects", "list"] });
+
+      navigate("/projects");
+    },
+    onError: handleError,
+  });
+
+  if (!hasPermission("projects:remove")) return <></>;
+
+  return (
+    <DrawerDialog
+      title="Remove Project"
+      open={open}
+      setOpen={setOpen}
+      trigger={
+        <Button variant="outline" disabled={isLoading}>
+          <div className="grid grid-flow-col items-center gap-2">
+            <TrashIcon />
+            <span>Remove</span>
+          </div>
+        </Button>
+      }
+    >
+      <form
+        className="grid gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+
+          await deleteProject(projectID!);
+        }}
+      >
+        <span>Do you want to permanently remove this project?</span>
+        <Button>Remove</Button>
+      </form>
+    </DrawerDialog>
+  );
+};
+
+export const ProjectPage = () => {
+  const { projectID } = useParams();
+
+  const { hasPermission } = useAuth();
+
+  const API = useAPI();
   const { handleError } = useErrors();
 
   const {
@@ -302,7 +489,7 @@ export const ProjectPage = () => {
     isLoadingError,
   } = useQuery({
     queryKey: ["projects", projectID],
-    queryFn: async () => API.getProject({ projectID: projectID ?? "" }),
+    queryFn: async () => API.getProject({ projectID: projectID! }),
     retry(count, error) {
       if (error instanceof APIError && error.status === 401) return false;
       return count < 3;
@@ -314,18 +501,6 @@ export const ProjectPage = () => {
   useEffect(() => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
-
-  const { mutateAsync: deleteProject } = useMutation({
-    mutationFn: async (projectID: string) => API.deleteProject({ projectID }),
-    onSuccess() {
-      queryClient.invalidateQueries({ queryKey: ["projects", "list"] });
-
-      navigate("/projects");
-    },
-    onError: handleError,
-  });
-
-  const [removeOpen, setRemoveOpen] = useState(false);
 
   const hashes = useMemo(() => project?.hashes ?? [], [project]);
 
@@ -369,45 +544,27 @@ export const ProjectPage = () => {
 
   const separatedTables = tables
     .filter((value) => value)
-    .flatMap((value) => [value, <Separator />]);
+    .flatMap((value, i) => [value, <Separator key={i} />]);
   separatedTables.pop();
 
   return (
-    <div className="grid gap-8 p-4">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="grid gap-4 p-4">
+      <div className="grid grid-cols-2 gap-2">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
           {project?.name ?? "Project"}
         </span>
-        <div className="grid grid-flow-col justify-end gap-4">
-          {hasPermission("projects:remove") && (
-            <div className="w-max">
-              <DrawerDialog
-                title="Remove Project"
-                open={removeOpen}
-                setOpen={setRemoveOpen}
-                trigger={
-                  <Button variant="outline">
-                    <div className="grid grid-flow-col items-center gap-2">
-                      <TrashIcon />
-                      <span>Remove</span>
-                    </div>
-                  </Button>
-                }
-              >
-                <form
-                  className="grid gap-4"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-
-                    await deleteProject(projectID ?? "");
-                  }}
-                >
-                  <span>Do you want to permanently remove this project?</span>
-                  <Button>Remove</Button>
-                </form>
-              </DrawerDialog>
-            </div>
-          )}
+        <div className="grid grid-flow-col justify-end gap-2">
+          <StartButton
+            key="start"
+            projectID={projectID!}
+            hashes={project?.hashes}
+            isLoading={isLoading}
+          />
+          <RemoveButton
+            key="remove"
+            projectID={projectID!}
+            isLoading={isLoading}
+          />
         </div>
       </div>
       {separatedTables}

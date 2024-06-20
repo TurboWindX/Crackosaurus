@@ -55,6 +55,16 @@ export const ProjectsPage = () => {
     onError: handleError,
   });
 
+  const { mutateAsync: deleteProjects } = useMutation({
+    mutationFn: (projectIDs: string[]) => API.deleteProjects({ projectIDs }),
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", "list"],
+      });
+    },
+    onError: handleError,
+  });
+
   return (
     <div className="p-4">
       <DataTable
@@ -99,6 +109,15 @@ export const ProjectsPage = () => {
         noAdd={!hasPermission("projects:add")}
         onAdd={async () => {
           await createProject(newProject);
+
+          setNewProject({ ...newProject, projectName: "" });
+
+          return true;
+        }}
+        noRemove={!hasPermission("root")}
+        onRemove={async (projects) => {
+          await deleteProjects(projects.map((project) => project.PID));
+
           return true;
         }}
       />

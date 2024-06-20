@@ -4,3 +4,4 @@ node_modules
 *.key
 *.crt
 *.csr
+/*.js

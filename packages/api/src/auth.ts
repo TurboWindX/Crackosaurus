@@ -49,7 +49,8 @@ export const PERMISSION_PROFILES = {
     "projects:remove",
     "projects:users:*",
     "users:list",
-    "wordlists:*",
+    "wordlists:get",
+    "wordlists:list",
   ],
   viewer: ["auth", "hashes:get"],
 } satisfies Record<string, PermissionType[]>;
