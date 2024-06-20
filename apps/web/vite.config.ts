@@ -8,6 +8,7 @@ const config = loadWebConfig();
 export default defineConfig({
   clearScreen: false,
   server: {
+    host: "0.0.0.0",
     port: config.host.port,
   },
   plugins: [react()],

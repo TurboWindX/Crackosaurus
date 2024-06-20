@@ -11,6 +11,9 @@
     "dev": {
       "cache": false
     },
+    "start": {
+      "dependsOn": ["^start"]
+    },
     "format": {
       "dependsOn": ["^format"],
       "cache": false
