@@ -120,7 +120,7 @@ export const ROUTES = {
     request: z.object({
       userIDs: z.string().array(),
     }),
-    response: z.number().int().positive(),
+    response: z.number().int().min(0),
   },
   addUserPermissions: {
     method: "POST",
@@ -140,7 +140,7 @@ export const ROUTES = {
     request: z.object({
       permissions: z.enum(PERMISSIONS).array(),
     }),
-    response: z.number().int().positive(),
+    response: z.number().int().min(0),
   },
   addHashes: {
     method: "POST",
@@ -151,7 +151,7 @@ export const ROUTES = {
       data: z
         .object({
           hash: z.string(),
-          hashType: z.number().int().positive(),
+          hashType: z.number().int().min(0),
         })
         .array(),
     }),
@@ -165,7 +165,7 @@ export const ROUTES = {
     request: z.object({
       hashIDs: z.string().array(),
     }),
-    response: z.number().int().positive(),
+    response: z.number().int().min(0),
   },
   getInstance: {
     method: "GET",
@@ -224,7 +224,7 @@ export const ROUTES = {
     request: z.object({
       instanceIDs: z.string().array(),
     }),
-    response: z.number().int().positive(),
+    response: z.number().int().min(0),
   },
   createInstance: {
     method: "POST",
@@ -244,7 +244,7 @@ export const ROUTES = {
     permissions: ["instances:jobs:add"],
     request: z.object({
       wordlistID: z.string(),
-      hashType: z.number().int().positive(),
+      hashType: z.number().int().min(0),
       projectIDs: z.string().array(),
     }),
     response: z.string(),
@@ -257,7 +257,7 @@ export const ROUTES = {
     request: z.object({
       jobIDs: z.string().array(),
     }),
-    response: z.number().int().positive(),
+    response: z.number().int().min(0),
   },
   getProject: {
     method: "GET",
@@ -280,7 +280,7 @@ export const ROUTES = {
         .object({
           HID: z.string(),
           hash: z.string(),
-          hashType: z.number().int().positive(),
+          hashType: z.number().int().min(0),
           value: z.string().nullable().optional(),
           status: z.string(),
           updatedAt: z.date(),
@@ -342,7 +342,7 @@ export const ROUTES = {
     request: z.object({
       projectIDs: z.string().array(),
     }),
-    response: z.number().int().positive(),
+    response: z.number().int().min(0),
   },
   getWordlist: {
     method: "GET",
@@ -353,7 +353,7 @@ export const ROUTES = {
     response: z.object({
       WID: z.string(),
       name: z.string().nullable(),
-      size: z.number().int().positive(),
+      size: z.number().int().min(0),
       checksum: z.string(),
       updatedAt: z.date(),
     }),
@@ -368,7 +368,7 @@ export const ROUTES = {
       .object({
         WID: z.string(),
         name: z.string().nullable(),
-        size: z.number().int().positive(),
+        size: z.number().int().min(0),
         checksum: z.string(),
         updatedAt: z.date(),
       })
@@ -403,7 +403,7 @@ export const ROUTES = {
     request: z.object({
       wordlistIDs: z.string().array(),
     }),
-    response: z.number().int().positive(),
+    response: z.number().int().min(0),
   },
   addUsersToProject: {
     method: "POST",
@@ -413,7 +413,7 @@ export const ROUTES = {
     request: z.object({
       userIDs: z.string().array(),
     }),
-    response: z.number().int().positive(),
+    response: z.number().int().min(0),
   },
   removeUsersFromProject: {
     method: "DELETE",
@@ -423,7 +423,7 @@ export const ROUTES = {
     request: z.object({
       userIDs: z.string().array(),
     }),
-    response: z.number().int().positive(),
+    response: z.number().int().min(0),
   },
   changePassword: {
     method: "PUT",

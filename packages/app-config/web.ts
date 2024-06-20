@@ -12,11 +12,11 @@ const WEB_ENV = {
 export const WEB_CONFIG = z.object({
   host: z.object({
     name: z.string(),
-    port: z.number().int().positive(),
+    port: z.number().int().min(0),
   }),
   backend: z.object({
     name: z.string(),
-    port: z.number().int().positive(),
+    port: z.number().int().min(0),
   }),
 });
 export type WebConfig = z.infer<typeof WEB_CONFIG>;

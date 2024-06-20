@@ -59,7 +59,7 @@ export const ROUTES = {
     permissions: [],
     request: z.object({
       wordlist: z.string(),
-      hashType: z.number().int().positive(),
+      hashType: z.number().int().min(0),
       hashes: z.string().array(),
     }),
     response: z.string().nullable(),

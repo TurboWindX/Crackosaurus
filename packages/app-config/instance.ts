@@ -16,7 +16,7 @@ export const INSTANCE_CONFIG = z.object({
   hashcatPath: z.string(),
   instanceRoot: z.string(),
   wordlistRoot: z.string(),
-  instanceInterval: z.number().int().positive(),
+  instanceInterval: z.number().int().min(0),
   instanceCooldown: z.number().int(),
 });
 export type InstanceConfig = z.infer<typeof INSTANCE_CONFIG>;

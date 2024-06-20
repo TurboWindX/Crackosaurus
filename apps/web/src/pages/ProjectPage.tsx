@@ -30,7 +30,7 @@ type ProjectJobWithType = ProjectJob & { type: number };
 const HASH_IMPORT_VALIDATOR = z
   .object({
     hash: z.string(),
-    type: z.number().int().positive(),
+    type: z.number().int().min(0),
   })
   .array();
 
@@ -142,7 +142,11 @@ const HashDataTable = ({
         noImport={!hasPermission("hashes:add")}
         onImport={async (data) => {
           const result = HASH_IMPORT_VALIDATOR.safeParse(data);
-          if (result.error) return false;
+          if (result.error) {
+            console.log(result.error.format());
+            handleError(new APIError({ code: 500, message: "input" }));
+            return false;
+          }
 
           await addHashes({
             projectID,

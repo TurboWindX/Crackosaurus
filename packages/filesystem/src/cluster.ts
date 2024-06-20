@@ -32,7 +32,7 @@ export const JOB_METADATA = z.object({
     STATUS.Error,
     STATUS.Unknown,
   ]),
-  hashType: z.number().int().positive(),
+  hashType: z.number().int().min(0),
   wordlist: z.string(),
 });
 export type JobMetadata = z.infer<typeof JOB_METADATA>;

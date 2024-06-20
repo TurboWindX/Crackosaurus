@@ -25,7 +25,7 @@ export const BACKEND_DEFAULT_SECRET = "$SECRET:123456789012345678901234567890$";
 export const BACKEND_CONFIG = z.object({
   host: z.object({
     name: z.string(),
-    port: z.number().int().positive(),
+    port: z.number().int().min(0),
   }),
   database: z.object({
     provider: z.enum(DATABASE_PROVIDERS),
@@ -33,11 +33,11 @@ export const BACKEND_CONFIG = z.object({
   }),
   web: z.object({
     name: z.string(),
-    port: z.number().int().positive(),
+    port: z.number().int().min(0),
   }),
   cluster: z.object({
     name: z.string(),
-    port: z.number().int().positive(),
+    port: z.number().int().min(0),
   }),
   secret: z.string().min(32),
 });
