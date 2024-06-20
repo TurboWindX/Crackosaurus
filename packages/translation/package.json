@@ -1,0 +1,10 @@
+{
+  "name": "@repo/translation",
+  "version": "0.0.0",
+  "license": "MIT",
+  "exports": {
+    "./en/translation.json": "./en/translation.json",
+    "./fr/translation.json": "./fr/translation.json",
+    "./fr/moment.ts": "./fr/moment.ts"
+  }
+}

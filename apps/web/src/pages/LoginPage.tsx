@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "@repo/shadcn/components/ui/button";
@@ -14,6 +15,7 @@ import { useAuth } from "@repo/ui/auth";
 export const LoginPage = () => {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
+  const { t } = useTranslation();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -27,9 +29,9 @@ export const LoginPage = () => {
     <div className="grid h-screen lg:grid-cols-3">
       <div className="content-center lg:col-start-2">
         <CardHeader>
-          <CardTitle className="text-center">Crackosaurus</CardTitle>
+          <CardTitle className="text-center">{t("app")}</CardTitle>
           <CardDescription className="text-center">
-            Enter your username and password below to login
+            {t("page.login.header")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -45,17 +47,17 @@ export const LoginPage = () => {
           >
             <Input
               type="text"
-              placeholder="Username"
+              placeholder={t("item.username.singular")}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
             <Input
               type="password"
-              placeholder="Password"
+              placeholder={t("item.password.singular")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <Button>Login</Button>
+            <Button>{t("page.login.button")}</Button>
           </form>
         </CardContent>
       </div>

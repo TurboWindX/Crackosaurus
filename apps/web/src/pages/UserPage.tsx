@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { t } from "i18next";
 import { KeyRoundIcon, LogOutIcon, TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { APIError, PermissionType } from "@repo/api";
@@ -22,13 +24,15 @@ interface ProjectDataTableProps {
 }
 
 const ProjectDataTable = ({ values, isLoading }: ProjectDataTableProps) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   return (
     <DataTable
-      type="Project"
+      singular={t("item.project.singular")}
+      plural={t("item.project.plural")}
       values={values ?? []}
-      head={["Project"]}
+      head={[t("item.project.singular")]}
       rowClick={({ PID }) => navigate(`/projects/${PID}`)}
       row={({ name }) => [name]}
       sort={(a, b) => a.name.localeCompare(b.name)}
@@ -89,9 +93,10 @@ const PermissionDataTable = ({
 
   return (
     <DataTable
-      type="Permission"
+      singular={t("item.permission.singular")}
+      plural={t("item.permission.plural")}
       values={permissions}
-      head={["Permission"]}
+      head={[t("item.permission.singular")]}
       row={(permission) => [permission]}
       sort={(a, b) => a.localeCompare(b)}
       isLoading={isLoading}
@@ -138,6 +143,7 @@ interface LogoutButtonProps {
 }
 
 const LogoutButton = ({ userID }: LogoutButtonProps) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const { uid, logout } = useAuth();
@@ -160,7 +166,7 @@ const LogoutButton = ({ userID }: LogoutButtonProps) => {
       >
         <div className="grid grid-flow-col items-center gap-2">
           <LogOutIcon />
-          <span>Logout</span>
+          <span>{t("action.logout.text")}</span>
         </div>
       </Button>
     </div>
@@ -176,6 +182,7 @@ const PasswordUpdateButton = ({
   userID,
   isLoading,
 }: PasswordUpdateButtonProps) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const [oldPassword, setOldPassword] = useState("");
@@ -191,7 +198,7 @@ const PasswordUpdateButton = ({
       <Button variant="outline">
         <div className="grid grid-flow-col items-center gap-2">
           <KeyRoundIcon />
-          <span>Password</span>
+          <span>{t("item.password.singular")}</span>
         </div>
       </Button>
     ),
@@ -210,7 +217,7 @@ const PasswordUpdateButton = ({
   return (
     <div className="w-max">
       <DrawerDialog
-        title="Update Password"
+        title={t("action.update.item", { item: t("item.password.singular") })}
         open={open}
         setOpen={setOpen}
         trigger={trigger}
@@ -236,12 +243,12 @@ const PasswordUpdateButton = ({
             />
           )}
           <Input
-            placeholder="New Password"
+            placeholder={t("item.password.singular")}
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
           />
-          <Button>Update</Button>
+          <Button>{t("action.update.text")}</Button>
         </form>
       </DrawerDialog>
     </div>
@@ -255,6 +262,7 @@ interface RemoveButtonProps {
 }
 
 const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const { uid, hasPermission } = useAuth();
@@ -288,7 +296,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
       <Button variant="outline">
         <div className="grid grid-flow-col items-center gap-2">
           <TrashIcon />
-          <span>Remove</span>
+          <span>{t("action.remove.text")}</span>
         </div>
       </Button>
     ),
@@ -302,7 +310,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
   return (
     <div className="w-max">
       <DrawerDialog
-        title="Remove User"
+        title={t("action.remove.item", { item: t("item.user.singular") })}
         open={open}
         setOpen={setOpen}
         trigger={trigger}
@@ -315,8 +323,12 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
             await deleteUser(userID);
           }}
         >
-          <span>Do you want to permanently remove this user?</span>
-          <Button>Remove</Button>
+          <span>
+            {t("action.remove.warn", {
+              item: t("item.user.singular").toLowerCase(),
+            })}
+          </span>
+          <Button>{t("action.remove.text")}</Button>
         </form>
       </DrawerDialog>
     </div>

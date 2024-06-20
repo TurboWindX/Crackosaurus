@@ -6,6 +6,7 @@ import {
   UserIcon,
   UsersIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { PermissionType } from "@repo/api";
@@ -30,7 +31,7 @@ import {
 import { useAuth } from "./auth";
 
 interface HeaderLinkProps {
-  text: string;
+  label: string;
   path: string;
   icon: any;
   permission?: PermissionType;
@@ -38,29 +39,29 @@ interface HeaderLinkProps {
 
 const LINKS: readonly HeaderLinkProps[] = [
   {
-    text: "Crackosaurus",
+    label: "app",
     path: "/",
     icon: LockIcon,
   },
   {
-    text: "Projects",
+    label: "item.project.plural",
     path: "/projects",
     icon: FolderIcon,
   },
   {
-    text: "Instances",
+    label: "item.instance.plural",
     path: "/instances",
     icon: CpuIcon,
     permission: "instances:get",
   },
   {
-    text: "Wordlists",
+    label: "item.wordlist.plural",
     path: "/wordlists",
     icon: ALargeSmallIcon,
     permission: "wordlists:get",
   },
   {
-    text: "Users",
+    label: "item.user.plural",
     path: "/users",
     icon: UsersIcon,
     permission: "users:get",
@@ -69,6 +70,7 @@ const LINKS: readonly HeaderLinkProps[] = [
 
 export const Header = () => {
   const { uid, username, hasPermission, isLoading } = useAuth();
+  const { t } = useTranslation();
 
   if (isLoading) return <></>;
 
@@ -89,7 +91,7 @@ export const Header = () => {
                         <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
                           <link.icon />
                           <span className="ui-hidden md:ui-block">
-                            {link.text}
+                            {t(link.label)}
                           </span>
                         </div>
                       </Link>
@@ -125,9 +127,9 @@ export const Header = () => {
                             hasPermission(link.permission)) && (
                             <SheetClose key={link.path} asChild>
                               <Link to={link.path}>
-                                {link.text === "Crackosaurus"
+                                {link.label === "Crackosaurus"
                                   ? "Home"
-                                  : link.text}
+                                  : link.label}
                               </Link>
                             </SheetClose>
                           )

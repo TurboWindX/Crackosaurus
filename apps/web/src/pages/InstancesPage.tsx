@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { APIError, Status } from "@repo/api";
@@ -14,6 +15,7 @@ import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 
 export const InstancesPage = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
 
@@ -69,9 +71,14 @@ export const InstancesPage = () => {
   return (
     <div className="p-4">
       <DataTable
-        type="Instance"
+        singular={t("item.instance.singular")}
+        plural={t("item.instance.plural")}
         values={instances ?? []}
-        head={["Instance", "Status", "Last Updated"]}
+        head={[
+          t("item.instance.singular"),
+          t("item.status"),
+          t("item.time.update"),
+        ]}
         valueKey={({ IID }) => IID}
         rowClick={({ IID }) => navigate(`/instances/${IID}`)}
         isLoading={isLoading}
@@ -88,7 +95,7 @@ export const InstancesPage = () => {
         addDialog={
           <>
             <Input
-              placeholder="Name"
+              placeholder={t("item.name.singular")}
               type="text"
               value={newInstance.name!}
               onChange={(e) =>
@@ -99,7 +106,7 @@ export const InstancesPage = () => {
               }
             />
             <Input
-              placeholder="Type"
+              placeholder={t("item.type.singular")}
               type="text"
               value={newInstance.type!}
               onChange={(e) =>

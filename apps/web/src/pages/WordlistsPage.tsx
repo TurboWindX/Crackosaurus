@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { APIError } from "@repo/api";
 import { FilePicker } from "@repo/shadcn/components/ui/file-picker";
-import { Input } from "@repo/shadcn/components/ui/input";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
@@ -13,6 +13,7 @@ import { MemorySize } from "@repo/ui/wordlists";
 
 export const WordlistsPage = () => {
   const { hasPermission } = useAuth();
+  const { t } = useTranslation();
 
   const API = useAPI();
   const queryClient = useQueryClient();
@@ -61,8 +62,14 @@ export const WordlistsPage = () => {
   return (
     <div className="p-4">
       <DataTable
-        type="Wordlist"
-        head={["Wordlist", "Size", "Checksum", "Last Updated"]}
+        singular={t("item.wordlist.singular")}
+        plural={t("item.wordlist.plural")}
+        head={[
+          t("item.wordlist.singular"),
+          t("item.size.singular"),
+          t("item.checksum.singular"),
+          t("item.time.update"),
+        ]}
         values={wordlists ?? []}
         row={({ WID, name, size, checksum, updatedAt }) => [
           name ?? WID,
@@ -82,7 +89,7 @@ export const WordlistsPage = () => {
         addDialog={
           <>
             <FilePicker
-              placeholder={"Wordlist file"}
+              placeholder={t("item.wordlist.singular")}
               file={file}
               onChange={(file) => setFile(file)}
             />

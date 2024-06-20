@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -18,6 +19,7 @@ import { RelativeTime } from "@repo/ui/time";
 import { PermissionProfileSelect } from "@repo/ui/users";
 
 export const UsersPage = () => {
+  const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
@@ -76,8 +78,9 @@ export const UsersPage = () => {
   return (
     <div className="p-4">
       <DataTable
-        type="User"
-        head={["User", "Last Updated"]}
+        singular={t("item.user.singular")}
+        plural={t("item.user.plural")}
+        head={[t("item.user.singular"), t("item.time.update")]}
         values={users ?? []}
         rowClick={({ ID }) => navigate(`/users/${ID}`)}
         row={({ username, updatedAt }) => [
@@ -97,7 +100,7 @@ export const UsersPage = () => {
         addDialog={
           <>
             <Input
-              placeholder="Username"
+              placeholder={t("item.username.singular")}
               value={newUser.username}
               onChange={(e) =>
                 setNewUser({
@@ -107,7 +110,7 @@ export const UsersPage = () => {
               }
             />
             <Input
-              placeholder="Password"
+              placeholder={t("item.password.singular")}
               type="password"
               value={newUser.password}
               onChange={(e) =>

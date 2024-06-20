@@ -21,21 +21,6 @@ export const STATUS = {
 } as const;
 export type Status = (typeof STATUS)[keyof typeof STATUS];
 
-const STATUS_STRING = {
-  [STATUS.Pending]: "Pending",
-  [STATUS.Running]: "Running",
-  [STATUS.Stopped]: "Stopped",
-  [STATUS.Complete]: "Complete",
-  [STATUS.Error]: "Error",
-  [STATUS.Unknown]: "Unknown",
-  [STATUS.Found]: "Found",
-  [STATUS.NotFound]: "Not Found",
-} as const;
-
-export function getStatusString(status: Status): string {
-  return STATUS_STRING[status];
-}
-
 export interface ClusterStatus {
   instances: Record<
     string,

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PlayIcon, TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
@@ -49,6 +50,7 @@ const HashDataTable = ({
   values,
   isLoading,
 }: HashDataTableProps) => {
+  const { t } = useTranslation();
   const { hasPermission } = useAuth();
 
   const [newHash, setNewHash] = useState<
@@ -91,14 +93,23 @@ const HashDataTable = ({
 
   return (
     <>
-      <DrawerDialog title="Hash" open={viewOpen} setOpen={setViewOpen}>
-        {viewHash ?? "Not found"}
+      <DrawerDialog
+        title={t("item.hash.singular")}
+        open={viewOpen}
+        setOpen={setViewOpen}
+      >
+        {viewHash ?? t("error.not_found")}
       </DrawerDialog>
       <DataTable
-        type="Hash"
-        pluralSuffix="es"
+        singular={t("item.hash.singular")}
+        plural={t("item.hash.plural")}
         values={values ?? []}
-        head={["Hash", "Type", "Status", "Last Updated"]}
+        head={[
+          t("item.hash.singular"),
+          t("item.type.singular"),
+          t("item.status"),
+          t("item.time.update"),
+        ]}
         valueKey={({ HID }) => HID}
         isLoading={isLoading}
         row={({ hash, hashType, status, updatedAt }) => [
@@ -168,7 +179,7 @@ const HashDataTable = ({
         addDialog={
           <>
             <Input
-              placeholder="Value"
+              placeholder={t("item.value.singular")}
               value={newHash.hash}
               onChange={(e) =>
                 setNewHash({
@@ -187,7 +198,7 @@ const HashDataTable = ({
               }
             >
               <SelectTrigger>
-                <SelectValue placeholder="Type" />
+                <SelectValue placeholder={t("item.type.singular")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectGroup>
@@ -212,13 +223,20 @@ interface JobDataTableProps {
 }
 
 const JobDataTable = ({ values, isLoading }: JobDataTableProps) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   return (
     <DataTable
-      type="Job"
+      singular={t("item.job.singular")}
+      plural={t("item.job.plural")}
       values={values ?? []}
-      head={["Job", "Instance", "Status", "Last Updated"]}
+      head={[
+        t("item.job.singular"),
+        t("item.instance.singular"),
+        t("item.status"),
+        t("item.time.update"),
+      ]}
       valueKey={({ JID }) => JID}
       rowClick={({ instance }) => navigate(`/instances/${instance.IID}`)}
       isLoading={isLoading}
@@ -246,6 +264,7 @@ const UserDataTable = ({
   values,
   isLoading,
 }: UserDataTableProps) => {
+  const { t } = useTranslation();
   const { hasPermission } = useAuth();
 
   const [newUserID, setNewUserID] = useState<string>("");
@@ -278,9 +297,10 @@ const UserDataTable = ({
 
   return (
     <DataTable
-      type="User"
+      singular={t("item.user.singular")}
+      plural={t("item.user.plural")}
       values={values ?? []}
-      head={["User"]}
+      head={[t("item.user.singular")]}
       valueKey={({ ID }) => ID}
       row={({ username }) => [username]}
       isLoading={isLoading}
@@ -317,13 +337,14 @@ const UserDataTable = ({
   );
 };
 
-interface StartButtonProps {
+interface LaunchButtonProps {
   projectID: string;
   hashes: RES<APIType["getProject"]>["hashes"];
   isLoading: boolean;
 }
 
-const StartButton = ({ projectID, isLoading, hashes }: StartButtonProps) => {
+const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const [instanceID, setInstanceID] = useState("");
@@ -376,14 +397,14 @@ const StartButton = ({ projectID, isLoading, hashes }: StartButtonProps) => {
 
   return (
     <DrawerDialog
-      title="Start Project"
+      title={t("action.launch.item", { item: t("item.project.singular") })}
       open={open}
       setOpen={setOpen}
       trigger={
         <Button variant="outline" disabled={isLoading || !hasTodoHashes}>
           <div className="grid grid-flow-col items-center gap-2">
             <PlayIcon />
-            <span>Start</span>
+            <span>{t("action.launch.text")}</span>
           </div>
         </Button>
       }
@@ -410,7 +431,7 @@ const StartButton = ({ projectID, isLoading, hashes }: StartButtonProps) => {
       >
         <InstanceSelect value={instanceID} onValueChange={setInstanceID} />
         <WordlistSelect value={wordlistID} onValueChange={setWordlistID} />
-        <Button disabled={!isValid}>Start</Button>
+        <Button disabled={!isValid}>{t("action.launch.text")}</Button>
       </form>
     </DrawerDialog>
   );
@@ -422,6 +443,7 @@ interface RemoveButtonProps {
 }
 
 const RemoveButton = ({ projectID, isLoading }: RemoveButtonProps) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const { hasPermission } = useAuth();
@@ -447,14 +469,14 @@ const RemoveButton = ({ projectID, isLoading }: RemoveButtonProps) => {
 
   return (
     <DrawerDialog
-      title="Remove Project"
+      title={t("action.remove.item", { item: t("item.project.singular") })}
       open={open}
       setOpen={setOpen}
       trigger={
         <Button variant="outline" disabled={isLoading}>
           <div className="grid grid-flow-col items-center gap-2">
             <TrashIcon />
-            <span>Remove</span>
+            <span>{t("action.remove.text")}</span>
           </div>
         </Button>
       }
@@ -467,8 +489,12 @@ const RemoveButton = ({ projectID, isLoading }: RemoveButtonProps) => {
           await deleteProject(projectID!);
         }}
       >
-        <span>Do you want to permanently remove this project?</span>
-        <Button>Remove</Button>
+        <span>
+          {t("action.remove.warn", {
+            item: t("item.project.singular").toLowerCase(),
+          })}
+        </span>
+        <Button>{t("action.remove.text")}</Button>
       </form>
     </DrawerDialog>
   );
@@ -554,8 +580,8 @@ export const ProjectPage = () => {
           {project?.name ?? "Project"}
         </span>
         <div className="grid grid-flow-col justify-end gap-2">
-          <StartButton
-            key="start"
+          <LaunchButton
+            key="launch"
             projectID={projectID!}
             hashes={project?.hashes}
             isLoading={isLoading}

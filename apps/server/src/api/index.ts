@@ -1,5 +1,6 @@
 import { type MultipartFile } from "@fastify/multipart";
 import { PrismaClient } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import bcrypt from "bcrypt";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import * as crypto from "node:crypto";
@@ -77,7 +78,7 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
 
     if (user !== null) throw new APIError("Application is already initialized");
@@ -96,7 +97,7 @@ const HANDLERS: {
 
       return user.ID;
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
   },
   login: async ({ request, prisma, username, password }) => {
@@ -114,11 +115,14 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("Login failed");
+      if (err instanceof PrismaClientKnownRequestError) {
+        if (err.code === "P2025") throw new APIError("input");
+      }
+
+      throw new APIError("internal");
     }
 
-    if (!checkPassword(password, user.password))
-      throw new APIError("Login failed");
+    if (!checkPassword(password, user.password)) throw new APIError("input");
 
     await request.session.regenerate();
 
@@ -131,7 +135,7 @@ const HANDLERS: {
   logout: async ({ request }) => {
     await request.session.destroy();
 
-    return "Logout successful";
+    return true;
   },
   authUser: async ({ request }) => {
     return {
@@ -142,7 +146,7 @@ const HANDLERS: {
   },
   getUser: async ({ prisma, hasPermission, currentUserID, userID }) => {
     if (!hasPermission("users:get") && userID !== currentUserID)
-      throw new APIError("Cannot get user");
+      throw new APIError("permission");
 
     try {
       return await prisma.user.findUniqueOrThrow({
@@ -171,7 +175,7 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
   },
   getUsers: async ({ prisma }) => {
@@ -185,7 +189,7 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
   },
   getUserList: async ({ prisma }) => {
@@ -197,7 +201,7 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
   },
   register: async ({
@@ -208,7 +212,7 @@ const HANDLERS: {
     permissions,
   }) => {
     if ((permissions ?? []).some((permission) => !hasPermission(permission)))
-      throw new APIError("Cannot add permission without having it");
+      throw new APIError("permission");
 
     let user;
     try {
@@ -223,7 +227,7 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
 
     return user.ID;
@@ -241,7 +245,7 @@ const HANDLERS: {
         userIDs.every((userID) => userID === currentUserID)
       )
     )
-      throw new APIError("Cannot remove user");
+      throw new APIError("permission");
 
     let count = 0;
     try {
@@ -258,15 +262,15 @@ const HANDLERS: {
 
       count = res.count;
     } catch (err) {
-      throw new APIError("Delete error");
+      throw new APIError("internal");
     }
 
-    if (count === 0) throw new APIError("No users deleted");
+    if (count === 0) throw new APIError("input");
 
     if (userIDs.some((userID) => userID === currentUserID))
       await request.session.destroy();
 
-    return "User has been obliterated into oblivion";
+    return count;
   },
   addUserPermissions: async ({
     prisma,
@@ -276,10 +280,9 @@ const HANDLERS: {
     permissions,
   }) => {
     if (permissions.some((permission) => !hasPermission(permission)))
-      throw new APIError("Cannot add permission without having it");
+      throw new APIError("auth");
 
-    if (userID === currentUserID)
-      throw new APIError("Cannot add permission to self");
+    if (userID === currentUserID) throw new APIError("input");
 
     let permissionSet = new Set<string>();
     try {
@@ -294,7 +297,7 @@ const HANDLERS: {
 
       permissionSet = new Set(user.permissions.split(" "));
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
 
     permissions.forEach((permission) => permissionSet.add(permission));
@@ -309,10 +312,10 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
 
-    return "User permissions added";
+    return true;
   },
   removeUserPermissions: async ({
     prisma,
@@ -322,10 +325,9 @@ const HANDLERS: {
     permissions,
   }) => {
     if (permissions.some((permission) => !hasPermission(permission)))
-      throw new APIError("Cannot remove permission without having it");
+      throw new APIError("permission");
 
-    if (userID === currentUserID)
-      throw new APIError("Cannot remove permission from self");
+    if (userID === currentUserID) throw new APIError("input");
 
     let permissionSet = new Set<string>();
     try {
@@ -340,7 +342,7 @@ const HANDLERS: {
 
       permissionSet = new Set(user.permissions.split(" "));
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
 
     permissions.forEach((permission) => permissionSet.delete(permission));
@@ -355,10 +357,10 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
 
-    return "User permissions removed";
+    return permissionSet.size;
   },
   changePassword: async ({
     prisma,
@@ -386,11 +388,11 @@ const HANDLERS: {
 
         userPassword = user.password;
       } catch (err) {
-        throw new APIError("User error");
+        throw new APIError("internal");
       }
 
       if (!checkPassword(oldPassword, userPassword))
-        throw new APIError("Invalid old password");
+        throw new APIError("input");
     }
 
     // Update password for user
@@ -405,10 +407,10 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("User error");
+      throw new APIError("internal");
     }
 
-    return "Password has been changed";
+    return true;
   },
   getProjects: async ({ prisma, hasPermission, currentUserID }) => {
     try {
@@ -437,7 +439,7 @@ const HANDLERS: {
             },
       });
     } catch (err) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
   },
   getProjectList: async ({ prisma, hasPermission, currentUserID }) => {
@@ -458,7 +460,7 @@ const HANDLERS: {
             },
       });
     } catch (err) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
   },
   getProject: async ({ prisma, hasPermission, currentUserID, projectID }) => {
@@ -516,7 +518,7 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
   },
   createProject: async ({ prisma, currentUserID, projectName }) => {
@@ -536,7 +538,7 @@ const HANDLERS: {
         },
       });
     } catch (error) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
 
     return project.PID;
@@ -567,7 +569,7 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
 
     try {
@@ -579,22 +581,25 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("Hash error");
+      throw new APIError("internal");
     }
 
+    let count = 0;
     try {
-      await prisma.project.deleteMany({
+      const res = await prisma.project.deleteMany({
         where: {
           PID: {
             in: projects.map((project) => project.PID),
           },
         },
       });
+
+      count = res.count;
     } catch (err) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
 
-    return "Project has been deleted";
+    return count;
   },
   addUsersToProject: async ({
     prisma,
@@ -622,10 +627,10 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
 
-    return "Users have been added to the project";
+    return userIDs.length;
   },
   removeUsersFromProject: async ({
     prisma,
@@ -655,10 +660,10 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
 
-    return "Users have been removed from the project";
+    return userIDs.length;
   },
   addHashes: async ({
     prisma,
@@ -684,7 +689,7 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
 
     const hashValueMap = Object.fromEntries(
@@ -706,7 +711,7 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("Hash error");
+      throw new APIError("internal");
     }
 
     const seenHashMap = Object.fromEntries(
@@ -734,7 +739,7 @@ const HANDLERS: {
         }),
       });
     } catch (err) {
-      throw new APIError("Hash error");
+      throw new APIError("internal");
     }
 
     const outHashMap = Object.fromEntries(
@@ -767,11 +772,12 @@ const HANDLERS: {
         },
       });
     } catch (err) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
 
+    let count = 0;
     try {
-      await prisma.hash.deleteMany({
+      const res = await prisma.hash.deleteMany({
         where: {
           HID: {
             in: hashIDs,
@@ -779,11 +785,13 @@ const HANDLERS: {
           projectId: projectID,
         },
       });
+
+      count = res.count;
     } catch (err) {
-      throw new APIError("Hash error");
+      throw new APIError("internal");
     }
 
-    return "Hashes have been removed";
+    return count;
   },
   getInstances: async ({ prisma }) => {
     try {
@@ -796,7 +804,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Instance error");
+      throw new APIError("internal");
     }
   },
   getInstanceList: async ({ prisma }) => {
@@ -808,12 +816,12 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Instance error");
+      throw new APIError("internal");
     }
   },
   createInstance: async ({ prisma, cluster, name, type }) => {
     const tag = await cluster.createInstance(type);
-    if (!tag) throw new APIError("Instance not created");
+    if (!tag) throw new APIError("internal");
 
     let instanceID: string;
     try {
@@ -830,7 +838,7 @@ const HANDLERS: {
 
       instanceID = instance.IID;
     } catch (e) {
-      throw new APIError("Instance not created");
+      throw new APIError("internal");
     }
 
     return instanceID;
@@ -846,7 +854,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Instance error");
+      throw new APIError("internal");
     }
   },
   deleteInstances: async ({ prisma, cluster, instanceIDs }) => {
@@ -864,7 +872,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Instance error");
+      throw new APIError("internal");
     }
 
     const results = await Promise.allSettled(
@@ -893,22 +901,25 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Job error");
+      throw new APIError("internal");
     }
 
+    let count = 0;
     try {
-      await prisma.instance.deleteMany({
+      const res = await prisma.instance.deleteMany({
         where: {
           IID: {
             in: deletedIDs,
           },
         },
       });
+
+      count = res.count;
     } catch (e) {
-      throw new APIError("Instance error");
+      throw new APIError("internal");
     }
 
-    return "Instances have been destroy";
+    return count;
   },
   createInstanceJob: async ({
     prisma,
@@ -931,7 +942,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Instance error");
+      throw new APIError("internal");
     }
 
     let projects;
@@ -961,7 +972,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Project error");
+      throw new APIError("internal");
     }
 
     let wordlist;
@@ -975,7 +986,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Wordlist error");
+      throw new APIError("internal");
     }
 
     const hashes = projects.flatMap((project) =>
@@ -983,8 +994,8 @@ const HANDLERS: {
         (hash) => hash.hashType === hashType && hash.status === STATUS.NotFound
       )
     );
-    if (hashes.length === 0)
-      throw new APIError("Cannot create a job without any valid hashes");
+
+    if (hashes.length === 0) throw new APIError("input");
 
     const jobID = await cluster.createJob(
       instance.tag,
@@ -992,7 +1003,7 @@ const HANDLERS: {
       hashType,
       hashes.map(({ hash }) => hash)
     );
-    if (!jobID) throw new APIError("Cannot queue job");
+    if (!jobID) throw new APIError("internal");
 
     try {
       await prisma.job.create({
@@ -1014,7 +1025,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Job error");
+      throw new APIError("internal");
     }
 
     return jobID;
@@ -1032,7 +1043,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Instance error");
+      throw new APIError("internal");
     }
 
     let jobs;
@@ -1051,7 +1062,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Job error");
+      throw new APIError("internal");
     }
 
     const results = await Promise.allSettled(
@@ -1069,16 +1080,19 @@ const HANDLERS: {
       )
       .filter((value) => value !== null);
 
+    let count = 0;
     try {
-      await prisma.job.deleteMany({
+      const res = await prisma.job.deleteMany({
         where: {
           JID: {
             in: deletedIDs,
           },
         },
       });
+
+      count = res.count;
     } catch (e) {
-      throw new APIError("Job error");
+      throw new APIError("internal");
     }
 
     try {
@@ -1092,7 +1106,7 @@ const HANDLERS: {
       });
     } catch (e) {}
 
-    return "Jobs destroyed";
+    return count;
   },
   getWordlist: async ({ prisma, wordlistID }) => {
     try {
@@ -1109,7 +1123,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Wordlist error");
+      throw new APIError("internal");
     }
   },
   getWordlists: async ({ prisma }) => {
@@ -1124,7 +1138,7 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Wordlist error");
+      throw new APIError("internal");
     }
   },
   getWordlistList: async ({ prisma }) => {
@@ -1136,18 +1150,18 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Wordlist error");
+      throw new APIError("internal");
     }
   },
   createWordlist: async ({ prisma, cluster, multipart }) => {
-    if (multipart === undefined) throw new APIError("No file");
+    if (multipart === undefined) throw new APIError("input");
 
     const buffer = await streamToBuffer(multipart.file);
     const size = buffer.length;
     const checksum = crypto.createHash("md5").update(buffer).digest("hex");
 
     const wordlistID = await cluster.createWordlist(buffer);
-    if (wordlistID === null) throw new APIError("Could not create wordlist");
+    if (wordlistID === null) throw new APIError("internal");
 
     const fileName = path.basename(multipart.filename);
 
@@ -1161,29 +1175,36 @@ const HANDLERS: {
         },
       });
     } catch (e) {
-      throw new APIError("Could not create wordlist");
+      throw new APIError("internal");
     }
 
     return wordlistID;
   },
   deleteWordlists: async ({ prisma, cluster, wordlistIDs }) => {
-    await Promise.all(
-      wordlistIDs.map((wordlistID) => cluster.deleteWordlist(wordlistID))
-    );
-
     try {
-      await prisma.wordlist.deleteMany({
+      await Promise.all(
+        wordlistIDs.map((wordlistID) => cluster.deleteWordlist(wordlistID))
+      );
+    } catch (e) {
+      throw new APIError("internal");
+    }
+
+    let count = 0;
+    try {
+      const res = await prisma.wordlist.deleteMany({
         where: {
           WID: {
             in: wordlistIDs,
           },
         },
       });
+
+      count = res.count;
     } catch (e) {
-      throw new APIError("Wordlist could not be deleted");
+      throw new APIError("internal");
     }
 
-    return "Wordlist destroyed";
+    return count;
   },
 } as const;
 
@@ -1194,7 +1215,7 @@ function checkPermission(permission: PermissionType) {
     next: (err?: Error | undefined) => void
   ) => {
     if (!hasPermission(request.session.permissions, permission))
-      throw new AuthError("Access denied");
+      throw new AuthError("auth");
 
     next();
   };
@@ -1210,17 +1231,15 @@ function validate(
     next: (err?: Error | undefined) => void
   ) => {
     if (type === "json") {
-      if (request.isMultipart())
-        throw new APIError("Only supports application/json");
+      if (request.isMultipart()) throw new APIError("input");
 
       try {
         if (validator.parse) validator.parse(request.body ?? {});
       } catch (e) {
-        throw new APIError("Invalid input");
+        throw new APIError("input");
       }
     } else if (type === "multipart") {
-      if (!request.isMultipart())
-        throw new APIError("Only supports multipart/form-data");
+      if (!request.isMultipart()) throw new APIError("input");
 
       // TODO: Validate body.
     }

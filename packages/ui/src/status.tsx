@@ -1,4 +1,6 @@
-import { Status, getStatusString } from "@repo/api";
+import { useTranslation } from "react-i18next";
+
+import { Status } from "@repo/api";
 import { Badge } from "@repo/shadcn/components/ui/badge";
 
 export interface StatusBadgeProps {
@@ -6,5 +8,7 @@ export interface StatusBadgeProps {
 }
 
 export const StatusBadge = ({ status }: StatusBadgeProps) => {
-  return <Badge>{getStatusString(status)}</Badge>;
+  const { t } = useTranslation();
+
+  return <Badge>{t(`status.${status}`)}</Badge>;
 };

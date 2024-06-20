@@ -100,7 +100,7 @@ export const ROUTES = {
     type: "json",
     permissions: ["auth"],
     request: z.object({}).optional(),
-    response: z.string(),
+    response: z.boolean(),
   },
   register: {
     method: "POST",
@@ -122,7 +122,7 @@ export const ROUTES = {
     request: z.object({
       userIDs: z.string().array(),
     }),
-    response: z.string(),
+    response: z.number(),
   },
   addUserPermissions: {
     method: "POST",
@@ -132,7 +132,7 @@ export const ROUTES = {
     request: z.object({
       permissions: z.enum(PERMISSIONS).array(),
     }),
-    response: z.string(),
+    response: z.boolean(),
   },
   removeUserPermissions: {
     method: "DELETE",
@@ -142,7 +142,7 @@ export const ROUTES = {
     request: z.object({
       permissions: z.enum(PERMISSIONS).array(),
     }),
-    response: z.string(),
+    response: z.number(),
   },
   addHashes: {
     method: "POST",
@@ -167,7 +167,7 @@ export const ROUTES = {
     request: z.object({
       hashIDs: z.string().array(),
     }),
-    response: z.string(),
+    response: z.number(),
   },
   getInstance: {
     method: "GET",
@@ -226,7 +226,7 @@ export const ROUTES = {
     request: z.object({
       instanceIDs: z.string().array(),
     }),
-    response: z.string(),
+    response: z.number(),
   },
   createInstance: {
     method: "POST",
@@ -259,7 +259,7 @@ export const ROUTES = {
     request: z.object({
       jobIDs: z.string().array(),
     }),
-    response: z.string(),
+    response: z.number(),
   },
   getProject: {
     method: "GET",
@@ -344,7 +344,7 @@ export const ROUTES = {
     request: z.object({
       projectIDs: z.string().array(),
     }),
-    response: z.string(),
+    response: z.number(),
   },
   getWordlist: {
     method: "GET",
@@ -405,7 +405,7 @@ export const ROUTES = {
     request: z.object({
       wordlistIDs: z.string().array(),
     }),
-    response: z.string(),
+    response: z.number(),
   },
   addUsersToProject: {
     method: "POST",
@@ -415,7 +415,7 @@ export const ROUTES = {
     request: z.object({
       userIDs: z.string().array(),
     }),
-    response: z.string(),
+    response: z.number(),
   },
   removeUsersFromProject: {
     method: "DELETE",
@@ -425,7 +425,7 @@ export const ROUTES = {
     request: z.object({
       userIDs: z.string().array(),
     }),
-    response: z.string(),
+    response: z.number(),
   },
   changePassword: {
     method: "PUT",
@@ -436,7 +436,7 @@ export const ROUTES = {
       oldPassword: z.string(),
       newPassword: z.string(),
     }),
-    response: z.string(),
+    response: z.boolean(),
   },
   authUser: {
     method: "GET",

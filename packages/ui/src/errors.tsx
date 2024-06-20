@@ -1,9 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 
 import { APIError } from "@repo/api";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
 
 export const useErrors = () => {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -20,8 +22,8 @@ export const useErrors = () => {
 
         toast({
           variant: "destructive",
-          title: "Error",
-          description: error.message,
+          title: t("item.error.singular"),
+          description: t(`error.${error.message}`),
         });
       }
 

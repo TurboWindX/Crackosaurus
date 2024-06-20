@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { APIError, STATUS, Status } from "@repo/api";
@@ -33,6 +34,8 @@ interface JobDataTableProps {
 }
 
 const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
+  const { t } = useTranslation();
+
   const [newJob, setNewJob] = useState<REQ<APIType["createInstanceJob"]>>({
     instanceID,
     wordlistID: "",
@@ -76,9 +79,10 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
 
   return (
     <DataTable
-      type="Job"
+      singular={t("item.job.singular")}
+      plural={t("item.job.plural")}
       values={values ?? []}
-      head={["Job", "Status", "Last Updated"]}
+      head={[t("item.job.singular"), t("item.status"), t("item.time.update")]}
       isLoading={isLoading}
       sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
       row={({ JID, status, updatedAt }) => [
@@ -95,7 +99,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
             }
           >
             <SelectTrigger>
-              <SelectValue placeholder="Hash Type" />
+              <SelectValue placeholder={t("item.hash.type")} />
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
@@ -114,7 +118,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
             }
           />
           <MultiSelect
-            label="Project"
+            label={t("item.project.singular")}
             values={(projectList ?? []).map(({ PID, name }) => [PID, name])}
             selectedValues={newJob.projectIDs}
             onValueChange={(ids) => {
@@ -144,6 +148,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
 
 export const InstancePage = () => {
   const { instanceID } = useParams();
+  const { t } = useTranslation();
 
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
@@ -202,14 +207,16 @@ export const InstancePage = () => {
           {hasPermission("instances:remove") && (
             <div className="w-max">
               <DrawerDialog
-                title="Remove Instance"
+                title={t("action.remove.item", {
+                  item: t("instance.singular").toLowerCase(),
+                })}
                 open={removeOpen}
                 setOpen={setRemoveOpen}
                 trigger={
                   <Button variant="outline">
                     <div className="grid grid-flow-col items-center gap-2">
                       <TrashIcon />
-                      <span>Remove</span>
+                      <span>{t("action.remove.text")}</span>
                     </div>
                   </Button>
                 }
@@ -222,8 +229,12 @@ export const InstancePage = () => {
                     await deleteInstance(instanceID!);
                   }}
                 >
-                  <span>Do you want to permanently remove this instance?</span>
-                  <Button>Remove</Button>
+                  <span>
+                    {t("action.remove.warn", {
+                      item: t("instance.singular").toLowerCase(),
+                    })}
+                  </span>
+                  <Button>{t("action.remove.text")}</Button>
                 </form>
               </DrawerDialog>
             </div>

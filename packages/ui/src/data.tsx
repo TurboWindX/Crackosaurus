@@ -1,5 +1,6 @@
 import { DownloadIcon, ImportIcon, PlusIcon, TrashIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Card } from "@repo/shadcn/components/ui/card";
@@ -18,7 +19,7 @@ import {
 import { DrawerDialog } from "./dialog";
 
 export interface AddDialogProps {
-  type: string;
+  singular: string;
   open: boolean;
   setOpen: (state: boolean) => void;
   validate?: () => boolean;
@@ -27,13 +28,15 @@ export interface AddDialogProps {
 }
 
 export const AddDialog = ({
-  type,
+  singular,
   open,
   setOpen,
   onSubmit,
   children,
   validate,
 }: AddDialogProps) => {
+  const { t } = useTranslation();
+
   const buttonDisabled = useMemo(
     () => !(validate === undefined || validate()),
     [validate]
@@ -41,14 +44,14 @@ export const AddDialog = ({
 
   return (
     <DrawerDialog
-      title={`Add ${type}`}
+      title={t("action.add.item", { item: singular })}
       open={open}
       setOpen={setOpen}
       trigger={
         <Button variant="outline">
           <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
             <PlusIcon />
-            <span>Add</span>
+            <span>{t("action.add.text")}</span>
           </div>
         </Button>
       }
@@ -61,15 +64,14 @@ export const AddDialog = ({
         }}
       >
         {children}
-        <Button disabled={buttonDisabled}>Add</Button>
+        <Button disabled={buttonDisabled}>{t("action.add.text")}</Button>
       </form>
     </DrawerDialog>
   );
 };
 
 export interface RemoveDialogProps {
-  type: string;
-  pluralSuffix: string;
+  plural: string;
   open: boolean;
   count: number;
   setOpen: (state: boolean) => void;
@@ -77,42 +79,42 @@ export interface RemoveDialogProps {
 }
 
 export const RemoveDialog = ({
-  type,
-  pluralSuffix,
+  plural,
   open,
   setOpen,
   count,
   onSubmit,
 }: RemoveDialogProps) => {
+  const { t } = useTranslation();
+
   const isDisabled = useMemo(() => count === 0, [count]);
 
   return (
     <DrawerDialog
-      title={`Remove ${type}${pluralSuffix}`}
+      title={t("action.remove.item", { item: plural })}
       open={open}
       setOpen={setOpen}
       trigger={
         <Button variant="outline" disabled={isDisabled}>
           <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
             <TrashIcon />
-            <span>Remove</span>
+            <span>{t("action.remove.text")}</span>
           </div>
         </Button>
       }
     >
       <div className="ui-grid ui-gap-2">
         <span>
-          Do you want to remove {count} {type.toLowerCase()}({pluralSuffix})?
+          {t("action.remove.warn_count", { count, item: plural.toLowerCase() })}
         </span>
-        <Button onClick={onSubmit}>Remove</Button>
+        <Button onClick={onSubmit}>{t("action.remove.text")}</Button>
       </div>
     </DrawerDialog>
   );
 };
 
 export interface ImportDialogProps {
-  type: string;
-  pluralSuffix: string;
+  plural: string;
   open: boolean;
   file?: File | null;
   onFileChange?: (file: File | null) => void;
@@ -121,36 +123,37 @@ export interface ImportDialogProps {
 }
 
 export const ImportDialog = ({
-  type,
-  pluralSuffix,
+  plural,
   open,
   file,
   onFileChange,
   setOpen,
   onSubmit,
 }: ImportDialogProps) => {
+  const { t } = useTranslation();
+
   return (
     <DrawerDialog
-      title={`Import ${type}${pluralSuffix}`}
+      title={t("action.import.item", { item: plural })}
       open={open}
       setOpen={setOpen}
       trigger={
         <Button variant="outline">
           <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
             <ImportIcon />
-            <span>Import</span>
+            <span>{t("action.import.text")}</span>
           </div>
         </Button>
       }
     >
       <div className="ui-grid ui-gap-2">
         <FilePicker
-          placeholder={`${type}${pluralSuffix} JSON file`}
+          placeholder={plural}
           accept={["application/json", ".json"]}
           file={file}
           onChange={onFileChange}
         />
-        <Button onClick={onSubmit}>Import</Button>
+        <Button onClick={onSubmit}>{t("action.import.text")}</Button>
       </div>
     </DrawerDialog>
   );
@@ -162,21 +165,23 @@ export interface ExportDialogProps {
 }
 
 export const ExportDialog = ({ count, onSubmit }: ExportDialogProps) => {
+  const { t } = useTranslation();
+
   const isDisabled = useMemo(() => count === 0, [count]);
 
   return (
     <Button variant="outline" disabled={isDisabled} onClick={onSubmit}>
       <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
         <DownloadIcon />
-        <span>Export</span>
+        <span>{t("action.export.text")}</span>
       </div>
     </Button>
   );
 };
 
 export interface DataTableProps<T> {
-  type: string;
-  pluralSuffix?: string;
+  singular: string;
+  plural: string;
   values: T[];
   head: (string | null)[];
   row: (value: T) => any[];
@@ -199,8 +204,8 @@ export interface DataTableProps<T> {
 }
 
 export function DataTable<T>({
-  type,
-  pluralSuffix,
+  singular,
+  plural,
   addValidate,
   row,
   rowClick,
@@ -221,6 +226,8 @@ export function DataTable<T>({
   noImport,
   noExport,
 }: DataTableProps<T>) {
+  const { t } = useTranslation();
+
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -229,13 +236,6 @@ export function DataTable<T>({
   const [search, setSearch] = useState("");
 
   const [importFile, setImportFile] = useState<File | null>(null);
-
-  const pluralSuffixWithS = useMemo(() => pluralSuffix || "s", [pluralSuffix]);
-
-  const plural = useMemo(
-    () => `${type}${pluralSuffixWithS}`,
-    [type, pluralSuffixWithS]
-  );
 
   const sortedValues = useMemo(
     () => (sort ? values.sort(sort) : values),
@@ -294,7 +294,7 @@ export function DataTable<T>({
       {searchFilter !== undefined && (
         <Input
           key="search"
-          placeholder={`Search ${plural}`}
+          placeholder={t("action.search.item", { item: plural })}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -307,7 +307,7 @@ export function DataTable<T>({
           {hasAdd && (
             <AddDialog
               key="add"
-              type={type}
+              singular={singular}
               open={addDialogOpen}
               setOpen={setAddDialogOpen}
               validate={addValidate}
@@ -321,8 +321,7 @@ export function DataTable<T>({
           {hasImport && (
             <ImportDialog
               key="import"
-              type={type}
-              pluralSuffix={pluralSuffixWithS}
+              plural={plural}
               file={importFile}
               onFileChange={setImportFile}
               open={importDialogOpen}
@@ -380,8 +379,7 @@ export function DataTable<T>({
           {hasRemove && (
             <RemoveDialog
               key="remove"
-              type={type}
-              pluralSuffix={pluralSuffixWithS}
+              plural={plural}
               open={removeDialogOpen}
               setOpen={setRemoveDialogOpen}
               count={selectCount}

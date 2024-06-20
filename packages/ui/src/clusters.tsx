@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import { type APIType } from "@repo/api/server";
 import { type RES } from "@repo/api/server/client/web";
@@ -25,6 +26,7 @@ export const InstanceSelect = ({
   onValueChange,
   filter,
 }: InstanceSelectProps) => {
+  const { t } = useTranslation();
   const API = useAPI();
 
   const { data: instanceList } = useQuery({
@@ -44,7 +46,7 @@ export const InstanceSelect = ({
       disabled={filteredInstances.length === 0}
     >
       <SelectTrigger>
-        <SelectValue placeholder="Instance" />
+        <SelectValue placeholder={t("item.instance.singular")} />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
