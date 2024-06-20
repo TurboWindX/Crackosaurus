@@ -7,22 +7,15 @@ import { useNavigate, useParams } from "react-router-dom";
 import { APIError, STATUS, Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
-import { HASH_TYPES, HashType } from "@repo/hashcat/data";
+import { HASH_TYPES } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@repo/shadcn/components/ui/select";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
+import { HashTypeSelect } from "@repo/ui/hashes";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 import { WordlistSelect } from "@repo/ui/wordlists";
@@ -39,7 +32,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   const [newJob, setNewJob] = useState<REQ<APIType["createInstanceJob"]>>({
     instanceID,
     wordlistID: "",
-    hashType: "" as HashType,
+    hashType: HASH_TYPES.plaintext,
     projectIDs: [],
   });
 
@@ -92,43 +85,26 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
       ]}
       addDialog={
         <>
-          <Select
+          <HashTypeSelect
             value={newJob.hashType}
-            onValueChange={(value) =>
-              setNewJob({ ...newJob, hashType: value as HashType })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder={t("item.hash.type")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {HASH_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+            onValueChange={(hashType) => setNewJob({ ...newJob, hashType })}
+          />
           <WordlistSelect
             value={newJob.wordlistID}
-            onValueChange={(value) =>
-              setNewJob({ ...newJob, wordlistID: value })
-            }
+            onValueChange={(wordlistID) => setNewJob({ ...newJob, wordlistID })}
           />
           <MultiSelect
             label={t("item.project.singular")}
             values={(projectList ?? []).map(({ PID, name }) => [PID, name])}
             selectedValues={newJob.projectIDs}
-            onValueChange={(ids) => {
-              setNewJob({ ...newJob, projectIDs: ids });
+            onValueChange={(projectIDs) => {
+              setNewJob({ ...newJob, projectIDs });
             }}
           />
         </>
       }
       addValidate={() =>
-        newJob.hashType?.length > 0 &&
+        newJob.hashType > 0 &&
         newJob.wordlistID.length > 0 &&
         newJob.projectIDs.length > 0
       }
@@ -194,8 +170,8 @@ export const InstancePage = () => {
 
   return (
     <div className="grid gap-4 p-4">
-      <div className="grid grid-cols-2 gap-2">
-        <div className="grid gap-2">
+      <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
             {instance?.name || instance?.IID || "Instance"}
           </span>
@@ -203,7 +179,7 @@ export const InstancePage = () => {
             <StatusBadge status={(instance?.status ?? STATUS.Unknown) as any} />
           </div>
         </div>
-        <div className="grid grid-flow-col justify-end gap-2">
+        <div className="flex flex-1 flex-wrap justify-end gap-2">
           {hasPermission("instances:remove") && (
             <div className="w-max">
               <DrawerDialog

@@ -1,13 +1,13 @@
 import childProcess from "node:child_process";
 import fs from "node:fs";
 
-import { type HashType, getHashcatMode, parseHashcatPot } from "./data";
+import { parseHashcatPot } from "./data";
 
 interface HashcatConfig {
   exePath: string;
   inputFile: string;
   outputFile: string;
-  hashType: HashType;
+  hashType: number;
   wordlistFile: string;
   cwd?: string;
   stdio?: "inherit";
@@ -26,7 +26,7 @@ export function hashcat({
     "-a",
     "0",
     "-m",
-    getHashcatMode(hashType).toString(),
+    hashType.toString(),
     "--potfile-disable",
     "-o",
     outputFile,

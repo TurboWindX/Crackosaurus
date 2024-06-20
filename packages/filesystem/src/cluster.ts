@@ -3,7 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { ClusterStatus, STATUS } from "@repo/api";
-import { HASH_TYPE, HASH_TYPES, HashType } from "@repo/hashcat/data";
+import { HASH_TYPES } from "@repo/hashcat/data";
 import { readHashcatPot } from "@repo/hashcat/exe";
 
 export const INSTANCE_METADATA = z.object({
@@ -32,14 +32,14 @@ export const JOB_METADATA = z.object({
     STATUS.Error,
     STATUS.Unknown,
   ]),
-  hashType: z.enum([...HASH_TYPES]),
+  hashType: z.number().int().positive(),
   wordlist: z.string(),
 });
 export type JobMetadata = z.infer<typeof JOB_METADATA>;
 
 const UNKNOWN_JOB_METADATA: JobMetadata = {
   status: STATUS.Unknown,
-  hashType: HASH_TYPE.ntlm,
+  hashType: HASH_TYPES.plaintext,
   wordlist: "",
 };
 
@@ -361,7 +361,7 @@ export async function createJobFolder(
   instanceRoot: string,
   instanceID: string,
   jobID: string,
-  props: { hashType: HashType; hashes: string[]; wordlist: string }
+  props: { hashType: number; hashes: string[]; wordlist: string }
 ): Promise<void> {
   const jobPath = path.join(instanceRoot, instanceID, JOBS_FOLDER, jobID);
 

@@ -21,7 +21,7 @@ CREATE TABLE "Hash" (
     "HID" TEXT NOT NULL PRIMARY KEY,
     "projectId" TEXT NOT NULL,
     "hash" TEXT NOT NULL,
-    "hashType" TEXT NOT NULL,
+    "hashType" INTEGER NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'NOT_FOUND',
     "value" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -387,11 +387,11 @@ export const UserPage = () => {
 
   return (
     <div className="grid gap-4 p-4">
-      <div className="grid grid-cols-2 gap-2">
+      <div className="flex gap-2">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
           {user?.username ?? "Username"}
         </span>
-        <div className="grid grid-flow-col justify-end gap-2">
+        <div className="flex flex-1 flex-wrap justify-end gap-2">
           <LogoutButton userID={userID ?? ""} isLoading={isLoading} />
           <PasswordUpdateButton userID={userID ?? ""} isLoading={isLoading} />
           <RemoveButton

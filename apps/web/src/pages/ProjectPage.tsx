@@ -7,19 +7,11 @@ import { z } from "zod";
 
 import { APIError, Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
-import { ProjectJob } from "@repo/api/server";
+import { type ProjectJob } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
-import { HASH_TYPES, type HashType } from "@repo/hashcat/data";
+import { HASH_TYPES, getHashName } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@repo/shadcn/components/ui/select";
 import { Separator } from "@repo/shadcn/components/ui/separator";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
@@ -27,15 +19,18 @@ import { InstanceSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
+import { HashTypeSelect } from "@repo/ui/hashes";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 import { UserSelect } from "@repo/ui/users";
 import { WordlistSelect } from "@repo/ui/wordlists";
 
+type ProjectJobWithType = ProjectJob & { type: number };
+
 const HASH_IMPORT_VALIDATOR = z
   .object({
     hash: z.string(),
-    type: z.enum(HASH_TYPES),
+    type: z.number().int().positive(),
   })
   .array();
 
@@ -57,7 +52,7 @@ const HashDataTable = ({
     REQ<APIType["addHashes"]>["data"][number]
   >({
     hash: "",
-    hashType: "" as HashType,
+    hashType: HASH_TYPES.plaintext,
   });
 
   const API = useAPI();
@@ -116,7 +111,7 @@ const HashDataTable = ({
           <div className="max-w-32 truncate md:max-w-64 lg:max-w-[50vw]">
             {hash}
           </div>,
-          hashType,
+          getHashName(hashType),
           <StatusBadge status={status as Status} />,
           <RelativeTime time={updatedAt} />,
         ]}
@@ -170,11 +165,10 @@ const HashDataTable = ({
         }}
         searchFilter={({ hash, hashType }, search) =>
           hash.toLowerCase().includes(search.toLowerCase()) ||
-          hashType.toLowerCase().includes(search.toLowerCase())
+          hashType.toString().includes(search.toLowerCase())
         }
         addValidate={() =>
-          (newHash.hash ?? "").trim().length > 0 &&
-          newHash.hashType.trim().length > 0
+          (newHash.hash ?? "").trim().length > 0 && newHash.hashType > 0
         }
         addDialog={
           <>
@@ -188,28 +182,10 @@ const HashDataTable = ({
                 })
               }
             />
-            <Select
+            <HashTypeSelect
               value={newHash.hashType}
-              onValueChange={(value) =>
-                setNewHash({
-                  ...newHash,
-                  hashType: value as HashType,
-                })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder={t("item.type.singular")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {HASH_TYPES.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+              onValueChange={(hashType) => setNewHash({ ...newHash, hashType })}
+            />
           </>
         }
       />
@@ -218,7 +194,7 @@ const HashDataTable = ({
 };
 
 interface JobDataTableProps {
-  values: ProjectJob[];
+  values: ProjectJobWithType[];
   isLoading?: boolean;
 }
 
@@ -233,6 +209,7 @@ const JobDataTable = ({ values, isLoading }: JobDataTableProps) => {
       values={values ?? []}
       head={[
         t("item.job.singular"),
+        t("item.type.singular"),
         t("item.instance.singular"),
         t("item.status"),
         t("item.time.update"),
@@ -241,8 +218,9 @@ const JobDataTable = ({ values, isLoading }: JobDataTableProps) => {
       rowClick={({ instance }) => navigate(`/instances/${instance.IID}`)}
       isLoading={isLoading}
       sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
-      row={({ JID, status, updatedAt, instance }) => [
+      row={({ JID, type, status, updatedAt, instance }) => [
         JID,
+        getHashName(type),
         instance.name || instance.IID,
         <StatusBadge status={status as Status} />,
         <RelativeTime time={updatedAt} />,
@@ -375,7 +353,7 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
     }: {
       instanceID: string;
       wordlistID: string;
-      hashTypes: HashType[];
+      hashTypes: number[];
     }) =>
       Promise.all(
         hashTypes.map((hashType) =>
@@ -417,11 +395,7 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
           await addJobs({
             instanceID,
             wordlistID,
-            hashTypes: [
-              ...new Set(
-                todoHashes.map(({ hashType }) => hashType as HashType)
-              ),
-            ],
+            hashTypes: [...new Set(todoHashes.map(({ hashType }) => hashType))],
           });
 
           setInstanceID("");
@@ -534,8 +508,11 @@ export const ProjectPage = () => {
 
   const jobs = useMemo(() => {
     const unfilteredJobs = (project?.hashes ?? [])
-      .flatMap((hash) => hash.jobs)
-      .filter((job) => job) as ProjectJob[];
+      .flatMap((hash) =>
+        (hash?.jobs ?? []).map((job) => ({ ...job, type: hash.hashType }))
+      )
+      .filter((job) => job) as ProjectJobWithType[];
+
     const seenJobs: Record<string, boolean> = {};
 
     return unfilteredJobs.filter(({ JID }) => {
@@ -575,11 +552,11 @@ export const ProjectPage = () => {
 
   return (
     <div className="grid gap-4 p-4">
-      <div className="grid grid-cols-2 gap-2">
+      <div className="flex gap-2">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
           {project?.name ?? "Project"}
         </span>
-        <div className="grid grid-flow-col justify-end gap-2">
+        <div className="flex flex-1 flex-wrap justify-end gap-2">
           <LaunchButton
             key="launch"
             projectID={projectID!}

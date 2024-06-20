@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { HASH_TYPES } from "@repo/hashcat/data";
-
 import { APIHandler, Route } from "../routing";
 import { STATUSES } from "../types";
 
@@ -61,7 +59,7 @@ export const ROUTES = {
     permissions: [],
     request: z.object({
       wordlist: z.string(),
-      hashType: z.enum(HASH_TYPES),
+      hashType: z.number().int().positive(),
       hashes: z.string().array(),
     }),
     response: z.string().nullable(),

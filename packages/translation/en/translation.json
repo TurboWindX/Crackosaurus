@@ -61,8 +61,7 @@
     },
     "hash": {
       "singular": "Hash",
-      "plural": "Hashes",
-      "type": "Hash Type"
+      "plural": "Hashes"
     },
     "instance": {
       "singular": "Instance",
@@ -127,6 +126,7 @@
       "button": "Back Home"
     },
     "home": {
+      "title": "Home",
       "header": "Welcome to Crackosaurus",
       "p1": "Crackosaurus is the first open-source password recovery platform. The core system is powered by hashcat, the world's fastest and most advanced password recovery tool. A novel approach is used to distribute the password recovery over multiple systems in a safe and secure way. Collaborate with your team to identify weak passwords in your organization.",
       "p2": "New user of Crackosaurus? Returning after not using the platform for a while? Looking for more information? Our core developer Alex will give you a quick tour of Crackosaurus:"

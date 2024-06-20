@@ -77,7 +77,7 @@ export const Header = () => {
   return (
     <div>
       <div className="ui-flex">
-        <div className="ui-hidden ui-flex-grow md:ui-block">
+        <div className="ui-hidden ui-flex-grow lg:ui-block">
           <NavigationMenu>
             <NavigationMenuList>
               {LINKS.map(
@@ -101,7 +101,7 @@ export const Header = () => {
             </NavigationMenuList>
           </NavigationMenu>
         </div>
-        <div className="ui-block ui-flex-grow md:ui-hidden">
+        <div className="ui-block ui-flex-grow lg:ui-hidden">
           <NavigationMenu>
             <NavigationMenuList>
               <NavigationMenuItem>
@@ -117,7 +117,7 @@ export const Header = () => {
                   </SheetTrigger>
                   <SheetContent side="left">
                     <SheetHeader>
-                      <SheetTitle>Crackosaurus</SheetTitle>
+                      <SheetTitle>{t("app")}</SheetTitle>
                       <SheetDescription></SheetDescription>
                     </SheetHeader>
                     <div className="ui-grid ui-gap-2">
@@ -127,9 +127,9 @@ export const Header = () => {
                             hasPermission(link.permission)) && (
                             <SheetClose key={link.path} asChild>
                               <Link to={link.path}>
-                                {link.label === "Crackosaurus"
-                                  ? "Home"
-                                  : link.label}
+                                {link.label === "app"
+                                  ? t("page.home.title")
+                                  : t(link.label)}
                               </Link>
                             </SheetClose>
                           )

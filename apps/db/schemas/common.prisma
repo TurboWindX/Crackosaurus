@@ -23,7 +23,7 @@ model Hash {
   project   Project  @relation(fields: [projectId], references: [PID])
   jobs      Job[]
   hash      String
-  hashType  String
+  hashType  Int
   status    String   @default("NOT_FOUND")
   value     String?
   createdAt DateTime @default(now())

@@ -300,10 +300,7 @@ export function DataTable<T>({
         />
       )}
       {hasButtons && (
-        <div
-          key="buttons"
-          className="ui-grid ui-w-max ui-grid-flow-col ui-gap-2"
-        >
+        <div key="buttons" className="ui-flex ui-flex-wrap ui-gap-2">
           {hasAdd && (
             <AddDialog
               key="add"
