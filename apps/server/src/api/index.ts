@@ -819,6 +819,9 @@ const HANDLERS: {
       throw new APIError("internal");
     }
   },
+  getInstanceTypes: async () => {
+    return ["node"];
+  },
   createInstance: async ({ prisma, cluster, name, type }) => {
     const tag = await cluster.createInstance(type);
     if (!tag) throw new APIError("internal");

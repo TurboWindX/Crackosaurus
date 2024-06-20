@@ -60,3 +60,41 @@ export const InstanceSelect = ({
     </Select>
   );
 };
+
+export interface InstanceTypeSelectProps {
+  value?: string | null;
+  onValueChange?: (value: string) => void;
+}
+
+export const InstanceTypeSelect = ({
+  value,
+  onValueChange,
+}: InstanceTypeSelectProps) => {
+  const { t } = useTranslation();
+  const API = useAPI();
+
+  const { data: instanceTypes } = useQuery({
+    queryKey: ["instances", "types"],
+    queryFn: API.getInstanceTypes,
+  });
+
+  return (
+    <Select
+      value={value?.toString()}
+      onValueChange={(value) => onValueChange?.(value)}
+    >
+      <SelectTrigger>
+        <SelectValue placeholder={t("item.type.singular")} />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectGroup>
+          {(instanceTypes ?? []).map((type) => (
+            <SelectItem key={type} value={type}>
+              {type}
+            </SelectItem>
+          ))}
+        </SelectGroup>
+      </SelectContent>
+    </Select>
+  );
+};

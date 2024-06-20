@@ -216,6 +216,14 @@ export const ROUTES = {
       })
       .array(),
   },
+  getInstanceTypes: {
+    method: "GET",
+    path: "/instances/types",
+    type: "json",
+    permissions: ["instances:add"],
+    request: z.object({}).optional(),
+    response: z.string().array(),
+  },
   deleteInstances: {
     method: "DELETE",
     path: "/instances",

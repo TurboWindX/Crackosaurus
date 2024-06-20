@@ -294,7 +294,7 @@ export function DataTable<T>({
       {searchFilter !== undefined && (
         <Input
           key="search"
-          placeholder={t("action.search.item", { item: plural })}
+          placeholder={t("action.search.item", { item: plural.toLowerCase() })}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -470,11 +470,13 @@ const DataTableBody = <T,>({
   rowClick,
   isLoading,
 }: DataTableBodyProps<T>) => {
+  const { t } = useTranslation();
+
   if (isLoading)
     return (
       <TableRow key="loading">
         {hasSelect && <TableCell />}
-        <TableCell>Loading</TableCell>
+        <TableCell>{t("action.loading.text")}</TableCell>
         {new Array(head.filter((label) => label).length - 1)
           .fill(0)
           .map((_, index) => (
@@ -487,7 +489,9 @@ const DataTableBody = <T,>({
     return (
       <TableRow key="none">
         {hasSelect && <TableCell />}
-        <TableCell>No {plural}</TableCell>
+        <TableCell>
+          {t("error.empty", { item: plural.toLowerCase() })}
+        </TableCell>
         {new Array(head.filter((label) => label).length - 1)
           .fill(0)
           .map((_, index) => (

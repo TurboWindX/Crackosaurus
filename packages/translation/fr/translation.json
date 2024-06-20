@@ -21,6 +21,9 @@
       "text": "Débuter",
       "item": "Débuter {{item}}"
     },
+    "loading": {
+      "text": "Chargement"
+    },
     "logout": {
       "text": "Déconnexion"
     },
@@ -44,7 +47,8 @@
     "not_found": "Pas trouvé",
     "input": "Entrée invalide",
     "internal": "Erreur interne",
-    "permission": "Autorisations invalides"
+    "permission": "Autorisations invalides",
+    "empty": "Aucun(e)s {{item}}"
   },
   "item": {
     "checksum": {

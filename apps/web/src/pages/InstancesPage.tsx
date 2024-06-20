@@ -9,6 +9,7 @@ import { type REQ } from "@repo/api/server/client/web";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
+import { InstanceTypeSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
 import { StatusBadge } from "@repo/ui/status";
@@ -105,16 +106,9 @@ export const InstancesPage = () => {
                 })
               }
             />
-            <Input
-              placeholder={t("item.type.singular")}
-              type="text"
+            <InstanceTypeSelect
               value={newInstance.type!}
-              onChange={(e) =>
-                setNewInstance({
-                  ...newInstance,
-                  type: e.target.value,
-                })
-              }
+              onValueChange={(type) => setNewInstance({ ...newInstance, type })}
             />
           </>
         }

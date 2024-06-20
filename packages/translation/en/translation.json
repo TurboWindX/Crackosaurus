@@ -21,6 +21,9 @@
       "text": "Launch",
       "item": "Launch {{item}}"
     },
+    "loading": {
+      "text": "Loading"
+    },
     "logout": {
       "text": "Logout"
     },
@@ -44,7 +47,8 @@
     "not_found": "Not Found",
     "input": "Invalid Input",
     "internal": "Internal Error",
-    "permission": "Invalid Permissions"
+    "permission": "Invalid Permissions",
+    "empty": "No {{item}}"
   },
   "item": {
     "checksum": {
