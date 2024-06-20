@@ -4,6 +4,7 @@ import process from "node:process";
 import { STATUS } from "@repo/api";
 import {
   CLUSTER_FILESYSTEM_TYPE,
+  ClusterFileSystemEvent,
   createInstanceFolder,
   getInstanceFolderJobs,
   getInstanceMetadata,
@@ -84,10 +85,21 @@ function innerMain(): Promise<ExitCase> {
       })
     );
 
+    let eventQueue: ClusterFileSystemEvent[] = [];
     watchInstanceFolder(
       config.instanceRoot,
       config.instanceID,
       async (event) => {
+        eventQueue.push(event);
+      }
+    );
+
+    let lastRun = new Date().getTime();
+    const interval = setInterval(async () => {
+      const events = eventQueue;
+      eventQueue = [];
+
+      events.forEach((event) => {
         if (event.type === CLUSTER_FILESYSTEM_TYPE.InstanceUpdate) {
           instanceMetadata = event.metadata;
 
@@ -115,11 +127,8 @@ function innerMain(): Promise<ExitCase> {
             }
           }
         }
-      }
-    );
+      });
 
-    let lastRun = new Date().getTime();
-    const interval = setInterval(async () => {
       if (jobID === null) {
         const nextJobID = jobQueue.shift();
         if (nextJobID === undefined) {
