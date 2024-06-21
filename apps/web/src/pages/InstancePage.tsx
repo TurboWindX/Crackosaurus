@@ -29,8 +29,9 @@ interface JobDataTableProps {
 const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   const { t } = useTranslation();
 
-  const [newJob, setNewJob] = useState<REQ<APIType["createInstanceJob"]>>({
-    instanceID,
+  const [newJob, setNewJob] = useState<
+    REQ<APIType["createInstanceJobs"]>["data"][number]
+  >({
     wordlistID: "",
     hashType: HASH_TYPES.plaintext,
     projectIDs: [],
@@ -50,7 +51,11 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   }, [error]);
 
   const { mutateAsync: createInstanceJob } = useMutation({
-    mutationFn: API.createInstanceJob,
+    mutationFn: (job: REQ<APIType["createInstanceJobs"]>["data"][number]) =>
+      API.createInstanceJobs({
+        instanceID,
+        data: [job],
+      }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["instances", instanceID],
@@ -104,12 +109,12 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
         </>
       }
       addValidate={() =>
-        newJob.hashType > 0 &&
+        newJob.hashType >= 0 &&
         newJob.wordlistID.length > 0 &&
         newJob.projectIDs.length > 0
       }
       onAdd={async () => {
-        await createInstanceJob({ ...newJob, instanceID });
+        await createInstanceJob(newJob);
         return true;
       }}
       onRemove={async (jobs) => {

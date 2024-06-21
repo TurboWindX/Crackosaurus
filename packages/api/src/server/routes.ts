@@ -245,17 +245,21 @@ export const ROUTES = {
     }),
     response: z.string(),
   },
-  createInstanceJob: {
+  createInstanceJobs: {
     method: "POST",
     path: "/instances/:instanceID/jobs",
     type: "json",
     permissions: ["instances:jobs:add"],
     request: z.object({
-      wordlistID: z.string(),
-      hashType: z.number().int().min(0),
-      projectIDs: z.string().array(),
+      data: z
+        .object({
+          wordlistID: z.string(),
+          hashType: z.number().int().min(0),
+          projectIDs: z.string().array(),
+        })
+        .array(),
     }),
-    response: z.string(),
+    response: z.string().nullable().array(),
   },
   deleteInstanceJobs: {
     method: "DELETE",

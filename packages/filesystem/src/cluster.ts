@@ -61,13 +61,12 @@ export const CLUSTER_FILESYSTEM_TYPE = {
 export const CLUSTER_FILESYSTEM_EVENT = z.union([
   z.object({
     type: z.literal(CLUSTER_FILESYSTEM_TYPE.JobUpdate),
+    instanceID: z.string(),
     jobID: z.string(),
-    metadata: JOB_METADATA,
   }),
   z.object({
     type: z.literal(CLUSTER_FILESYSTEM_TYPE.InstanceUpdate),
     instanceID: z.string(),
-    metadata: INSTANCE_METADATA,
   }),
 ]);
 export type ClusterFileSystemEvent = z.infer<typeof CLUSTER_FILESYSTEM_EVENT>;
@@ -220,16 +219,15 @@ export function watchInstanceFolder(
       if (filePath === instanceMetadata) {
         callback({
           type: CLUSTER_FILESYSTEM_TYPE.InstanceUpdate,
-          instanceID: instanceID,
-          metadata: await getInstanceMetadata(instanceRoot, instanceID),
+          instanceID,
         });
       } else if (filePath.endsWith(METADATA_FILE)) {
         const jobID = path.basename(path.dirname(filePath));
 
         callback({
           type: CLUSTER_FILESYSTEM_TYPE.JobUpdate,
+          instanceID,
           jobID: jobID,
-          metadata: await getJobMetadata(instanceRoot, instanceID, jobID),
         });
       }
     }

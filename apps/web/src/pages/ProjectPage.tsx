@@ -359,16 +359,14 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
       wordlistID: string;
       hashTypes: number[];
     }) =>
-      Promise.all(
-        hashTypes.map((hashType) =>
-          API.createInstanceJob({
-            instanceID,
-            wordlistID,
-            hashType,
-            projectIDs: [projectID],
-          })
-        )
-      ),
+      API.createInstanceJobs({
+        instanceID,
+        data: hashTypes.map((hashType) => ({
+          wordlistID,
+          hashType,
+          projectIDs: [projectID],
+        })),
+      }),
     onSuccess() {
       queryClient.invalidateQueries({ queryKey: ["projects", projectID] });
     },

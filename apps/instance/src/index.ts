@@ -86,12 +86,8 @@ function innerMain(): Promise<ExitCase> {
     );
 
     let eventQueue: ClusterFileSystemEvent[] = [];
-    watchInstanceFolder(
-      config.instanceRoot,
-      config.instanceID,
-      async (event) => {
-        eventQueue.push(event);
-      }
+    watchInstanceFolder(config.instanceRoot, config.instanceID, async (event) =>
+      eventQueue.push(event)
     );
 
     let lastRun = new Date().getTime();
@@ -99,21 +95,29 @@ function innerMain(): Promise<ExitCase> {
       const events = eventQueue;
       eventQueue = [];
 
-      events.forEach((event) => {
+      for (const event of events) {
         if (event.type === CLUSTER_FILESYSTEM_TYPE.InstanceUpdate) {
-          instanceMetadata = event.metadata;
+          instanceMetadata = await getInstanceMetadata(
+            config.instanceRoot,
+            event.instanceID
+          );
 
           if (instanceMetadata.status === STATUS.Stopped)
             resolve(EXIT_CASE.Stop);
           else if (instanceMetadata.status === STATUS.Error)
             resolve(EXIT_CASE.Error);
         } else if (event.type === CLUSTER_FILESYSTEM_TYPE.JobUpdate) {
-          const metadata = event.metadata.status;
-          if (metadata === STATUS.Pending) {
+          const metadata = await getJobMetadata(
+            config.instanceRoot,
+            event.instanceID,
+            event.jobID
+          );
+
+          if (metadata.status === STATUS.Pending) {
             if (jobQueue.findIndex((jID) => jID === event.jobID) == -1) {
               jobQueue.push(event.jobID);
             }
-          } else if (metadata === STATUS.Stopped) {
+          } else if (metadata.status === STATUS.Stopped) {
             if (jobID === event.jobID) {
               console.log(
                 `[Instance ${config.instanceID}] [Job ${jobID}] Stopped`
@@ -127,10 +131,11 @@ function innerMain(): Promise<ExitCase> {
             }
           }
         }
-      });
+      }
 
       if (jobID === null) {
         const nextJobID = jobQueue.shift();
+
         if (nextJobID === undefined) {
           if (
             config.instanceCooldown >= 0 &&
