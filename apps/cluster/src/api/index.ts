@@ -33,17 +33,15 @@ function validate(
     next: (err?: Error | undefined) => void
   ) => {
     if (type === "json") {
-      if (request.isMultipart())
-        throw new APIError("Only supports application/json");
+      if (request.isMultipart()) throw new APIError("input");
 
       try {
         if (validator.parse) validator.parse(request.body ?? {});
       } catch (e) {
-        throw new APIError("Invalid input");
+        throw new APIError("input");
       }
     } else if (type === "multipart") {
-      if (!request.isMultipart())
-        throw new APIError("Only supports multipart/form-data");
+      if (!request.isMultipart()) throw new APIError("input");
 
       // TODO: Validate body.
     }
@@ -92,7 +90,7 @@ const ROUTER: {
   },
   createWordlist: async (request) => {
     const multipart = await request.file();
-    if (multipart === undefined) throw new APIError("Unable to read file");
+    if (multipart === undefined) throw new APIError("input");
 
     const buffer = await streamToBuffer(multipart.file);
 

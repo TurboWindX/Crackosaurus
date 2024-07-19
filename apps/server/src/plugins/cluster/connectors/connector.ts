@@ -1,5 +1,4 @@
 import { type ClusterStatus } from "@repo/api";
-import { type HashType } from "@repo/hashcat/data";
 
 export abstract class ClusterConnector<TConfig = undefined> {
   public constructor(protected readonly config: TConfig) {}
@@ -17,7 +16,7 @@ export abstract class ClusterConnector<TConfig = undefined> {
   public abstract createJob(
     instanceID: string,
     wordlistID: string,
-    hashType: HashType,
+    hashType: number,
     hashes: string[]
   ): Promise<string | null>;
 

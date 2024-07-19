@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+
 import { Button } from "@repo/shadcn/components/ui/button";
 import {
   Dialog,
@@ -36,6 +38,8 @@ export function DrawerDialog({
   setOpen,
   trigger,
 }: DrawerDialogProps) {
+  const { t } = useTranslation();
+
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
   if (isDesktop) {
@@ -63,7 +67,7 @@ export function DrawerDialog({
           <div className="ui-px-4">{children}</div>
           <DrawerFooter className="ui-pt-2">
             <DrawerClose asChild>
-              <Button variant="outline">Cancel</Button>
+              <Button variant="outline">{t("action.cancel.text")}</Button>
             </DrawerClose>
           </DrawerFooter>
         </DrawerContent>

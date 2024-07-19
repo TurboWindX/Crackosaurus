@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { Button } from "@repo/shadcn/components/ui/button";
@@ -12,6 +13,8 @@ import { Input } from "@repo/shadcn/components/ui/input";
 import { useAuth } from "@repo/ui/auth";
 
 export const SetupPage = () => {
+  const { t } = useTranslation();
+
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
@@ -22,9 +25,9 @@ export const SetupPage = () => {
     <div className="grid h-screen grid-rows-3 lg:grid-cols-3">
       <div className="row-start-2 lg:col-start-2">
         <CardHeader>
-          <CardTitle className="text-center">Setup</CardTitle>
+          <CardTitle className="text-center">{t("page.setup.title")}</CardTitle>
           <CardDescription className="text-center">
-            Enter information to begin the platform
+            {t("page.setup.header")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -38,17 +41,17 @@ export const SetupPage = () => {
           >
             <Input
               type="text"
-              placeholder="Username"
+              placeholder={t("item.username.singular")}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
             />
             <Input
               type="password"
-              placeholder="Password"
+              placeholder={t("item.password.singular")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
-            <Button>Setup</Button>
+            <Button>{t("page.setup.button")}</Button>
           </form>
         </CardContent>
       </div>

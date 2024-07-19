@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -14,9 +15,11 @@ import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
+import { RelativeTime } from "@repo/ui/time";
 import { PermissionProfileSelect } from "@repo/ui/users";
 
 export const UsersPage = () => {
+  const { t } = useTranslation();
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
@@ -62,14 +65,28 @@ export const UsersPage = () => {
     onError: handleError,
   });
 
+  const { mutateAsync: deleteUsers } = useMutation({
+    mutationFn: (userIDs: string[]) => API.deleteUsers({ userIDs }),
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["users", "list"],
+      });
+    },
+    onError: handleError,
+  });
+
   return (
     <div className="p-4">
       <DataTable
-        type="User"
-        head={["User"]}
+        singular={t("item.user.singular")}
+        plural={t("item.user.plural")}
+        head={[t("item.user.singular"), t("item.time.update")]}
         values={users ?? []}
         rowClick={({ ID }) => navigate(`/users/${ID}`)}
-        row={({ username }) => [username]}
+        row={({ username, updatedAt }) => [
+          username,
+          <RelativeTime time={updatedAt} />,
+        ]}
         isLoading={isLoading}
         valueKey={({ ID }) => ID}
         searchFilter={({ username }, search) =>
@@ -83,7 +100,7 @@ export const UsersPage = () => {
         addDialog={
           <>
             <Input
-              placeholder="Username"
+              placeholder={t("item.username.singular")}
               value={newUser.username}
               onChange={(e) =>
                 setNewUser({
@@ -93,7 +110,7 @@ export const UsersPage = () => {
               }
             />
             <Input
-              placeholder="Password"
+              placeholder={t("item.password.singular")}
               type="password"
               value={newUser.password}
               onChange={(e) =>
@@ -120,6 +137,12 @@ export const UsersPage = () => {
           await register(newUser);
 
           setNewUser({ ...newUser, username: "", password: "" });
+
+          return true;
+        }}
+        noRemove={!hasPermission("root")}
+        onRemove={async (users) => {
+          await deleteUsers(users.map((user) => user.ID));
 
           return true;
         }}

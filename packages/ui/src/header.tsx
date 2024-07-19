@@ -6,6 +6,7 @@ import {
   UserIcon,
   UsersIcon,
 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { PermissionType } from "@repo/api";
@@ -30,7 +31,7 @@ import {
 import { useAuth } from "./auth";
 
 interface HeaderLinkProps {
-  text: string;
+  label: string;
   path: string;
   icon: any;
   permission?: PermissionType;
@@ -38,29 +39,29 @@ interface HeaderLinkProps {
 
 const LINKS: readonly HeaderLinkProps[] = [
   {
-    text: "Crackosaurus",
+    label: "app",
     path: "/",
     icon: LockIcon,
   },
   {
-    text: "Projects",
+    label: "item.project.plural",
     path: "/projects",
     icon: FolderIcon,
   },
   {
-    text: "Instances",
+    label: "item.instance.plural",
     path: "/instances",
     icon: CpuIcon,
     permission: "instances:get",
   },
   {
-    text: "Wordlists",
+    label: "item.wordlist.plural",
     path: "/wordlists",
     icon: ALargeSmallIcon,
     permission: "wordlists:get",
   },
   {
-    text: "Users",
+    label: "item.user.plural",
     path: "/users",
     icon: UsersIcon,
     permission: "users:get",
@@ -69,13 +70,14 @@ const LINKS: readonly HeaderLinkProps[] = [
 
 export const Header = () => {
   const { uid, username, hasPermission, isLoading } = useAuth();
+  const { t } = useTranslation();
 
   if (isLoading) return <></>;
 
   return (
     <div>
       <div className="ui-flex">
-        <div className="ui-hidden ui-flex-grow md:ui-block">
+        <div className="ui-hidden ui-flex-grow lg:ui-block">
           <NavigationMenu>
             <NavigationMenuList>
               {LINKS.map(
@@ -89,7 +91,7 @@ export const Header = () => {
                         <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
                           <link.icon />
                           <span className="ui-hidden md:ui-block">
-                            {link.text}
+                            {t(link.label)}
                           </span>
                         </div>
                       </Link>
@@ -99,7 +101,7 @@ export const Header = () => {
             </NavigationMenuList>
           </NavigationMenu>
         </div>
-        <div className="ui-block ui-flex-grow md:ui-hidden">
+        <div className="ui-block ui-flex-grow lg:ui-hidden">
           <NavigationMenu>
             <NavigationMenuList>
               <NavigationMenuItem>
@@ -115,7 +117,7 @@ export const Header = () => {
                   </SheetTrigger>
                   <SheetContent side="left">
                     <SheetHeader>
-                      <SheetTitle>Crackosaurus</SheetTitle>
+                      <SheetTitle>{t("app")}</SheetTitle>
                       <SheetDescription></SheetDescription>
                     </SheetHeader>
                     <div className="ui-grid ui-gap-2">
@@ -125,9 +127,9 @@ export const Header = () => {
                             hasPermission(link.permission)) && (
                             <SheetClose key={link.path} asChild>
                               <Link to={link.path}>
-                                {link.text === "Crackosaurus"
-                                  ? "Home"
-                                  : link.text}
+                                {link.label === "app"
+                                  ? t("page.home.title")
+                                  : t(link.label)}
                               </Link>
                             </SheetClose>
                           )

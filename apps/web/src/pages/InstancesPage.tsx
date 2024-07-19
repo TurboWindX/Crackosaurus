@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { APIError, Status } from "@repo/api";
@@ -8,12 +9,14 @@ import { type REQ } from "@repo/api/server/client/web";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
+import { InstanceTypeSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 
 export const InstancesPage = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
 
@@ -56,12 +59,27 @@ export const InstancesPage = () => {
     onError: handleError,
   });
 
+  const { mutateAsync: deleteInstances } = useMutation({
+    mutationFn: (instanceIDs: string[]) => API.deleteInstances({ instanceIDs }),
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["instances", "list"],
+      });
+    },
+    onError: handleError,
+  });
+
   return (
     <div className="p-4">
       <DataTable
-        type="Instance"
+        singular={t("item.instance.singular")}
+        plural={t("item.instance.plural")}
         values={instances ?? []}
-        head={["Instance", "Status", "Last Updated"]}
+        head={[
+          t("item.instance.singular"),
+          t("item.status"),
+          t("item.time.update"),
+        ]}
         valueKey={({ IID }) => IID}
         rowClick={({ IID }) => navigate(`/instances/${IID}`)}
         isLoading={isLoading}
@@ -78,9 +96,9 @@ export const InstancesPage = () => {
         addDialog={
           <>
             <Input
-              placeholder="Name"
+              placeholder={t("item.name.singular")}
               type="text"
-              value={newInstance.name ?? ""}
+              value={newInstance.name!}
               onChange={(e) =>
                 setNewInstance({
                   ...newInstance,
@@ -88,22 +106,20 @@ export const InstancesPage = () => {
                 })
               }
             />
-            <Input
-              placeholder="Type"
-              type="text"
-              value={newInstance.type ?? ""}
-              onChange={(e) =>
-                setNewInstance({
-                  ...newInstance,
-                  type: e.target.value,
-                })
-              }
+            <InstanceTypeSelect
+              value={newInstance.type!}
+              onValueChange={(type) => setNewInstance({ ...newInstance, type })}
             />
           </>
         }
         noAdd={!hasPermission("instances:add")}
         onAdd={async () => {
           await createInstance(newInstance);
+          return true;
+        }}
+        noRemove={!hasPermission("root")}
+        onRemove={async (instances) => {
+          await deleteInstances(instances.map(({ IID }) => IID));
           return true;
         }}
       />

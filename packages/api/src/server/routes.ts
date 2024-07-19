@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { HASH_TYPES } from "@repo/hashcat/data";
-
 import { PERMISSIONS } from "../auth";
 import { APIHandler, Route } from "../routing";
 
@@ -66,6 +64,7 @@ export const ROUTES = {
         ID: z.string(),
         username: z.string(),
         permissions: z.string(),
+        updatedAt: z.date(),
       })
       .array(),
   },
@@ -99,7 +98,7 @@ export const ROUTES = {
     type: "json",
     permissions: ["auth"],
     request: z.object({}).optional(),
-    response: z.string(),
+    response: z.boolean(),
   },
   register: {
     method: "POST",
@@ -113,13 +112,15 @@ export const ROUTES = {
     }),
     response: z.string(),
   },
-  deleteUser: {
+  deleteUsers: {
     method: "DELETE",
-    path: "/users/:userID",
+    path: "/users",
     type: "json",
-    permissions: ["users:remove"],
-    request: z.object({}).optional(),
-    response: z.string(),
+    permissions: ["auth"],
+    request: z.object({
+      userIDs: z.string().array(),
+    }),
+    response: z.number().int().min(0),
   },
   addUserPermissions: {
     method: "POST",
@@ -129,7 +130,7 @@ export const ROUTES = {
     request: z.object({
       permissions: z.enum(PERMISSIONS).array(),
     }),
-    response: z.string(),
+    response: z.boolean(),
   },
   removeUserPermissions: {
     method: "DELETE",
@@ -139,34 +140,32 @@ export const ROUTES = {
     request: z.object({
       permissions: z.enum(PERMISSIONS).array(),
     }),
-    response: z.string(),
+    response: z.number().int().min(0),
   },
-  addHash: {
+  addHashes: {
     method: "POST",
     path: "/projects/:projectID/hashes",
     type: "json",
     permissions: ["hashes:add"],
     request: z.object({
-      hash: z.string(),
-      hashType: z.enum(HASH_TYPES),
+      data: z
+        .object({
+          hash: z.string(),
+          hashType: z.number().int().min(0),
+        })
+        .array(),
     }),
-    response: z.string(),
+    response: z.string().nullable().array(),
   },
-  removeHash: {
+  removeHashes: {
     method: "DELETE",
-    path: "/projects/:projectID/hashes/:hashID",
+    path: "/projects/:projectID/hashes",
     type: "json",
     permissions: ["hashes:remove"],
-    request: z.object({}).optional(),
-    response: z.string(),
-  },
-  viewHash: {
-    method: "GET",
-    path: "/projects/:projectID/hashes/:hashID/view",
-    type: "json",
-    permissions: ["hashes:view"],
-    request: z.object({}).optional(),
-    response: z.string().nullable(),
+    request: z.object({
+      hashIDs: z.string().array(),
+    }),
+    response: z.number().int().min(0),
   },
   getInstance: {
     method: "GET",
@@ -217,13 +216,23 @@ export const ROUTES = {
       })
       .array(),
   },
-  deleteInstance: {
+  getInstanceTypes: {
+    method: "GET",
+    path: "/instances/types",
+    type: "json",
+    permissions: ["instances:add"],
+    request: z.object({}).optional(),
+    response: z.string().array(),
+  },
+  deleteInstances: {
     method: "DELETE",
-    path: "/instances/:instanceID",
+    path: "/instances",
     type: "json",
     permissions: ["instances:remove"],
-    request: z.object({}).optional(),
-    response: z.string(),
+    request: z.object({
+      instanceIDs: z.string().array(),
+    }),
+    response: z.number().int().min(0),
   },
   createInstance: {
     method: "POST",
@@ -236,25 +245,31 @@ export const ROUTES = {
     }),
     response: z.string(),
   },
-  createInstanceJob: {
+  createInstanceJobs: {
     method: "POST",
     path: "/instances/:instanceID/jobs",
     type: "json",
     permissions: ["instances:jobs:add"],
     request: z.object({
-      wordlistID: z.string(),
-      hashType: z.enum(HASH_TYPES),
-      projectIDs: z.string().array(),
+      data: z
+        .object({
+          wordlistID: z.string(),
+          hashType: z.number().int().min(0),
+          projectIDs: z.string().array(),
+        })
+        .array(),
     }),
-    response: z.string(),
+    response: z.string().nullable().array(),
   },
-  deleteInstanceJob: {
+  deleteInstanceJobs: {
     method: "DELETE",
-    path: "/instances/:instanceID/jobs/:jobID",
+    path: "/instances/:instanceID/jobs",
     type: "json",
     permissions: ["instances:jobs:remove"],
-    request: z.object({}).optional(),
-    response: z.string(),
+    request: z.object({
+      jobIDs: z.string().array(),
+    }),
+    response: z.number().int().min(0),
   },
   getProject: {
     method: "GET",
@@ -277,7 +292,8 @@ export const ROUTES = {
         .object({
           HID: z.string(),
           hash: z.string(),
-          hashType: z.string(),
+          hashType: z.number().int().min(0),
+          value: z.string().nullable().optional(),
           status: z.string(),
           updatedAt: z.date(),
           jobs: PROJECT_JOB.array().optional(),
@@ -330,13 +346,15 @@ export const ROUTES = {
     }),
     response: z.string(),
   },
-  deleteProject: {
+  deleteProjects: {
     method: "DELETE",
-    path: "/projects/:projectID",
+    path: "/projects",
     type: "json",
     permissions: ["projects:remove"],
-    request: z.object({}).optional(),
-    response: z.string(),
+    request: z.object({
+      projectIDs: z.string().array(),
+    }),
+    response: z.number().int().min(0),
   },
   getWordlist: {
     method: "GET",
@@ -347,7 +365,7 @@ export const ROUTES = {
     response: z.object({
       WID: z.string(),
       name: z.string().nullable(),
-      size: z.number(),
+      size: z.number().int().min(0),
       checksum: z.string(),
       updatedAt: z.date(),
     }),
@@ -362,7 +380,7 @@ export const ROUTES = {
       .object({
         WID: z.string(),
         name: z.string().nullable(),
-        size: z.number(),
+        size: z.number().int().min(0),
         checksum: z.string(),
         updatedAt: z.date(),
       })
@@ -389,29 +407,35 @@ export const ROUTES = {
     request: z.object({}).optional(),
     response: z.string(),
   },
-  deleteWordlist: {
+  deleteWordlists: {
     method: "DELETE",
-    path: "/wordlists/:wordlistID",
+    path: "/wordlists",
     type: "json",
     permissions: ["wordlists:remove"],
-    request: z.object({}).optional(),
-    response: z.string(),
+    request: z.object({
+      wordlistIDs: z.string().array(),
+    }),
+    response: z.number().int().min(0),
   },
-  addUserToProject: {
+  addUsersToProject: {
     method: "POST",
-    path: "/projects/:projectID/users/:userID",
+    path: "/projects/:projectID/users",
     type: "json",
     permissions: ["projects:users:add"],
-    request: z.object({}).optional(),
-    response: z.string(),
+    request: z.object({
+      userIDs: z.string().array(),
+    }),
+    response: z.number().int().min(0),
   },
-  removeUserFromProject: {
+  removeUsersFromProject: {
     method: "DELETE",
-    path: "/projects/:projectID/users/:userID",
+    path: "/projects/:projectID/users",
     type: "json",
     permissions: ["projects:users:remove"],
-    request: z.object({}).optional(),
-    response: z.string(),
+    request: z.object({
+      userIDs: z.string().array(),
+    }),
+    response: z.number().int().min(0),
   },
   changePassword: {
     method: "PUT",
@@ -422,7 +446,7 @@ export const ROUTES = {
       oldPassword: z.string(),
       newPassword: z.string(),
     }),
-    response: z.string(),
+    response: z.boolean(),
   },
   authUser: {
     method: "GET",

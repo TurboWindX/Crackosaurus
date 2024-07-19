@@ -1,5 +1,6 @@
 import { type MultipartFile } from "@fastify/multipart";
 import { PrismaClient } from "@prisma/client";
+import { PrismaClientKnownRequestError } from "@prisma/client/runtime/library";
 import bcrypt from "bcrypt";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import * as crypto from "node:crypto";
@@ -35,8 +36,11 @@ function hashPassword(password: string): string {
   return bcrypt.hashSync(password, saltRounds);
 }
 
-function checkPassword(inputPassword: string, dbPassword: string): boolean {
-  return bcrypt.compareSync(inputPassword, dbPassword);
+async function checkPassword(
+  inputPassword: string,
+  dbPassword: string
+): Promise<boolean> {
+  return bcrypt.compare(inputPassword, dbPassword);
 }
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
@@ -69,21 +73,16 @@ const HANDLERS: {
 } = {
   ping: async () => "pong",
   init: async ({ prisma, username, password }) => {
-    let user;
-    try {
-      user = await prisma.user.findFirst({
+    return prisma.$transaction(async (tx) => {
+      const firstUser = await tx.user.findFirst({
         select: {
           ID: true,
         },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
 
-    if (user !== null) throw new APIError("Application is already initialized");
+      if (firstUser !== null) throw new APIError("internal");
 
-    try {
-      const user = await prisma.user.create({
+      const user = await tx.user.create({
         select: {
           ID: true,
         },
@@ -95,43 +94,47 @@ const HANDLERS: {
       });
 
       return user.ID;
-    } catch (err) {
-      throw new APIError("User error");
-    }
+    });
   },
   login: async ({ request, prisma, username, password }) => {
-    let user;
-    try {
-      user = await prisma.user.findUniqueOrThrow({
-        select: {
-          ID: true,
-          username: true,
-          permissions: true,
-          password: true,
-        },
-        where: {
-          username: username,
-        },
-      });
-    } catch (err) {
-      throw new APIError("Login failed");
-    }
+    return prisma.$transaction(async (tx) => {
+      let user;
+      try {
+        user = await tx.user.findUniqueOrThrow({
+          select: {
+            ID: true,
+            username: true,
+            permissions: true,
+            password: true,
+          },
+          where: {
+            username: username,
+          },
+        });
+      } catch (err) {
+        if (err instanceof PrismaClientKnownRequestError) {
+          if (err.code === "P2025") throw new APIError("input");
+        }
 
-    if (!checkPassword(password, user.password))
-      throw new APIError("Login failed");
+        throw err;
+      }
 
-    await request.session.regenerate();
+      if (!(await checkPassword(password, user.password)))
+        throw new APIError("input");
 
-    request.session.uid = user.ID;
-    request.session.username = user.username;
-    request.session.permissions = user.permissions;
+      await request.session.regenerate();
 
-    return user.ID;
+      request.session.uid = user.ID;
+      request.session.username = user.username;
+      request.session.permissions = user.permissions;
+
+      return user.ID;
+    });
   },
   logout: async ({ request }) => {
     await request.session.destroy();
 
-    return "Logout successful";
+    return true;
   },
   authUser: async ({ request }) => {
     return {
@@ -142,10 +145,10 @@ const HANDLERS: {
   },
   getUser: async ({ prisma, hasPermission, currentUserID, userID }) => {
     if (!hasPermission("users:get") && userID !== currentUserID)
-      throw new APIError("Cannot get user");
+      throw new APIError("permission");
 
-    try {
-      return await prisma.user.findUniqueOrThrow({
+    return prisma.$transaction(async (tx) => {
+      return await tx.user.findUniqueOrThrow({
         select: {
           ID: true,
           username: true,
@@ -170,34 +173,29 @@ const HANDLERS: {
           ID: userID,
         },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
+    });
   },
   getUsers: async ({ prisma }) => {
-    try {
-      return await prisma.user.findMany({
+    return prisma.$transaction(async (tx) => {
+      return await tx.user.findMany({
         select: {
           ID: true,
           username: true,
           permissions: true,
+          updatedAt: true,
         },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
+    });
   },
   getUserList: async ({ prisma }) => {
-    try {
-      return await prisma.user.findMany({
+    return prisma.$transaction(async (tx) => {
+      return await tx.user.findMany({
         select: {
           ID: true,
           username: true,
         },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
+    });
   },
   register: async ({
     prisma,
@@ -207,11 +205,10 @@ const HANDLERS: {
     permissions,
   }) => {
     if ((permissions ?? []).some((permission) => !hasPermission(permission)))
-      throw new APIError("Cannot add permission without having it");
+      throw new APIError("permission");
 
-    let user;
-    try {
-      user = await prisma.user.create({
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
         select: {
           ID: true,
         },
@@ -221,73 +218,44 @@ const HANDLERS: {
           permissions: permissions?.join(" ") ?? "",
         },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
 
-    return user.ID;
+      return user.ID;
+    });
   },
-  deleteUser: async ({
+  deleteUsers: async ({
     request,
     prisma,
     hasPermission,
     currentUserID,
-    userID,
+    userIDs,
   }) => {
-    if (!hasPermission("users:remove") && userID !== currentUserID)
-      throw new APIError("Cannot remove user");
+    if (
+      !(
+        hasPermission("users:remove") ||
+        userIDs.every((userID) => userID === currentUserID)
+      )
+    )
+      throw new APIError("permission");
 
-    let user;
-    try {
-      user = await prisma.user.findUniqueOrThrow({
-        select: {
-          projects: {
-            select: {
-              PID: true,
-              members: {
-                select: {
-                  ID: true,
-                },
-              },
-            },
+    return prisma.$transaction(async (tx) => {
+      const { count } = await tx.user.deleteMany({
+        where: {
+          ID: {
+            in: userIDs,
+          },
+          permissions: {
+            notIn: ["root"],
           },
         },
-        where: {
-          ID: userID,
-        },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
 
-    try {
-      await prisma.user.delete({
-        where: {
-          ID: userID,
-        },
-      });
-    } catch (err) {
-      throw new APIError("Delete error");
-    }
+      if (count === 0) throw new APIError("input");
 
-    if (userID === currentUserID) await request.session.destroy();
+      if (userIDs.some((userID) => userID === currentUserID))
+        await request.session.destroy();
 
-    const emptyProjectIDs = user.projects
-      .filter(({ members }) => members.length === 1)
-      .map(({ PID }) => PID);
-    if (emptyProjectIDs.length > 0) {
-      try {
-        user = await prisma.project.deleteMany({
-          where: {
-            PID: {
-              in: emptyProjectIDs,
-            },
-          },
-        });
-      } catch (err) {}
-    }
-
-    return "User has been obliterated into oblivion";
+      return count;
+    });
   },
   addUserPermissions: async ({
     prisma,
@@ -297,14 +265,12 @@ const HANDLERS: {
     permissions,
   }) => {
     if (permissions.some((permission) => !hasPermission(permission)))
-      throw new APIError("Cannot add permission without having it");
+      throw new APIError("auth");
 
-    if (userID === currentUserID)
-      throw new APIError("Cannot add permission to self");
+    if (userID === currentUserID) throw new APIError("input");
 
-    let permissionSet = new Set<string>();
-    try {
-      const user = await prisma.user.findUniqueOrThrow({
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUniqueOrThrow({
         select: {
           permissions: true,
         },
@@ -313,15 +279,11 @@ const HANDLERS: {
         },
       });
 
-      permissionSet = new Set(user.permissions.split(" "));
-    } catch (err) {
-      throw new APIError("User error");
-    }
+      const permissionSet = new Set(user.permissions.split(" "));
 
-    permissions.forEach((permission) => permissionSet.add(permission));
+      permissions.forEach((permission) => permissionSet.add(permission));
 
-    try {
-      await prisma.user.update({
+      await tx.user.update({
         where: {
           ID: userID,
         },
@@ -329,11 +291,9 @@ const HANDLERS: {
           permissions: [...permissionSet].join(" "),
         },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
 
-    return "User permissions added";
+      return true;
+    });
   },
   removeUserPermissions: async ({
     prisma,
@@ -343,14 +303,12 @@ const HANDLERS: {
     permissions,
   }) => {
     if (permissions.some((permission) => !hasPermission(permission)))
-      throw new APIError("Cannot remove permission without having it");
+      throw new APIError("permission");
 
-    if (userID === currentUserID)
-      throw new APIError("Cannot remove permission from self");
+    if (userID === currentUserID) throw new APIError("input");
 
-    let permissionSet = new Set<string>();
-    try {
-      const user = await prisma.user.findUniqueOrThrow({
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUniqueOrThrow({
         select: {
           permissions: true,
         },
@@ -359,15 +317,11 @@ const HANDLERS: {
         },
       });
 
-      permissionSet = new Set(user.permissions.split(" "));
-    } catch (err) {
-      throw new APIError("User error");
-    }
+      const permissionSet = new Set(user.permissions.split(" "));
 
-    permissions.forEach((permission) => permissionSet.delete(permission));
+      permissions.forEach((permission) => permissionSet.delete(permission));
 
-    try {
-      await prisma.user.update({
+      await tx.user.update({
         where: {
           ID: userID,
         },
@@ -375,11 +329,9 @@ const HANDLERS: {
           permissions: [...permissionSet].join(" "),
         },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
 
-    return "User permissions removed";
+      return permissionSet.size;
+    });
   },
   changePassword: async ({
     prisma,
@@ -392,11 +344,10 @@ const HANDLERS: {
     if (!hasPermission("users:edit") && userID !== currentUserID)
       throw new APIError("Cannot edit user");
 
-    // Check if old password is valid or bypass
-    if (!hasPermission("users:edit")) {
-      let userPassword = "";
-      try {
-        const user = await prisma.user.findUniqueOrThrow({
+    return prisma.$transaction(async (tx) => {
+      // Check if old password is valid or bypass
+      if (!hasPermission("users:edit")) {
+        const user = await tx.user.findUniqueOrThrow({
           select: {
             password: true,
           },
@@ -405,18 +356,12 @@ const HANDLERS: {
           },
         });
 
-        userPassword = user.password;
-      } catch (err) {
-        throw new APIError("User error");
+        if (!(await checkPassword(oldPassword, user.password)))
+          throw new APIError("input");
       }
 
-      if (!checkPassword(oldPassword, userPassword))
-        throw new APIError("Invalid old password");
-    }
-
-    // Update password for user
-    try {
-      await prisma.user.update({
+      // Update password for user
+      await tx.user.update({
         where: {
           ID: userID,
         },
@@ -425,15 +370,13 @@ const HANDLERS: {
           updatedAt: new Date(),
         },
       });
-    } catch (err) {
-      throw new APIError("User error");
-    }
 
-    return "Password has been changed";
+      return true;
+    });
   },
   getProjects: async ({ prisma, hasPermission, currentUserID }) => {
-    try {
-      return await prisma.project.findMany({
+    return prisma.$transaction(async (tx) => {
+      return await tx.project.findMany({
         select: {
           PID: true,
           name: true,
@@ -457,13 +400,11 @@ const HANDLERS: {
               },
             },
       });
-    } catch (err) {
-      throw new APIError("Project error");
-    }
+    });
   },
   getProjectList: async ({ prisma, hasPermission, currentUserID }) => {
-    try {
-      return await prisma.project.findMany({
+    return prisma.$transaction(async (tx) => {
+      return await tx.project.findMany({
         select: {
           PID: true,
           name: true,
@@ -478,13 +419,11 @@ const HANDLERS: {
               },
             },
       });
-    } catch (err) {
-      throw new APIError("Project error");
-    }
+    });
   },
   getProject: async ({ prisma, hasPermission, currentUserID, projectID }) => {
-    try {
-      return await prisma.project.findUniqueOrThrow({
+    return prisma.$transaction(async (tx) => {
+      return await tx.project.findUniqueOrThrow({
         select: {
           PID: true,
           name: true,
@@ -503,6 +442,7 @@ const HANDLERS: {
                   HID: true,
                   hash: true,
                   hashType: true,
+                  value: hasPermission("hashes:view"),
                   status: true,
                   updatedAt: true,
                   jobs: hasPermission("instances:jobs:get")
@@ -535,14 +475,11 @@ const HANDLERS: {
               },
         },
       });
-    } catch (err) {
-      throw new APIError("Project error");
-    }
+    });
   },
   createProject: async ({ prisma, currentUserID, projectName }) => {
-    let project;
-    try {
-      project = await prisma.project.create({
+    return prisma.$transaction(async (tx) => {
+      const project = await tx.project.create({
         select: {
           PID: true,
         },
@@ -555,30 +492,25 @@ const HANDLERS: {
           },
         },
       });
-    } catch (error) {
-      throw new APIError("Project error");
-    }
 
-    return project.PID;
+      return project.PID;
+    });
   },
-  deleteProject: async ({
+  deleteProjects: async ({
     prisma,
     hasPermission,
     currentUserID,
-    projectID,
+    projectIDs,
   }) => {
-    let project;
-    try {
-      project = await prisma.project.findUniqueOrThrow({
+    return prisma.$transaction(async (tx) => {
+      const projects = await tx.project.findMany({
         select: {
-          hashes: {
-            select: {
-              HID: true,
-            },
-          },
+          PID: true,
         },
         where: {
-          PID: projectID,
+          PID: {
+            in: projectIDs,
+          },
           members: hasPermission("root")
             ? undefined
             : {
@@ -588,43 +520,35 @@ const HANDLERS: {
               },
         },
       });
-    } catch (err) {
-      throw new APIError("Project error");
-    }
 
-    try {
-      await prisma.hash.deleteMany({
+      await tx.hash.deleteMany({
         where: {
-          HID: {
-            in: project.hashes.map(({ HID }) => HID),
+          projectId: {
+            in: projects.map((project) => project.PID),
           },
         },
       });
-    } catch (err) {
-      throw new APIError("Hash error");
-    }
 
-    try {
-      await prisma.project.delete({
+      const { count } = await tx.project.deleteMany({
         where: {
-          PID: projectID,
+          PID: {
+            in: projects.map((project) => project.PID),
+          },
         },
       });
-    } catch (err) {
-      throw new APIError("Project error");
-    }
 
-    return "Project has been deleted";
+      return count;
+    });
   },
-  addUserToProject: async ({
+  addUsersToProject: async ({
     prisma,
     hasPermission,
     currentUserID,
     projectID,
-    userID,
+    userIDs,
   }) => {
-    try {
-      await prisma.project.update({
+    return prisma.$transaction(async (tx) => {
+      await tx.project.update({
         where: {
           PID: projectID,
           members: hasPermission("root")
@@ -637,27 +561,23 @@ const HANDLERS: {
         },
         data: {
           members: {
-            connect: {
-              ID: userID,
-            },
+            connect: userIDs.map((ID) => ({ ID })),
           },
         },
       });
-    } catch (err) {
-      throw new APIError("Project error");
-    }
 
-    return "User has been added to the project";
+      return userIDs.length;
+    });
   },
-  removeUserFromProject: async ({
+  removeUsersFromProject: async ({
     prisma,
     hasPermission,
     currentUserID,
     projectID,
-    userID,
+    userIDs,
   }) => {
-    try {
-      await prisma.project.update({
+    return prisma.$transaction(async (tx) => {
+      await tx.project.update({
         where: {
           PID: projectID,
           members: hasPermission("root")
@@ -670,28 +590,25 @@ const HANDLERS: {
         },
         data: {
           members: {
-            disconnect: {
-              ID: userID,
-            },
+            disconnect: userIDs
+              .filter((ID) => ID !== currentUserID)
+              .map((ID) => ({ ID })),
           },
         },
       });
-    } catch (err) {
-      throw new APIError("Project error");
-    }
 
-    return "User has been removed from the project";
+      return userIDs.length;
+    });
   },
-  addHash: async ({
+  addHashes: async ({
     prisma,
     hasPermission,
     currentUserID,
     projectID,
-    hash,
-    hashType,
+    data,
   }) => {
-    try {
-      await prisma.project.update({
+    return prisma.$transaction(async (tx) => {
+      await tx.project.update({
         where: {
           PID: projectID,
           members: hasPermission("root")
@@ -706,59 +623,63 @@ const HANDLERS: {
           updatedAt: new Date(),
         },
       });
-    } catch (err) {}
 
-    const hashValue = toHashcatHash(hashType, hash);
+      const hashValueMap = Object.fromEntries(
+        data.map((hash) => [hash.hash, toHashcatHash(hash.hashType, hash.hash)])
+      );
 
-    let seenHash;
-    try {
-      seenHash = await prisma.hash.findFirst({
+      const seenHashes = await tx.hash.findMany({
         select: {
+          hash: true,
           value: true,
         },
         where: {
-          hash: hashValue,
-          hashType,
+          hash: {
+            in: Object.values(hashValueMap),
+          },
           status: "FOUND",
         },
       });
-    } catch (err) {
-      throw new APIError("Hash error");
-    }
 
-    let outHash;
-    try {
-      outHash = await prisma.hash.create({
+      const seenHashMap = Object.fromEntries(
+        seenHashes.map((hash) => [hash.hash, hash.value ?? ""])
+      );
+
+      const outHashes = await tx.hash.createManyAndReturn({
         select: {
           HID: true,
+          hash: true,
         },
-        data: {
-          hash: hashValue,
-          hashType,
-          value: seenHash ? seenHash.value : undefined,
-          status: seenHash ? "FOUND" : undefined,
-          project: {
-            connect: {
-              PID: projectID,
-            },
-          },
-        },
-      });
-    } catch (err) {
-      throw new APIError("Hash error");
-    }
+        data: data.map((hash) => {
+          const hashValue = hashValueMap[hash.hash]!;
+          const seenHash = seenHashMap[hashValue];
 
-    return outHash.HID;
+          return {
+            hash: hashValue,
+            hashType: hash.hashType,
+            value: seenHash,
+            status: seenHash ? STATUS.Found : undefined,
+            projectId: projectID,
+          };
+        }),
+      });
+
+      const outHashMap = Object.fromEntries(
+        outHashes.map((hash) => [hash.hash, hash.HID])
+      );
+
+      return data.map((hash) => outHashMap[hashValueMap[hash.hash]!] ?? null);
+    });
   },
-  removeHash: async ({
+  removeHashes: async ({
     prisma,
     hasPermission,
     currentUserID,
     projectID,
-    hashID,
+    hashIDs,
   }) => {
-    try {
-      await prisma.project.update({
+    return prisma.$transaction(async (tx) => {
+      await tx.project.update({
         where: {
           PID: projectID,
           members: hasPermission("root")
@@ -773,49 +694,22 @@ const HANDLERS: {
           updatedAt: new Date(),
         },
       });
-    } catch (err) {}
 
-    try {
-      await prisma.hash.delete({
+      const { count } = await tx.hash.deleteMany({
         where: {
-          HID: hashID,
-        },
-      });
-    } catch (err) {
-      throw new APIError("Hash error");
-    }
-
-    return "Hash has been removed";
-  },
-  viewHash: async ({ prisma, hasPermission, currentUserID, hashID }) => {
-    let hash;
-    try {
-      hash = await prisma.hash.findUniqueOrThrow({
-        select: {
-          value: true,
-        },
-        where: {
-          HID: hashID,
-          project: {
-            members: {
-              some: hasPermission("root")
-                ? undefined
-                : {
-                    ID: currentUserID,
-                  },
-            },
+          HID: {
+            in: hashIDs,
           },
+          projectId: projectID,
         },
       });
-    } catch (e) {
-      throw new APIError("Hash error");
-    }
 
-    return hash.value;
+      return count;
+    });
   },
   getInstances: async ({ prisma }) => {
-    try {
-      return await prisma.instance.findMany({
+    return prisma.$transaction(async (tx) => {
+      return await tx.instance.findMany({
         select: {
           IID: true,
           name: true,
@@ -823,29 +717,27 @@ const HANDLERS: {
           updatedAt: true,
         },
       });
-    } catch (e) {
-      throw new APIError("Instance error");
-    }
+    });
   },
   getInstanceList: async ({ prisma }) => {
-    try {
-      return await prisma.instance.findMany({
+    return prisma.$transaction(async (tx) => {
+      return await tx.instance.findMany({
         select: {
           IID: true,
           name: true,
         },
       });
-    } catch (e) {
-      throw new APIError("Instance error");
-    }
+    });
+  },
+  getInstanceTypes: async () => {
+    return ["node"];
   },
   createInstance: async ({ prisma, cluster, name, type }) => {
-    const tag = await cluster.createInstance(type);
-    if (!tag) throw new APIError("Instance not created");
+    return prisma.$transaction(async (tx) => {
+      const tag = await cluster.createInstance(type);
+      if (!tag) throw new APIError("internal");
 
-    let instanceID: string;
-    try {
-      const instance = await prisma.instance.create({
+      const instance = await tx.instance.create({
         select: {
           IID: true,
         },
@@ -856,16 +748,12 @@ const HANDLERS: {
         },
       });
 
-      instanceID = instance.IID;
-    } catch (e) {
-      throw new APIError("Instance not created");
-    }
-
-    return instanceID;
+      return instance.IID;
+    });
   },
   getInstance: async ({ prisma, instanceID }) => {
-    try {
-      return await prisma.instance.findUniqueOrThrow({
+    return prisma.$transaction(async (tx) => {
+      return await tx.instance.findUniqueOrThrow({
         include: {
           jobs: true,
         },
@@ -873,65 +761,72 @@ const HANDLERS: {
           IID: instanceID,
         },
       });
-    } catch (e) {
-      throw new APIError("Instance error");
-    }
+    });
   },
-  deleteInstance: async ({ prisma, cluster, instanceID }) => {
-    let instance;
-    try {
-      instance = await prisma.instance.findUniqueOrThrow({
+  deleteInstances: async ({ prisma, cluster, instanceIDs }) => {
+    return prisma.$transaction(async (tx) => {
+      const instances = await tx.instance.findMany({
         select: {
+          IID: true,
           tag: true,
         },
         where: {
-          IID: instanceID,
-        },
-      });
-    } catch (e) {
-      throw new APIError("Instance error");
-    }
-
-    if (!(await cluster.deleteInstance(instance.tag)))
-      throw new APIError("Could not terminate instance");
-
-    try {
-      await prisma.job.deleteMany({
-        where: {
-          instance: {
-            IID: instanceID,
+          IID: {
+            in: instanceIDs,
           },
         },
       });
-    } catch (e) {
-      throw new APIError("Job error");
-    }
 
-    try {
-      await prisma.instance.delete({
+      const results = await Promise.allSettled(
+        instances.map(
+          async (instance) =>
+            [instance.IID, await cluster.deleteInstance(instance.tag)] as const
+        )
+      );
+
+      const deletedIDs = results
+        .map(
+          (res) =>
+            (res.status === "fulfilled" && res.value[1]
+              ? res.value[0]
+              : null) as string
+        )
+        .filter((value) => value !== null);
+
+      await tx.job.deleteMany({
         where: {
-          IID: instanceID,
+          instance: {
+            IID: {
+              in: deletedIDs,
+            },
+          },
         },
       });
-    } catch (e) {
-      throw new APIError("Instance error");
-    }
 
-    return "Instance has been destroy";
+      const { count } = await tx.instance.deleteMany({
+        where: {
+          IID: {
+            in: deletedIDs,
+          },
+        },
+      });
+
+      return count;
+    });
   },
-  createInstanceJob: async ({
+  createInstanceJobs: async ({
     prisma,
     cluster,
     hasPermission,
     currentUserID,
     instanceID,
-    hashType,
-    projectIDs,
-    wordlistID,
+    data,
   }) => {
-    let instance;
-    try {
-      instance = await prisma.instance.findUniqueOrThrow({
+    const projectIDs = data.flatMap((job) => job.projectIDs);
+    const wordlistIDs = data.map((job) => job.wordlistID);
+
+    return prisma.$transaction(async (tx) => {
+      const instance = await tx.instance.findUniqueOrThrow({
         select: {
           tag: true,
         },
@@ -939,14 +834,10 @@ const HANDLERS: {
           IID: instanceID,
         },
       });
-    } catch (e) {
-      throw new APIError("Instance error");
-    }
 
-    let projects;
-    try {
-      projects = await prisma.project.findMany({
+      const projects = await tx.project.findMany({
         select: {
+          PID: true,
           hashes: {
             select: {
               HID: true,
@@ -969,117 +860,149 @@ const HANDLERS: {
               },
         },
       });
-    } catch (e) {
-      throw new APIError("Project error");
-    }
+      const projectMap = Object.fromEntries(
+        projects.map((project) => [project.PID, project])
+      );
 
-    let wordlist;
-    try {
-      wordlist = await prisma.wordlist.findUniqueOrThrow({
+      const wordlists = await tx.wordlist.findMany({
         select: {
           WID: true,
         },
         where: {
-          WID: wordlistID,
-        },
-      });
-    } catch (e) {
-      throw new APIError("Wordlist error");
-    }
-
-    const hashes = projects.flatMap((project) =>
-      project.hashes.filter(
-        (hash) => hash.hashType === hashType && hash.status === STATUS.NotFound
-      )
-    );
-    if (hashes.length === 0)
-      throw new APIError("Cannot create a job without any valid hashes");
-
-    const jobID = await cluster.createJob(
-      instance.tag,
-      wordlist.WID,
-      hashType,
-      hashes.map(({ hash }) => hash)
-    );
-    if (!jobID) throw new APIError("Cannot queue job");
-
-    try {
-      await prisma.job.create({
-        data: {
-          JID: jobID,
-          wordlist: {
-            connect: {
-              WID: wordlist.WID,
-            },
-          },
-          instance: {
-            connect: {
-              IID: instanceID,
-            },
-          },
-          hashes: {
-            connect: hashes.map(({ HID }) => ({ HID })),
+          WID: {
+            in: wordlistIDs,
           },
         },
       });
-    } catch (e) {
-      throw new APIError("Job error");
-    }
+      const wordlistIDSet = new Set(wordlists.map(({ WID }) => WID));
 
-    return jobID;
+      const result = await Promise.allSettled(
+        data.map(async (job) => {
+          if (!wordlistIDSet.has(job.wordlistID)) return null;
+
+          const jobProjects = job.projectIDs
+            .map((projectID) => projectMap[projectID]!)
+            .filter((project) => project);
+
+          const jobHashes = jobProjects.flatMap((project) =>
+            project.hashes.filter(
+              (hash) =>
+                hash.hashType === job.hashType &&
+                hash.status === STATUS.NotFound
+            )
+          );
+
+          if (jobHashes.length === 0) return null;
+
+          return [
+            job,
+            jobHashes,
+            await cluster.createJob(
+              instance.tag,
+              job.wordlistID,
+              job.hashType,
+              jobHashes.map(({ hash }) => hash)
+            ),
+          ] as const;
+        })
+      );
+
+      const jobData = result
+        .filter(
+          (res) => res.status === "fulfilled" && res.value && res.value[2]
+        )
+        .map(
+          (res) =>
+            (res as any).value as [
+              (typeof data)[number],
+              { HID: string }[],
+              string,
+            ]
+        );
+
+      await Promise.all(
+        jobData.map(([{ wordlistID }, hashes, JID]) =>
+          tx.job.create({
+            data: {
+              JID,
+              wordlistId: wordlistID,
+              instanceId: instanceID,
+              hashes: {
+                connect: hashes.map(({ HID }) => ({ HID })),
+              },
+            },
+          })
+        )
+      );
+
+      return jobData.map(([_, __, JID]) => JID);
+    });
   },
-  deleteInstanceJob: async ({ prisma, cluster, instanceID, jobID }) => {
-    let job;
-    try {
-      job = await prisma.job.findUniqueOrThrow({
+  deleteInstanceJobs: async ({ prisma, cluster, instanceID, jobIDs }) => {
+    return prisma.$transaction(async (tx) => {
+      const instance = await tx.instance.findUniqueOrThrow({
         select: {
-          instance: {
-            select: {
-              IID: true,
-              tag: true,
-            },
-          },
+          IID: true,
+          tag: true,
         },
         where: {
-          JID: jobID,
+          IID: instanceID,
+        },
+      });
+
+      const jobs = await tx.job.findMany({
+        select: {
+          JID: true,
+        },
+        where: {
+          JID: {
+            in: jobIDs,
+          },
           instance: {
             IID: instanceID,
           },
         },
       });
-    } catch (e) {
-      throw new APIError("Job error");
-    }
 
-    if (!(await cluster.deleteJob(job.instance.tag, jobID)))
-      throw new APIError("Could not dequeue job");
+      const results = await Promise.allSettled(
+        jobs.map(
+          async ({ JID }) =>
+            [JID, await cluster.deleteJob(instance.tag, JID)] as const
+        )
+      );
 
-    try {
-      await prisma.job.delete({
+      const deletedIDs = results
+        .map(
+          (res) =>
+            (res.status === "fulfilled" && res.value[1]
+              ? res.value[0]
+              : null) as string
+        )
+        .filter((value) => value !== null);
+
+      const { count } = await tx.job.deleteMany({
         where: {
-          JID: jobID,
+          JID: {
+            in: deletedIDs,
+          },
         },
       });
-    } catch (e) {
-      throw new APIError("Job error");
-    }
 
-    try {
-      await prisma.instance.update({
+      await tx.instance.update({
         where: {
-          IID: job.instance.IID,
+          IID: instanceID,
         },
         data: {
           updatedAt: new Date(),
         },
       });
-    } catch (e) {}
 
-    return "Job destroyed";
+      return count;
+    });
   },
   getWordlist: async ({ prisma, wordlistID }) => {
-    try {
-      return prisma.wordlist.findUniqueOrThrow({
+    return prisma.$transaction(async (tx) => {
+      return tx.wordlist.findUniqueOrThrow({
         select: {
           WID: true,
           name: true,
@@ -1091,13 +1014,11 @@ const HANDLERS: {
           WID: wordlistID,
         },
       });
-    } catch (e) {
-      throw new APIError("Wordlist error");
-    }
+    });
   },
   getWordlists: async ({ prisma }) => {
-    try {
-      return prisma.wordlist.findMany({
+    return prisma.$transaction(async (tx) => {
+      return tx.wordlist.findMany({
         select: {
           WID: true,
           name: true,
@@ -1106,36 +1027,32 @@ const HANDLERS: {
           updatedAt: true,
         },
       });
-    } catch (e) {
-      throw new APIError("Wordlist error");
-    }
+    });
   },
   getWordlistList: async ({ prisma }) => {
-    try {
-      return prisma.wordlist.findMany({
+    return prisma.$transaction(async (tx) => {
+      return tx.wordlist.findMany({
         select: {
           WID: true,
           name: true,
         },
       });
-    } catch (e) {
-      throw new APIError("Wordlist error");
-    }
+    });
   },
   createWordlist: async ({ prisma, cluster, multipart }) => {
-    if (multipart === undefined) throw new APIError("No file");
+    if (multipart === undefined) throw new APIError("input");
 
     const buffer = await streamToBuffer(multipart.file);
     const size = buffer.length;
     const checksum = crypto.createHash("md5").update(buffer).digest("hex");
 
     const wordlistID = await cluster.createWordlist(buffer);
-    if (wordlistID === null) throw new APIError("Could not create wordlist");
+    if (wordlistID === null) throw new APIError("internal");
 
-    const fileName = path.basename(multipart.filename);
+    return prisma.$transaction(async (tx) => {
+      const fileName = path.basename(multipart.filename);
 
-    try {
-      await prisma.wordlist.create({
+      await tx.wordlist.create({
         data: {
           WID: wordlistID,
           name: fileName,
@@ -1143,24 +1060,35 @@ const HANDLERS: {
           checksum,
         },
       });
-    } catch (e) {
-      throw new APIError("Could not create wordlist");
-    }
 
-    return wordlistID;
+      return wordlistID;
+    });
   },
-  deleteWordlist: async ({ prisma, cluster, wordlistID }) => {
-    await cluster.deleteWordlist(wordlistID);
+  deleteWordlists: async ({ prisma, cluster, wordlistIDs }) => {
+    return prisma.$transaction(async (tx) => {
+      const result = await Promise.allSettled(
+        wordlistIDs.map(async (wordlistID) => [
+          wordlistID,
+          await cluster.deleteWordlist(wordlistID),
+        ])
+      );
 
-    try {
-      await prisma.wordlist.delete({
+      const deletedIDs = result
+        .map(
+          (res) => res.status === "fulfilled" && res.value[1] && res.value[0]
+        )
+        .filter((val) => val) as string[];
+
+      const { count } = await tx.wordlist.deleteMany({
         where: {
-          WID: wordlistID,
+          WID: {
+            in: deletedIDs,
+          },
         },
       });
-    } catch (e) {}
 
-    return "Wordlist destroyed";
+      return count;
+    });
   },
 } as const;
 
@@ -1171,7 +1099,7 @@ function checkPermission(permission: PermissionType) {
     next: (err?: Error | undefined) => void
   ) => {
     if (!hasPermission(request.session.permissions, permission))
-      throw new AuthError("Access denied");
+      throw new AuthError("auth");
 
     next();
   };
@@ -1187,17 +1115,15 @@ function validate(
     next: (err?: Error | undefined) => void
   ) => {
     if (type === "json") {
-      if (request.isMultipart())
-        throw new APIError("Only supports application/json");
+      if (request.isMultipart()) throw new APIError("input");
 
       try {
         if (validator.parse) validator.parse(request.body ?? {});
       } catch (e) {
-        throw new APIError("Invalid input");
+        throw new APIError("input");
       }
     } else if (type === "multipart") {
-      if (!request.isMultipart())
-        throw new APIError("Only supports multipart/form-data");
+      if (!request.isMultipart()) throw new APIError("input");
 
       // TODO: Validate body.
     }

@@ -13,6 +13,7 @@ import { APIProvider } from "@repo/ui/api";
 
 import config from "./config.ts";
 import { router } from "./pages/index.tsx";
+import "./translation.ts";
 
 const protocol = window.location.protocol;
 

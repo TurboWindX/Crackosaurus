@@ -58,8 +58,8 @@ export const NODE_CLUSTER_CONFIG = z
     name: z.literal(CLUSTER_TYPE.Node),
     scriptPath: z.string(),
     hashcatPath: z.string(),
-    instanceInterval: z.number().min(0),
-    instanceCooldown: z.number(),
+    instanceInterval: z.number().int().min(0),
+    instanceCooldown: z.number().int(),
   })
   .and(FILESYSTEM_CLUSTER_CONFIG);
 export type NodeClusterConfig = z.infer<typeof NODE_CLUSTER_CONFIG>;
@@ -72,7 +72,7 @@ export type ClusterTypeConfig = z.infer<typeof CLUSTER_TYPE_CONFIG>;
 export const CLUSTER_CONFIG = z.object({
   host: z.object({
     name: z.string(),
-    port: z.number(),
+    port: z.number().int().min(0),
   }),
   type: CLUSTER_TYPE_CONFIG,
 });

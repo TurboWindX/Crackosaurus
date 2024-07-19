@@ -10,7 +10,7 @@ model User {
 
 model Project {
   PID       String   @id @default(uuid())
-  name      String   @unique
+  name      String
   members   User[]
   hashes    Hash[]
   createdAt DateTime @default(now())
@@ -23,7 +23,7 @@ model Hash {
   project   Project  @relation(fields: [projectId], references: [PID])
   jobs      Job[]
   hash      String
-  hashType  String
+  hashType  Int
   status    String   @default("NOT_FOUND")
   value     String?
   createdAt DateTime @default(now())

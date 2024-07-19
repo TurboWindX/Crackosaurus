@@ -17,7 +17,6 @@ import {
   writeWordlistFile,
 } from "@repo/filesystem/cluster";
 import { createWordlistFolder } from "@repo/filesystem/wordlist";
-import { type HashType } from "@repo/hashcat/data";
 
 import { Cluster } from "./cluster";
 
@@ -108,7 +107,7 @@ export abstract class FileSystemCluster<
   public async createJob(
     instanceID: string,
     wordlist: string,
-    hashType: HashType,
+    hashType: number,
     hashes: string[]
   ): Promise<string | null> {
     const jobID = crypto.randomUUID();

@@ -2,7 +2,6 @@ import crypto from "crypto";
 
 import { type ClusterStatus } from "@repo/api";
 import { type DebugClusterConfig } from "@repo/app-config/cluster";
-import { type HashType } from "@repo/hashcat/data";
 
 import { Cluster } from "./cluster";
 
@@ -38,7 +37,7 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
   public async createJob(
     instanceID: string,
     wordlist: string,
-    _hashType: HashType,
+    _hashType: number,
     _hashes: string[]
   ): Promise<string | null> {
     const jobID = crypto.randomUUID();

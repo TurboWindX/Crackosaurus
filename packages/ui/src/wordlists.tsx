@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   Select,
@@ -40,6 +41,7 @@ export const WordlistSelect = ({
   value,
   onValueChange,
 }: WordlistSelectProps) => {
+  const { t } = useTranslation();
   const API = useAPI();
 
   const { data: wordlistList } = useQuery({
@@ -54,7 +56,7 @@ export const WordlistSelect = ({
       disabled={(wordlistList?.length ?? 0) === 0}
     >
       <SelectTrigger>
-        <SelectValue placeholder="Wordlist" />
+        <SelectValue placeholder={t("item.wordlist.singular")} />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>

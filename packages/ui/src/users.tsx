@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 
 import {
   PERMISSIONS,
@@ -31,6 +32,7 @@ export const UserSelect = ({
   onValueChange,
   filter,
 }: UserSelectProps) => {
+  const { t } = useTranslation();
   const API = useAPI();
 
   const { data: userList } = useQuery({
@@ -50,7 +52,7 @@ export const UserSelect = ({
       disabled={filteredUserList.length === 0}
     >
       <SelectTrigger>
-        <SelectValue placeholder="User" />
+        <SelectValue placeholder={t("item.user.singular")} />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>
@@ -74,9 +76,11 @@ export const PermissionsSelect = ({
   value,
   onValueChange,
 }: PermissionsSelectProps) => {
+  const { t } = useTranslation();
+
   return (
     <MultiSelect
-      label="Permissions"
+      label={t("item.permission.plural")}
       values={PERMISSIONS.map((permission) => [permission, permission])}
       selectedValues={value ?? []}
       onValueChange={(value) => onValueChange?.(value as PermissionType[])}
@@ -96,6 +100,8 @@ export const PermissionProfileSelect = ({
   value,
   onValueChange,
 }: PermissionProfileSelectProps) => {
+  const { t } = useTranslation();
+
   return (
     <Select
       value={value}
@@ -107,7 +113,7 @@ export const PermissionProfileSelect = ({
       }
     >
       <SelectTrigger>
-        <SelectValue placeholder="User" />
+        <SelectValue placeholder={t("item.profile.singular")} />
       </SelectTrigger>
       <SelectContent>
         <SelectGroup>

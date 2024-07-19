@@ -1,27 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { TrashIcon } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { APIError, STATUS, Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
-import { HASH_TYPES, HashType } from "@repo/hashcat/data";
+import { HASH_TYPES } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@repo/shadcn/components/ui/select";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
+import { HashTypeSelect } from "@repo/ui/hashes";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 import { WordlistSelect } from "@repo/ui/wordlists";
@@ -33,10 +27,13 @@ interface JobDataTableProps {
 }
 
 const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
-  const [newJob, setNewJob] = useState<REQ<APIType["createInstanceJob"]>>({
-    instanceID,
+  const { t } = useTranslation();
+
+  const [newJob, setNewJob] = useState<
+    REQ<APIType["createInstanceJobs"]>["data"][number]
+  >({
     wordlistID: "",
-    hashType: "" as HashType,
+    hashType: HASH_TYPES.plaintext,
     projectIDs: [],
   });
 
@@ -54,7 +51,11 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   }, [error]);
 
   const { mutateAsync: createInstanceJob } = useMutation({
-    mutationFn: API.createInstanceJob,
+    mutationFn: (job: REQ<APIType["createInstanceJobs"]>["data"][number]) =>
+      API.createInstanceJobs({
+        instanceID,
+        data: [job],
+      }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["instances", instanceID],
@@ -64,10 +65,8 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   });
 
   const { mutateAsync: deleteInstanceJobs } = useMutation({
-    mutationFn: async (ids: string[]) =>
-      Promise.all(
-        ids.map((jobID) => API.deleteInstanceJob({ instanceID, jobID }))
-      ),
+    mutationFn: async (jobIDs: string[]) =>
+      API.deleteInstanceJobs({ instanceID, jobIDs }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["instances", instanceID],
@@ -78,9 +77,10 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
 
   return (
     <DataTable
-      type="Job"
+      singular={t("item.job.singular")}
+      plural={t("item.job.plural")}
       values={values ?? []}
-      head={["Job", "Status", "Last Updated"]}
+      head={[t("item.job.singular"), t("item.status"), t("item.time.update")]}
       isLoading={isLoading}
       sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
       row={({ JID, status, updatedAt }) => [
@@ -90,46 +90,31 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
       ]}
       addDialog={
         <>
-          <Select
+          <HashTypeSelect
             value={newJob.hashType}
-            onValueChange={(value) =>
-              setNewJob({ ...newJob, hashType: value as HashType })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Hash Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                {HASH_TYPES.map((type) => (
-                  <SelectItem value={type}>{type}</SelectItem>
-                ))}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+            onValueChange={(hashType) => setNewJob({ ...newJob, hashType })}
+          />
           <WordlistSelect
             value={newJob.wordlistID}
-            onValueChange={(value) =>
-              setNewJob({ ...newJob, wordlistID: value })
-            }
+            onValueChange={(wordlistID) => setNewJob({ ...newJob, wordlistID })}
           />
           <MultiSelect
-            label="Project"
+            label={t("item.project.singular")}
             values={(projectList ?? []).map(({ PID, name }) => [PID, name])}
             selectedValues={newJob.projectIDs}
-            onValueChange={(ids) => {
-              setNewJob({ ...newJob, projectIDs: ids });
+            onValueChange={(projectIDs) => {
+              setNewJob({ ...newJob, projectIDs });
             }}
           />
         </>
       }
       addValidate={() =>
-        newJob.hashType?.length > 0 &&
+        newJob.hashType >= 0 &&
         newJob.wordlistID.length > 0 &&
         newJob.projectIDs.length > 0
       }
       onAdd={async () => {
-        await createInstanceJob({ ...newJob, instanceID });
+        await createInstanceJob(newJob);
         return true;
       }}
       onRemove={async (jobs) => {
@@ -144,6 +129,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
 
 export const InstancePage = () => {
   const { instanceID } = useParams();
+  const { t } = useTranslation();
 
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
@@ -161,7 +147,7 @@ export const InstancePage = () => {
     isLoadingError,
   } = useQuery({
     queryKey: ["instances", instanceID],
-    queryFn: async () => API.getInstance({ instanceID: instanceID ?? "" }),
+    queryFn: async () => API.getInstance({ instanceID: instanceID! }),
     retry(count, error) {
       if (error instanceof APIError && error.status === 401) return false;
       return count < 3;
@@ -175,7 +161,8 @@ export const InstancePage = () => {
   }, [isLoadingError, error]);
 
   const { mutateAsync: deleteInstance } = useMutation({
-    mutationFn: API.deleteInstance,
+    mutationFn: (instanceID: string) =>
+      API.deleteInstances({ instanceIDs: [instanceID] }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["instances", "list"],
@@ -187,9 +174,9 @@ export const InstancePage = () => {
   });
 
   return (
-    <div className="grid gap-8 p-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="grid gap-2">
+    <div className="grid gap-4 p-4">
+      <div className="flex gap-2">
+        <div className="flex flex-col gap-2">
           <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
             {instance?.name || instance?.IID || "Instance"}
           </span>
@@ -197,32 +184,38 @@ export const InstancePage = () => {
             <StatusBadge status={(instance?.status ?? STATUS.Unknown) as any} />
           </div>
         </div>
-        <div className="grid grid-flow-col justify-end gap-4">
+        <div className="flex flex-1 flex-wrap justify-end gap-2">
           {hasPermission("instances:remove") && (
             <div className="w-max">
               <DrawerDialog
-                title="Remove Instance"
+                title={t("action.remove.item", {
+                  item: t("instance.singular").toLowerCase(),
+                })}
                 open={removeOpen}
                 setOpen={setRemoveOpen}
                 trigger={
                   <Button variant="outline">
                     <div className="grid grid-flow-col items-center gap-2">
                       <TrashIcon />
-                      <span>Remove</span>
+                      <span>{t("action.remove.text")}</span>
                     </div>
                   </Button>
                 }
               >
                 <form
-                  className="grid gap-4"
+                  className="grid gap-2"
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    await deleteInstance({ instanceID: instanceID ?? "" });
+                    await deleteInstance(instanceID!);
                   }}
                 >
-                  <span>Do you want to permanently remove this instance?</span>
-                  <Button>Remove</Button>
+                  <span>
+                    {t("action.remove.warn", {
+                      item: t("instance.singular").toLowerCase(),
+                    })}
+                  </span>
+                  <Button>{t("action.remove.text")}</Button>
                 </form>
               </DrawerDialog>
             </div>

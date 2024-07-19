@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { APIError } from "@repo/api";
@@ -14,6 +15,7 @@ import { useErrors } from "@repo/ui/errors";
 import { RelativeTime } from "@repo/ui/time";
 
 export const ProjectsPage = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
 
@@ -55,15 +57,26 @@ export const ProjectsPage = () => {
     onError: handleError,
   });
 
+  const { mutateAsync: deleteProjects } = useMutation({
+    mutationFn: (projectIDs: string[]) => API.deleteProjects({ projectIDs }),
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["projects", "list"],
+      });
+    },
+    onError: handleError,
+  });
+
   return (
     <div className="p-4">
       <DataTable
-        type="Project"
+        singular={t("item.project.singular")}
+        plural={t("item.project.plural")}
         values={projects ?? []}
         head={[
-          "Project",
-          hasCollaborators ? "Collaborators" : null,
-          "Last Updated",
+          t("item.project.singular"),
+          hasCollaborators ? t("item.collaborator.plural") : null,
+          t("item.time.update"),
         ]}
         valueKey={({ PID }) => PID}
         sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
@@ -89,7 +102,7 @@ export const ProjectsPage = () => {
         addValidate={() => newProject.projectName.trim().length > 0}
         addDialog={
           <Input
-            placeholder="Name"
+            placeholder={t("item.name.singular")}
             value={newProject.projectName}
             onChange={(e) =>
               setNewProject({ ...newProject, projectName: e.target.value })
@@ -99,6 +112,15 @@ export const ProjectsPage = () => {
         noAdd={!hasPermission("projects:add")}
         onAdd={async () => {
           await createProject(newProject);
+
+          setNewProject({ ...newProject, projectName: "" });
+
+          return true;
+        }}
+        noRemove={!hasPermission("root")}
+        onRemove={async (projects) => {
+          await deleteProjects(projects.map((project) => project.PID));
+
           return true;
         }}
       />

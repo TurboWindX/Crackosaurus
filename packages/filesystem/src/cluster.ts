@@ -3,7 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 
 import { ClusterStatus, STATUS } from "@repo/api";
-import { HASH_TYPES, HashType } from "@repo/hashcat/data";
+import { HASH_TYPES } from "@repo/hashcat/data";
 import { readHashcatPot } from "@repo/hashcat/exe";
 
 export const INSTANCE_METADATA = z.object({
@@ -32,14 +32,14 @@ export const JOB_METADATA = z.object({
     STATUS.Error,
     STATUS.Unknown,
   ]),
-  hashType: z.enum([...HASH_TYPES]),
+  hashType: z.number().int().min(0),
   wordlist: z.string(),
 });
 export type JobMetadata = z.infer<typeof JOB_METADATA>;
 
 const UNKNOWN_JOB_METADATA: JobMetadata = {
   status: STATUS.Unknown,
-  hashType: "NTLM",
+  hashType: HASH_TYPES.plaintext,
   wordlist: "",
 };
 
@@ -61,13 +61,12 @@ export const CLUSTER_FILESYSTEM_TYPE = {
 export const CLUSTER_FILESYSTEM_EVENT = z.union([
   z.object({
     type: z.literal(CLUSTER_FILESYSTEM_TYPE.JobUpdate),
+    instanceID: z.string(),
     jobID: z.string(),
-    metadata: JOB_METADATA,
   }),
   z.object({
     type: z.literal(CLUSTER_FILESYSTEM_TYPE.InstanceUpdate),
     instanceID: z.string(),
-    metadata: INSTANCE_METADATA,
   }),
 ]);
 export type ClusterFileSystemEvent = z.infer<typeof CLUSTER_FILESYSTEM_EVENT>;
@@ -212,7 +211,7 @@ export function watchInstanceFolder(
   return fs.watch(
     instancePath,
     { recursive: true },
-    async (event, filename) => {
+    async (_event, filename) => {
       const filePath = path.join(instancePath, filename ?? "/");
 
       if (!fs.existsSync(filePath)) return;
@@ -220,16 +219,15 @@ export function watchInstanceFolder(
       if (filePath === instanceMetadata) {
         callback({
           type: CLUSTER_FILESYSTEM_TYPE.InstanceUpdate,
-          instanceID: instanceID,
-          metadata: await getInstanceMetadata(instanceRoot, instanceID),
+          instanceID,
         });
       } else if (filePath.endsWith(METADATA_FILE)) {
         const jobID = path.basename(path.dirname(filePath));
 
         callback({
           type: CLUSTER_FILESYSTEM_TYPE.JobUpdate,
+          instanceID,
           jobID: jobID,
-          metadata: await getJobMetadata(instanceRoot, instanceID, jobID),
         });
       }
     }
@@ -361,7 +359,7 @@ export async function createJobFolder(
   instanceRoot: string,
   instanceID: string,
   jobID: string,
-  props: { hashType: HashType; hashes: string[]; wordlist: string }
+  props: { hashType: number; hashes: string[]; wordlist: string }
 ): Promise<void> {
   const jobPath = path.join(instanceRoot, instanceID, JOBS_FOLDER, jobID);
 
@@ -386,7 +384,9 @@ export async function deleteJobFolder(
   instanceID: string,
   jobID: string
 ): Promise<void> {
-  fs.rmdirSync(path.join(instanceRoot, instanceID, jobID), { recursive: true });
+  const jobFolder = path.join(instanceRoot, instanceID, jobID);
+
+  if (fs.existsSync(jobFolder)) fs.rmdirSync(jobFolder, { recursive: true });
 }
 
 export async function writeWordlistFile(
@@ -405,5 +405,5 @@ export async function deleteWordlistFile(
 ): Promise<void> {
   const wordlistFile = path.join(wordlistRoot, wordlistID);
 
-  fs.rmSync(wordlistFile);
+  if (fs.existsSync(wordlistFile)) fs.rmSync(wordlistFile);
 }

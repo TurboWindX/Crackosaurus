@@ -1,8 +1,5 @@
-import { type Readable } from "node:stream";
-
 import { type APIType } from "@repo/api/cluster";
 import { makeAPI } from "@repo/api/cluster/client/node";
-import { type HashType } from "@repo/hashcat/data";
 
 import { ClusterConnector } from "./connector";
 
@@ -48,7 +45,7 @@ export class HTTPClusterConnector extends ClusterConnector<HTTPClusterConnectorC
   public async createJob(
     instanceID: string,
     wordlist: string,
-    hashType: HashType,
+    hashType: number,
     hashes: string[]
   ): Promise<string | null> {
     try {

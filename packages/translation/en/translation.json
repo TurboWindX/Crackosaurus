@@ -1,0 +1,158 @@
+{
+  "app": "Crackosaurus",
+  "action": {
+    "add": {
+      "text": "Add",
+      "item": "Add {{item}}"
+    },
+    "cancel": {
+      "text": "Cancel",
+      "item": "Cancel {{item}}"
+    },
+    "export": {
+      "text": "Export",
+      "item": "Export {{item}}"
+    },
+    "import": {
+      "text": "Import",
+      "item": "Import {{item}}"
+    },
+    "launch": {
+      "text": "Launch",
+      "item": "Launch {{item}}"
+    },
+    "loading": {
+      "text": "Loading"
+    },
+    "logout": {
+      "text": "Logout"
+    },
+    "remove": {
+      "text": "Remove",
+      "item": "Remove {{item}}",
+      "warn": "Do you want to remove {{item}}?",
+      "warn_count": "Do you want to remove {{count}} {{item}}?"
+    },
+    "search": {
+      "text": "Search",
+      "item": "Search {{item}}"
+    },
+    "update": {
+      "text": "Update",
+      "item": "Update {{item}}"
+    }
+  },
+  "error": {
+    "auth": "Invalid Authentication",
+    "not_found": "Not Found",
+    "input": "Invalid Input",
+    "internal": "Internal Error",
+    "permission": "Invalid Permissions",
+    "empty": "No {{item}}"
+  },
+  "item": {
+    "checksum": {
+      "singular": "Checksum",
+      "plural": "Checksums"
+    },
+    "collaborator": {
+      "singular": "Collaborator",
+      "plural": "Collaborators"
+    },
+    "error": {
+      "singular": "Error",
+      "plural": "Errors"
+    },
+    "hash": {
+      "singular": "Hash",
+      "plural": "Hashes"
+    },
+    "instance": {
+      "singular": "Instance",
+      "plural": "Instances"
+    },
+    "job": {
+      "singular": "Job",
+      "plural": "Jobs"
+    },
+    "name": {
+      "singular": "Name",
+      "plural": "Names"
+    },
+    "password": {
+      "singular": "Password",
+      "plural": "Passwords"
+    },
+    "permission": {
+      "singular": "Permission",
+      "plural": "Permissions"
+    },
+    "profile": {
+      "singular": "Profile",
+      "plural": "Profiles"
+    },
+    "project": {
+      "singular": "Project",
+      "plural": "Projects"
+    },
+    "size": {
+      "singular": "Size",
+      "plural": "Sizes"
+    },
+    "status": "Status",
+    "time": {
+      "update": "Last Updated"
+    },
+    "type": {
+      "singular": "Type",
+      "plural": "Types"
+    },
+    "user": {
+      "singular": "User",
+      "plural": "Users"
+    },
+    "username": {
+      "singular": "Username",
+      "plural": "Usernames"
+    },
+    "value": {
+      "singular": "Value",
+      "plural": "Values"
+    },
+    "wordlist": {
+      "singular": "Wordlist",
+      "plural": "Wordlists"
+    }
+  },
+  "page": {
+    "error": {
+      "header": "An Error Occurred",
+      "button": "Back Home"
+    },
+    "home": {
+      "title": "Home",
+      "header": "Welcome to Crackosaurus",
+      "p1": "Crackosaurus is the first open-source password recovery platform. The core system is powered by hashcat, the world's fastest and most advanced password recovery tool. A novel approach is used to distribute the password recovery over multiple systems in a safe and secure way. Collaborate with your team to identify weak passwords in your organization.",
+      "p2": "New user of Crackosaurus? Returning after not using the platform for a while? Looking for more information? Our core developer Alex will give you a quick tour of Crackosaurus:"
+    },
+    "login": {
+      "header": "Enter your username and password below to login",
+      "button": "Login"
+    },
+    "setup": {
+      "title": "Setup",
+      "header": "Enter information to begin the platform",
+      "button": "Setup"
+    }
+  },
+  "status": {
+    "PENDING": "Pending",
+    "RUNNING": "Running",
+    "STOPPED": "Stopped",
+    "COMPLETE": "Complete",
+    "ERROR": "Error",
+    "UNKNOWN": "Unknown",
+    "FOUND": "Found",
+    "NOT_FOUND": "Not Found"
+  }
+}

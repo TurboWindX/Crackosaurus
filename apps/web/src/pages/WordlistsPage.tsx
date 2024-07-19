@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { APIError } from "@repo/api";
-import { Input } from "@repo/shadcn/components/ui/input";
+import { FilePicker } from "@repo/shadcn/components/ui/file-picker";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
@@ -13,14 +13,13 @@ import { MemorySize } from "@repo/ui/wordlists";
 
 export const WordlistsPage = () => {
   const { hasPermission } = useAuth();
-  const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [hasFile, setHasFile] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
 
   const {
     data: wordlists,
@@ -50,13 +49,28 @@ export const WordlistsPage = () => {
     onError: handleError,
   });
 
+  const { mutateAsync: deleteWordlists } = useMutation({
+    mutationFn: (wordlistIDs: string[]) => API.deleteWordlists({ wordlistIDs }),
+    onSuccess() {
+      queryClient.invalidateQueries({
+        queryKey: ["wordlists", "list"],
+      });
+    },
+    onError: handleError,
+  });
+
   return (
     <div className="p-4">
       <DataTable
-        type="Wordlist"
-        head={["Wordlist", "Size", "Checksum", "Last Updated"]}
+        singular={t("item.wordlist.singular")}
+        plural={t("item.wordlist.plural")}
+        head={[
+          t("item.wordlist.singular"),
+          t("item.size.singular"),
+          t("item.checksum.singular"),
+          t("item.time.update"),
+        ]}
         values={wordlists ?? []}
-        rowClick={({ WID }) => navigate(`/wordlists/${WID}`)}
         row={({ WID, name, size, checksum, updatedAt }) => [
           name ?? WID,
           <MemorySize value={size} />,
@@ -71,15 +85,13 @@ export const WordlistsPage = () => {
           (name ?? WID).toLowerCase().includes(search.toLowerCase())
         }
         sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
-        addValidate={() => hasFile}
+        addValidate={() => file !== null}
         addDialog={
           <>
-            <Input
-              type="file"
-              ref={fileRef}
-              onChange={(e) => {
-                setHasFile((e.target?.files?.length ?? 0) > 0);
-              }}
+            <FilePicker
+              placeholder={t("item.wordlist.singular")}
+              file={file}
+              onChange={(file) => setFile(file)}
             />
           </>
         }
@@ -87,9 +99,15 @@ export const WordlistsPage = () => {
         onAdd={async () => {
           const formData = new FormData();
 
-          formData.set("data", fileRef.current?.files?.[0] ?? "");
+          formData.set("data", file!);
 
           await createWordlist(formData as any);
+
+          return true;
+        }}
+        noRemove={!hasPermission("wordlists:remove")}
+        onRemove={async (wordlists) => {
+          await deleteWordlists(wordlists.map((wordlist) => wordlist.WID));
 
           return true;
         }}

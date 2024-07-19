@@ -1,32 +1,38 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { TrashIcon } from "lucide-react";
+import { PlayIcon, TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
+import { z } from "zod";
 
 import { APIError, Status } from "@repo/api";
 import { type APIType } from "@repo/api/server";
-import { ProjectJob } from "@repo/api/server";
+import { type ProjectJob } from "@repo/api/server";
 import { type REQ, type RES } from "@repo/api/server/client/web";
-import { HASH_TYPES, type HashType } from "@repo/hashcat/data";
+import { HASH_TYPES, getHashName } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@repo/shadcn/components/ui/select";
 import { Separator } from "@repo/shadcn/components/ui/separator";
 import { useAPI } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
+import { InstanceSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
+import { HashTypeSelect } from "@repo/ui/hashes";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 import { UserSelect } from "@repo/ui/users";
+import { WordlistSelect } from "@repo/ui/wordlists";
+
+type ProjectJobWithType = ProjectJob & { type: number };
+
+const HASH_IMPORT_VALIDATOR = z
+  .object({
+    hash: z.string(),
+    type: z.number().int().min(0),
+  })
+  .array();
 
 interface HashDataTableProps {
   projectID: string;
@@ -39,12 +45,14 @@ const HashDataTable = ({
   values,
   isLoading,
 }: HashDataTableProps) => {
+  const { t } = useTranslation();
   const { hasPermission } = useAuth();
 
-  const [newHash, setNewHash] = useState<REQ<APIType["addHash"]>>({
-    projectID,
+  const [newHash, setNewHash] = useState<
+    REQ<APIType["addHashes"]>["data"][number]
+  >({
     hash: "",
-    hashType: "" as HashType,
+    hashType: HASH_TYPES.plaintext,
   });
 
   const API = useAPI();
@@ -53,14 +61,13 @@ const HashDataTable = ({
 
   const [viewOpen, setViewOpen] = useState(false);
   const [viewHashID, setViewHashID] = useState<string | null>(null);
-  const { data: viewHash } = useQuery({
-    queryKey: ["hashes", viewHashID],
-    queryFn: async () =>
-      viewHashID ? await API.viewHash({ projectID, hashID: viewHashID }) : null,
-  });
+  const viewHash = useMemo(
+    () => values?.find((hash) => hash.HID === viewHashID)?.value,
+    [viewHashID]
+  );
 
-  const { mutateAsync: addHash } = useMutation({
-    mutationFn: API.addHash,
+  const { mutateAsync: addHashes } = useMutation({
+    mutationFn: API.addHashes,
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["projects", projectID],
@@ -70,10 +77,7 @@ const HashDataTable = ({
   });
 
   const { mutateAsync: removeHashes } = useMutation({
-    mutationFn: (ids: string[]) =>
-      Promise.allSettled(
-        ids.map((hashID) => API.removeHash({ projectID, hashID }))
-      ),
+    mutationFn: (hashIDs: string[]) => API.removeHashes({ projectID, hashIDs }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["projects", projectID],
@@ -84,21 +88,30 @@ const HashDataTable = ({
 
   return (
     <>
-      <DrawerDialog title="Hash" open={viewOpen} setOpen={setViewOpen}>
-        {viewHash ?? "Not found"}
+      <DrawerDialog
+        title={t("item.hash.singular")}
+        open={viewOpen}
+        setOpen={setViewOpen}
+      >
+        {viewHash ?? t("error.not_found")}
       </DrawerDialog>
       <DataTable
-        type="Hash"
-        pluralSuffix="es"
+        singular={t("item.hash.singular")}
+        plural={t("item.hash.plural")}
         values={values ?? []}
-        head={["Hash", "Type", "Status", "Last Updated"]}
+        head={[
+          t("item.hash.singular"),
+          t("item.type.singular"),
+          t("item.status"),
+          t("item.time.update"),
+        ]}
         valueKey={({ HID }) => HID}
         isLoading={isLoading}
         row={({ hash, hashType, status, updatedAt }) => [
           <div className="max-w-32 truncate md:max-w-64 lg:max-w-[50vw]">
             {hash}
           </div>,
-          hashType,
+          getHashName(hashType),
           <StatusBadge status={status as Status} />,
           <RelativeTime time={updatedAt} />,
         ]}
@@ -112,7 +125,10 @@ const HashDataTable = ({
         }
         noAdd={!hasPermission("hashes:add")}
         onAdd={async () => {
-          await addHash(newHash);
+          await addHashes({
+            projectID,
+            data: [newHash],
+          });
 
           setNewHash({ ...newHash, hash: "" });
 
@@ -123,18 +139,45 @@ const HashDataTable = ({
           await removeHashes(hashes.map(({ HID }) => HID));
           return true;
         }}
+        noImport={!hasPermission("hashes:add")}
+        onImport={async (data) => {
+          const result = HASH_IMPORT_VALIDATOR.safeParse(data);
+          if (result.error) {
+            console.log(result.error.format());
+            handleError(new APIError({ code: 500, message: "input" }));
+            return false;
+          }
+
+          await addHashes({
+            projectID,
+            data: result.data.map(({ hash, type }) => ({
+              hash: hash,
+              hashType: type,
+            })),
+          });
+
+          return true;
+        }}
+        exportPrefix={`hashes-${projectID}`}
+        noExport={!hasPermission("hashes:get")}
+        onExport={async (data) => {
+          return data.map(({ hash, hashType, value }) => ({
+            hash,
+            type: hashType,
+            value,
+          }));
+        }}
         searchFilter={({ hash, hashType }, search) =>
           hash.toLowerCase().includes(search.toLowerCase()) ||
-          hashType.toLowerCase().includes(search.toLowerCase())
+          hashType.toString().includes(search.toLowerCase())
         }
         addValidate={() =>
-          (newHash.hash ?? "").trim().length > 0 &&
-          newHash.hashType.trim().length > 0
+          (newHash.hash ?? "").trim().length > 0 && newHash.hashType > 0
         }
         addDialog={
           <>
             <Input
-              placeholder="Value"
+              placeholder={t("item.value.singular")}
               value={newHash.hash}
               onChange={(e) =>
                 setNewHash({
@@ -143,26 +186,10 @@ const HashDataTable = ({
                 })
               }
             />
-            <Select
+            <HashTypeSelect
               value={newHash.hashType}
-              onValueChange={(value) =>
-                setNewHash({
-                  ...newHash,
-                  hashType: value as HashType,
-                })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  {HASH_TYPES.map((type) => (
-                    <SelectItem value={type}>{type}</SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
+              onValueChange={(hashType) => setNewHash({ ...newHash, hashType })}
+            />
           </>
         }
       />
@@ -171,24 +198,33 @@ const HashDataTable = ({
 };
 
 interface JobDataTableProps {
-  values: ProjectJob[];
+  values: ProjectJobWithType[];
   isLoading?: boolean;
 }
 
 const JobDataTable = ({ values, isLoading }: JobDataTableProps) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   return (
     <DataTable
-      type="Job"
+      singular={t("item.job.singular")}
+      plural={t("item.job.plural")}
       values={values ?? []}
-      head={["Job", "Instance", "Status", "Last Updated"]}
+      head={[
+        t("item.job.singular"),
+        t("item.type.singular"),
+        t("item.instance.singular"),
+        t("item.status"),
+        t("item.time.update"),
+      ]}
       valueKey={({ JID }) => JID}
       rowClick={({ instance }) => navigate(`/instances/${instance.IID}`)}
       isLoading={isLoading}
       sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
-      row={({ JID, status, updatedAt, instance }) => [
+      row={({ JID, type, status, updatedAt, instance }) => [
         JID,
+        getHashName(type),
         instance.name || instance.IID,
         <StatusBadge status={status as Status} />,
         <RelativeTime time={updatedAt} />,
@@ -210,19 +246,18 @@ const UserDataTable = ({
   values,
   isLoading,
 }: UserDataTableProps) => {
+  const { t } = useTranslation();
   const { hasPermission } = useAuth();
 
-  const [newUser, setNewUser] = useState<REQ<APIType["addUserToProject"]>>({
-    projectID,
-    userID: "",
-  });
+  const [newUserID, setNewUserID] = useState<string>("");
 
   const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
   const { mutateAsync: addUser } = useMutation({
-    mutationFn: API.addUserToProject,
+    mutationFn: (userID: string) =>
+      API.addUsersToProject({ projectID, userIDs: [userID] }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["projects", projectID],
@@ -232,10 +267,8 @@ const UserDataTable = ({
   });
 
   const { mutateAsync: removeUsers } = useMutation({
-    mutationFn: (ids: string[]) =>
-      Promise.allSettled(
-        ids.map((userID) => API.removeUserFromProject({ projectID, userID }))
-      ),
+    mutationFn: (userIDs: string[]) =>
+      API.removeUsersFromProject({ projectID, userIDs }),
     onSuccess() {
       queryClient.invalidateQueries({
         queryKey: ["projects", projectID],
@@ -246,9 +279,10 @@ const UserDataTable = ({
 
   return (
     <DataTable
-      type="User"
+      singular={t("item.user.singular")}
+      plural={t("item.user.plural")}
       values={values ?? []}
-      head={["User"]}
+      head={[t("item.user.singular")]}
       valueKey={({ ID }) => ID}
       row={({ username }) => [username]}
       isLoading={isLoading}
@@ -256,12 +290,12 @@ const UserDataTable = ({
         username.toLowerCase().includes(search)
       }
       sort={(a, b) => a.username.localeCompare(b.username)}
-      addValidate={() => addUser !== null}
+      addValidate={() => newUserID.length > 0}
       addDialog={
         <>
           <UserSelect
-            value={newUser.userID}
-            onValueChange={(userID) => setNewUser({ ...newUser, userID })}
+            value={newUserID}
+            onValueChange={(userID) => setNewUserID(userID)}
             filter={({ ID }) =>
               (values ?? []).every((member) => ID !== member.ID) === true
             }
@@ -270,9 +304,9 @@ const UserDataTable = ({
       }
       noAdd={!hasPermission("projects:users:add")}
       onAdd={async () => {
-        await addUser(newUser);
+        await addUser(newUserID);
 
-        setNewUser({ ...newUser, userID: "" });
+        setNewUserID("");
 
         return true;
       }}
@@ -285,14 +319,169 @@ const UserDataTable = ({
   );
 };
 
-export const ProjectPage = () => {
-  const { projectID } = useParams();
+interface LaunchButtonProps {
+  projectID: string;
+  hashes: RES<APIType["getProject"]>["hashes"];
+  isLoading: boolean;
+}
+
+const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+
+  const [instanceID, setInstanceID] = useState("");
+  const [wordlistID, setWordlistID] = useState("");
+
+  const todoHashes = useMemo(
+    () => (hashes ?? []).filter((hash) => typeof hash.value !== "string"),
+    [hashes]
+  );
+  const hasTodoHashes = useMemo(() => todoHashes.length > 0, [todoHashes]);
+
+  const isValid = useMemo(
+    () => instanceID.length > 0 && wordlistID.length > 0 && hasTodoHashes,
+    [instanceID, wordlistID, hasTodoHashes]
+  );
 
   const { hasPermission } = useAuth();
+
+  const API = useAPI();
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const { mutateAsync: addJobs } = useMutation({
+    mutationFn: ({
+      instanceID,
+      wordlistID,
+      hashTypes,
+    }: {
+      instanceID: string;
+      wordlistID: string;
+      hashTypes: number[];
+    }) =>
+      API.createInstanceJobs({
+        instanceID,
+        data: hashTypes.map((hashType) => ({
+          wordlistID,
+          hashType,
+          projectIDs: [projectID],
+        })),
+      }),
+    onSuccess() {
+      queryClient.invalidateQueries({ queryKey: ["projects", projectID] });
+    },
+    onError: handleError,
+  });
+
+  if (!hasPermission("instances:jobs:add")) return <></>;
+
+  return (
+    <DrawerDialog
+      title={t("action.launch.item", { item: t("item.project.singular") })}
+      open={open}
+      setOpen={setOpen}
+      trigger={
+        <Button variant="outline" disabled={isLoading || !hasTodoHashes}>
+          <div className="grid grid-flow-col items-center gap-2">
+            <PlayIcon />
+            <span>{t("action.launch.text")}</span>
+          </div>
+        </Button>
+      }
+    >
+      <form
+        className="grid gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+
+          await addJobs({
+            instanceID,
+            wordlistID,
+            hashTypes: [...new Set(todoHashes.map(({ hashType }) => hashType))],
+          });
+
+          setInstanceID("");
+          setWordlistID("");
+          setOpen(false);
+        }}
+      >
+        <InstanceSelect value={instanceID} onValueChange={setInstanceID} />
+        <WordlistSelect value={wordlistID} onValueChange={setWordlistID} />
+        <Button disabled={!isValid}>{t("action.launch.text")}</Button>
+      </form>
+    </DrawerDialog>
+  );
+};
+
+interface RemoveButtonProps {
+  projectID: string;
+  isLoading?: boolean;
+}
+
+const RemoveButton = ({ projectID, isLoading }: RemoveButtonProps) => {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+
+  const { hasPermission } = useAuth();
+
   const navigate = useNavigate();
 
   const API = useAPI();
   const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const { mutateAsync: deleteProject } = useMutation({
+    mutationFn: async (projectID: string) =>
+      API.deleteProjects({ projectIDs: [projectID] }),
+    onSuccess() {
+      queryClient.invalidateQueries({ queryKey: ["projects", "list"] });
+
+      navigate("/projects");
+    },
+    onError: handleError,
+  });
+
+  if (!hasPermission("projects:remove")) return <></>;
+
+  return (
+    <DrawerDialog
+      title={t("action.remove.item", { item: t("item.project.singular") })}
+      open={open}
+      setOpen={setOpen}
+      trigger={
+        <Button variant="outline" disabled={isLoading}>
+          <div className="grid grid-flow-col items-center gap-2">
+            <TrashIcon />
+            <span>{t("action.remove.text")}</span>
+          </div>
+        </Button>
+      }
+    >
+      <form
+        className="grid gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+
+          await deleteProject(projectID!);
+        }}
+      >
+        <span>
+          {t("action.remove.warn", {
+            item: t("item.project.singular").toLowerCase(),
+          })}
+        </span>
+        <Button>{t("action.remove.text")}</Button>
+      </form>
+    </DrawerDialog>
+  );
+};
+
+export const ProjectPage = () => {
+  const { projectID } = useParams();
+
+  const { hasPermission } = useAuth();
+
+  const API = useAPI();
   const { handleError } = useErrors();
 
   const {
@@ -302,7 +491,7 @@ export const ProjectPage = () => {
     isLoadingError,
   } = useQuery({
     queryKey: ["projects", projectID],
-    queryFn: async () => API.getProject({ projectID: projectID ?? "" }),
+    queryFn: async () => API.getProject({ projectID: projectID! }),
     retry(count, error) {
       if (error instanceof APIError && error.status === 401) return false;
       return count < 3;
@@ -315,26 +504,17 @@ export const ProjectPage = () => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
 
-  const { mutateAsync: deleteProject } = useMutation({
-    mutationFn: async (projectID: string) => API.deleteProject({ projectID }),
-    onSuccess() {
-      queryClient.invalidateQueries({ queryKey: ["projects", "list"] });
-
-      navigate("/projects");
-    },
-    onError: handleError,
-  });
-
-  const [removeOpen, setRemoveOpen] = useState(false);
-
   const hashes = useMemo(() => project?.hashes ?? [], [project]);
 
   const members = useMemo(() => project?.members ?? [], [project]);
 
   const jobs = useMemo(() => {
     const unfilteredJobs = (project?.hashes ?? [])
-      .flatMap((hash) => hash.jobs)
-      .filter((job) => job) as ProjectJob[];
+      .flatMap((hash) =>
+        (hash?.jobs ?? []).map((job) => ({ ...job, type: hash.hashType }))
+      )
+      .filter((job) => job) as ProjectJobWithType[];
+
     const seenJobs: Record<string, boolean> = {};
 
     return unfilteredJobs.filter(({ JID }) => {
@@ -369,45 +549,27 @@ export const ProjectPage = () => {
 
   const separatedTables = tables
     .filter((value) => value)
-    .flatMap((value) => [value, <Separator />]);
+    .flatMap((value, i) => [value, <Separator key={i} />]);
   separatedTables.pop();
 
   return (
-    <div className="grid gap-8 p-4">
-      <div className="grid grid-cols-2 gap-4">
+    <div className="grid gap-4 p-4">
+      <div className="flex gap-2">
         <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
           {project?.name ?? "Project"}
         </span>
-        <div className="grid grid-flow-col justify-end gap-4">
-          {hasPermission("projects:remove") && (
-            <div className="w-max">
-              <DrawerDialog
-                title="Remove Project"
-                open={removeOpen}
-                setOpen={setRemoveOpen}
-                trigger={
-                  <Button variant="outline">
-                    <div className="grid grid-flow-col items-center gap-2">
-                      <TrashIcon />
-                      <span>Remove</span>
-                    </div>
-                  </Button>
-                }
-              >
-                <form
-                  className="grid gap-4"
-                  onSubmit={async (e) => {
-                    e.preventDefault();
-
-                    await deleteProject(projectID ?? "");
-                  }}
-                >
-                  <span>Do you want to permanently remove this project?</span>
-                  <Button>Remove</Button>
-                </form>
-              </DrawerDialog>
-            </div>
-          )}
+        <div className="flex flex-1 flex-wrap justify-end gap-2">
+          <LaunchButton
+            key="launch"
+            projectID={projectID!}
+            hashes={project?.hashes}
+            isLoading={isLoading}
+          />
+          <RemoveButton
+            key="remove"
+            projectID={projectID!}
+            isLoading={isLoading}
+          />
         </div>
       </div>
       {separatedTables}

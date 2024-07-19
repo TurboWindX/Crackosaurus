@@ -21,7 +21,7 @@ CREATE TABLE "Hash" (
     "HID" TEXT NOT NULL PRIMARY KEY,
     "projectId" TEXT NOT NULL,
     "hash" TEXT NOT NULL,
-    "hashType" TEXT NOT NULL,
+    "hashType" INTEGER NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'NOT_FOUND',
     "value" TEXT,
     "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -80,9 +80,6 @@ CREATE TABLE "_HashToJob" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_username_key" ON "User"("username");
-
--- CreateIndex
-CREATE UNIQUE INDEX "Project_name_key" ON "Project"("name");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "_ProjectToUser_AB_unique" ON "_ProjectToUser"("A", "B");

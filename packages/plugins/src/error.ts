@@ -22,6 +22,6 @@ export function errorHandler(
   } else {
     console.error(error);
 
-    reply.status(501).send({ error: "Internal Error" });
+    reply.status(501).send({ error: "internal" });
   }
 }
