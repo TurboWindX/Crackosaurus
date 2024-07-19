@@ -1,6 +1,7 @@
 {
   "name": "@repo/cluster",
   "version": "0.0.0",
+  "license": "MIT",
   "scripts": {
     "dev": "npm run build && npm run dev:watch",
     "dev:watch": "concurrently \"rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild --watch\" \"nodemon -w dist/index.js dist/index.js\"",
@@ -8,7 +9,9 @@
     "start": "npm run build && CLUSTER_TYPE=node node dist/index.js",
     "check": "tsc --noEmit"
   },
-  "license": "MIT",
+  "exports": {
+    ".": "./src/export.ts"
+  },
   "dependencies": {
     "@fastify/multipart": "^8.3.0",
     "@repo/api": "*",
@@ -17,6 +20,7 @@
     "@repo/hashcat": "*",
     "@repo/plugins": "*",
     "@repo/typescript-config": "*",
+    "@trpc/server": "^10.45.2",
     "aws-sdk": "^2.1553.0",
     "fastify": "^4.0.0",
     "fastify-plugin": "^4.5.1"

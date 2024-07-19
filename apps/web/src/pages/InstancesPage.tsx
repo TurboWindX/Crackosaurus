@@ -1,13 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { getQueryKey } from "@trpc/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import { APIError, Status } from "@repo/api";
-import { type APIType } from "@repo/api/server";
-import { type REQ } from "@repo/api/server/client/web";
+import { Status } from "@repo/api";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { useAPI } from "@repo/ui/api";
+import { tRPCInput, trpc } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { InstanceTypeSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
@@ -21,13 +21,12 @@ export const InstancesPage = () => {
   const { hasPermission } = useAuth();
 
   const [newInstance, setNewInstance] = useState<
-    REQ<APIType["createInstance"]>
+    tRPCInput["instance"]["create"]
   >({
     name: "",
     type: "",
   });
 
-  const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
@@ -36,11 +35,13 @@ export const InstancesPage = () => {
     isLoading,
     error,
     isLoadingError,
-  } = useQuery({
-    queryKey: ["instances", "list", "page"],
-    queryFn: API.getInstances,
+  } = trpc.instance.getMany.useQuery(undefined, {
     retry(count, error) {
-      if (error instanceof APIError && error.status === 401) return false;
+      if (
+        error instanceof TRPCClientError &&
+        error.data?.code === "UNAUTHORIZED"
+      )
+        return false;
       return count < 3;
     },
   });
@@ -49,25 +50,29 @@ export const InstancesPage = () => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
 
-  const { mutateAsync: createInstance } = useMutation({
-    mutationFn: API.createInstance,
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.instance.getMany),
+      getQueryKey(trpc.instance.getList),
+    ],
+    []
+  );
+
+  const { mutateAsync: createInstance } = trpc.instance.create.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["instances", "list"],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
 
-  const { mutateAsync: deleteInstances } = useMutation({
-    mutationFn: (instanceIDs: string[]) => API.deleteInstances({ instanceIDs }),
-    onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["instances", "list"],
-      });
-    },
-    onError: handleError,
-  });
+  const { mutateAsync: deleteInstances } = trpc.instance.deleteMany.useMutation(
+    {
+      onSuccess() {
+        queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      },
+      onError: handleError,
+    }
+  );
 
   return (
     <div className="p-4">
@@ -112,6 +117,7 @@ export const InstancesPage = () => {
             />
           </>
         }
+        addValidate={() => newInstance.name !== "" && newInstance.type !== ""}
         noAdd={!hasPermission("instances:add")}
         onAdd={async () => {
           await createInstance(newInstance);
@@ -119,7 +125,9 @@ export const InstancesPage = () => {
         }}
         noRemove={!hasPermission("root")}
         onRemove={async (instances) => {
-          await deleteInstances(instances.map(({ IID }) => IID));
+          await deleteInstances({
+            instanceIDs: instances.map(({ IID }) => IID),
+          });
           return true;
         }}
       />

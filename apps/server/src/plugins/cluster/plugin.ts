@@ -1,47 +1,24 @@
 import { PrismaClient } from "@prisma/client";
-import { type FastifyPluginOptions } from "fastify";
+import { type CreateTRPCProxyClient } from "@trpc/client";
 import fp from "fastify-plugin";
 
 import { ClusterStatus, STATUS } from "@repo/api";
+import type { AppRouter } from "@repo/cluster";
 
-import { ClusterConnector } from "./connectors/connector";
-import {
-  HTTPClusterConnector,
-  HTTPClusterConnectorConfig,
-} from "./connectors/http";
+import { trpc } from "./trpc";
 
-declare module "fastify" {
-  interface FastifyInstance {
-    cluster: ClusterConnector;
-  }
-}
+type ClusterTRPC = CreateTRPCProxyClient<AppRouter>;
 
-interface ClusterPluginBaseConfig extends FastifyPluginOptions {
+export type ClusterPluginConfig = {
   pollingRateMs: number;
-}
-
-interface ClusterPluginHttpConfig extends ClusterPluginBaseConfig {
-  http: HTTPClusterConnectorConfig;
-}
-
-export type ClusterPluginConfig = ClusterPluginHttpConfig;
+};
 
 export const clusterPlugin = fp<ClusterPluginConfig>(
   async (server, options) => {
-    let cluster: ClusterConnector<any>;
-    if (options.http) {
-      cluster = new HTTPClusterConnector(options.http);
-    } else throw new Error("No valid config");
-
-    if (!(await cluster.load())) throw new Error("Cannot load cluster");
-
-    server.decorate("cluster", cluster);
-
     let interval: NodeJS.Timeout | null = null;
-
     server.addHook("onReady", async () => {
       interval = setInterval(async () => {
-        await updateStatus(server.prisma, server.cluster);
+        await updateStatus(server.prisma, trpc);
       }, options.pollingRateMs);
     });
 
@@ -51,10 +28,10 @@ export const clusterPlugin = fp<ClusterPluginConfig>(
   }
 );
 
-async function updateStatus(prisma: PrismaClient, cluster: ClusterConnector) {
+async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
   let clusterStatus: ClusterStatus;
   try {
-    const status = await cluster.getStatus();
+    const status = await cluster.info.status.query();
     if (status === null) return;
 
     clusterStatus = status;

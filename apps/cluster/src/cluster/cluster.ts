@@ -3,6 +3,8 @@ import { type ClusterStatus } from "@repo/api";
 export abstract class Cluster<TConfig = undefined> {
   public constructor(protected readonly config: TConfig) {}
 
+  public abstract getName(): string;
+
   public abstract getStatus(): Promise<ClusterStatus>;
 
   public abstract load(): Promise<boolean>;

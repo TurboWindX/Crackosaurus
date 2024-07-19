@@ -1,3 +1,5 @@
+import { useQueryClient } from "@tanstack/react-query";
+import { getQueryKey } from "@trpc/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -10,16 +12,30 @@ import {
   CardTitle,
 } from "@repo/shadcn/components/ui/card";
 import { Input } from "@repo/shadcn/components/ui/input";
+import { trpc } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
+import { useErrors } from "@repo/ui/errors";
 
 export const LoginPage = () => {
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const { t } = useTranslation();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [redirect, setRedirect] = useState(false);
+
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const authQueryKey = getQueryKey(trpc.auth.get);
+
+  const { mutateAsync: login } = trpc.auth.login.useMutation({
+    onSuccess() {
+      queryClient.invalidateQueries(authQueryKey);
+    },
+    onError: handleError,
+  });
 
   useEffect(() => {
     if (redirect && isAuthenticated) navigate("/");

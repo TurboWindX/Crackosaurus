@@ -1,12 +1,12 @@
-import { useContext, useMemo } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTRPCReact, httpBatchLink } from "@trpc/react-query";
+import { useState } from "react";
 
-import { makeAPI } from "@repo/api/server/client/web";
+import type { AppRotuerOutput, AppRouter, AppRouterInput } from "@repo/server";
 
-import { APIContext } from "./contexts";
-
-export const useAPI = () => {
-  return useContext(APIContext);
-};
+export const trpc = createTRPCReact<AppRouter>();
+export type tRPCInput = AppRouterInput;
+export type tRPCOutput = AppRotuerOutput;
 
 export const APIProvider = ({
   url,
@@ -15,7 +15,37 @@ export const APIProvider = ({
   url: string;
   children: any;
 }) => {
-  const API = useMemo(() => makeAPI(url), [url]);
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 1000 * 60 * 1, // Every minute
+            cacheTime: 1000 * 60 * 1, // Every minute
+            refetchOnWindowFocus: false,
+          },
+        },
+      })
+  );
+  const [trpcClient] = useState(() =>
+    trpc.createClient({
+      links: [
+        httpBatchLink({
+          url: `${url}/trpc`,
+          fetch(url, options) {
+            return fetch(url, {
+              ...options,
+              credentials: "include",
+            });
+          },
+        }),
+      ],
+    })
+  );
 
-  return <APIContext.Provider value={API}>{children}</APIContext.Provider>;
+  return (
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    </trpc.Provider>
+  );
 };

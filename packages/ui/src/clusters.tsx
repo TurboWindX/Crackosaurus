@@ -1,9 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import { type APIType } from "@repo/api/server";
-import { type RES } from "@repo/api/server/client/web";
 import {
   Select,
   SelectContent,
@@ -13,12 +10,12 @@ import {
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 
-import { useAPI } from "./api";
+import { tRPCOutput, trpc } from "./api";
 
 export interface InstanceSelectProps {
   value?: string | null;
   onValueChange?: (value: string) => void;
-  filter?: (user: RES<APIType["getInstanceList"]>[number]) => boolean;
+  filter?: (user: tRPCOutput["instance"]["getList"][number]) => boolean;
 }
 
 export const InstanceSelect = ({
@@ -27,12 +24,8 @@ export const InstanceSelect = ({
   filter,
 }: InstanceSelectProps) => {
   const { t } = useTranslation();
-  const API = useAPI();
 
-  const { data: instanceList } = useQuery({
-    queryKey: ["instances", "list", "component"],
-    queryFn: API.getInstanceList,
-  });
+  const { data: instanceList } = trpc.instance.getList.useQuery();
 
   const filteredInstances = useMemo(
     () => (instanceList ?? []).filter((instance) => filter?.(instance) ?? true),
@@ -71,12 +64,8 @@ export const InstanceTypeSelect = ({
   onValueChange,
 }: InstanceTypeSelectProps) => {
   const { t } = useTranslation();
-  const API = useAPI();
 
-  const { data: instanceTypes } = useQuery({
-    queryKey: ["instances", "types"],
-    queryFn: API.getInstanceTypes,
-  });
+  const { data: instanceTypes } = trpc.instance.getTypes.useQuery();
 
   return (
     <Select

@@ -1,33 +1,32 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { getQueryKey } from "@trpc/react-query";
 import { useTranslation } from "react-i18next";
 
-import { APIError } from "@repo/api";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
+
+import { trpc } from "./api";
 
 export const useErrors = () => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  return {
-    handleError(error: Error) {
-      if (error instanceof APIError) {
-        if (error.status === 401) {
-          queryClient.invalidateQueries({
-            queryKey: ["auth"],
-          });
+  const authQueryKey = getQueryKey(trpc.auth.get);
 
-          return false;
+  return {
+    handleError(error: any) {
+      if (error instanceof TRPCClientError) {
+        if (error.data?.code === "UNAUTHORIZED") {
+          queryClient.invalidateQueries(authQueryKey);
         }
 
         toast({
           variant: "destructive",
           title: t("item.error.singular"),
-          description: t(`error.${error.message}`),
+          description: t(`error.${error.data?.code ?? "NOT_FOUND"}`),
         });
       }
-
-      return false;
     },
   };
 };

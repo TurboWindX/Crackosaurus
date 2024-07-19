@@ -6,6 +6,10 @@ import { type DebugClusterConfig } from "@repo/app-config/cluster";
 import { Cluster } from "./cluster";
 
 export class DebugCluster extends Cluster<DebugClusterConfig> {
+  public getName(): string {
+    return "debug";
+  }
+
   public async load(): Promise<boolean> {
     console.log("Debug Cluster loaded");
 

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export const STATUSES = [
   "PENDING",
   "RUNNING",
@@ -21,18 +23,20 @@ export const STATUS = {
 } as const;
 export type Status = (typeof STATUS)[keyof typeof STATUS];
 
-export interface ClusterStatus {
-  instances: Record<
-    string,
-    {
-      status: Status;
-      jobs: Record<
-        string,
-        {
-          status: Status;
-          hashes: Record<string, string>;
-        }
-      >;
-    }
-  >;
-}
+export const CLUSTER_STATUS = z.object({
+  instances: z.record(
+    z.string(),
+    z.object({
+      status: z.enum(STATUSES),
+      jobs: z.record(
+        z.string(),
+        z.object({
+          status: z.enum(STATUSES),
+          hashes: z.record(z.string(), z.string()),
+        })
+      ),
+    })
+  ),
+});
+
+export type ClusterStatus = z.infer<typeof CLUSTER_STATUS>;
