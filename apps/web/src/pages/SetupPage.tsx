@@ -10,11 +10,12 @@ import {
   CardTitle,
 } from "@repo/shadcn/components/ui/card";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { trpc } from "@repo/ui/api";
+import { useTRPC } from "@repo/ui/api";
 import { useErrors } from "@repo/ui/errors";
 
 export const SetupPage = () => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

@@ -10,7 +10,7 @@ import { STATUS, Status } from "@repo/api";
 import { HASH_TYPES } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
-import { tRPCInput, tRPCOutput, trpc } from "@repo/ui/api";
+import { tRPCInput, tRPCOutput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
@@ -28,6 +28,7 @@ interface JobDataTableProps {
 
 const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const [newJob, setNewJob] = useState<
     tRPCInput["instance"]["createJobs"]["data"][number]
@@ -133,6 +134,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
 export const InstancePage = () => {
   const { instanceID } = useParams();
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const { hasPermission } = useAuth();
   const navigate = useNavigate();

@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 
-import { tRPCOutput, trpc } from "./api";
+import { tRPCOutput, useTRPC } from "./api";
 
 export interface InstanceSelectProps {
   value?: string | null;
@@ -24,6 +24,7 @@ export const InstanceSelect = ({
   filter,
 }: InstanceSelectProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const { data: instanceList } = trpc.instance.getList.useQuery();
 
@@ -64,6 +65,7 @@ export const InstanceTypeSelect = ({
   onValueChange,
 }: InstanceTypeSelectProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const { data: instanceTypes } = trpc.instance.getTypes.useQuery();
 

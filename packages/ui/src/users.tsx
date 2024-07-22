@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 
-import { tRPCOutput, trpc } from "./api";
+import { tRPCOutput, useTRPC } from "./api";
 
 export interface UserSelectProps {
   value?: string | null;
@@ -30,6 +30,7 @@ export const UserSelect = ({
   filter,
 }: UserSelectProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const { data: userList } = trpc.user.getList.useQuery();
 

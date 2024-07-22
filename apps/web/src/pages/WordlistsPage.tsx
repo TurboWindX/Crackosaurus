@@ -1,15 +1,16 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { TRPCClientError } from "@trpc/client";
 import { getQueryKey } from "@trpc/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { FilePicker } from "@repo/shadcn/components/ui/file-picker";
-import { trpc } from "@repo/ui/api";
+import { useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
 import { RelativeTime } from "@repo/ui/time";
+import { useUpload } from "@repo/ui/upload";
 import { MemorySize } from "@repo/ui/wordlists";
 
 export const WordlistsPage = () => {
@@ -17,6 +18,8 @@ export const WordlistsPage = () => {
   const { t } = useTranslation();
 
   const queryClient = useQueryClient();
+  const trpc = useTRPC();
+  const upload = useUpload();
   const { handleError } = useErrors();
 
   const queryKeys = useMemo(
@@ -48,6 +51,15 @@ export const WordlistsPage = () => {
   useEffect(() => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
+
+  const { mutateAsync: uploadWordlist } = useMutation({
+    mutationFn: upload.wordlist,
+    onSuccess() {
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      setFile(null);
+    },
+    onError: handleError,
+  });
 
   const { mutateAsync: deleteWordlists } = trpc.wordlist.deleteMany.useMutation(
     {
@@ -96,11 +108,7 @@ export const WordlistsPage = () => {
         }
         noAdd={!hasPermission("wordlists:add")}
         onAdd={async () => {
-          // const formData = new FormData();
-
-          // formData.set("data", file!);
-
-          // await createWordlist(formData as any);
+          uploadWordlist(file!);
 
           return true;
         }}

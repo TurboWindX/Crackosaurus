@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Status } from "@repo/api";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { tRPCInput, trpc } from "@repo/ui/api";
+import { tRPCInput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { InstanceTypeSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
@@ -17,6 +17,7 @@ import { RelativeTime } from "@repo/ui/time";
 
 export const InstancesPage = () => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
 

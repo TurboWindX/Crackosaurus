@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 
 import { Badge } from "@repo/shadcn/components/ui/badge";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { tRPCInput, trpc } from "@repo/ui/api";
+import { tRPCInput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
@@ -25,6 +25,7 @@ export const ProjectsPage = () => {
   const hasCollaborators = hasPermission("projects:users:get");
 
   const queryClient = useQueryClient();
+  const trpc = useTRPC();
   const { handleError } = useErrors();
 
   const queryKeys = useMemo(

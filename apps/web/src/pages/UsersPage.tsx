@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 
 import { DEFAULT_PERMISSION_PROFILE, PERMISSION_PROFILES } from "@repo/api";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { tRPCInput, trpc } from "@repo/ui/api";
+import { tRPCInput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
@@ -16,6 +16,7 @@ import { PermissionProfileSelect } from "@repo/ui/users";
 
 export const UsersPage = () => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 

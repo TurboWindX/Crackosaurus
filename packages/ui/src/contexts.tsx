@@ -24,3 +24,11 @@ export const AuthContext = createContext<AuthInterface>({
   username: "",
   hasPermission: () => false,
 });
+
+export interface UploadInterface {
+  readonly wordlist: (file: File) => Promise<string | null>;
+}
+
+export const UploadContext = createContext<UploadInterface>({
+  wordlist: async () => null,
+});

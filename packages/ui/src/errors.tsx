@@ -5,11 +5,12 @@ import { useTranslation } from "react-i18next";
 
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
 
-import { trpc } from "./api";
+import { useTRPC } from "./api";
 
 export const useErrors = () => {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const trpc = useTRPC();
   const queryClient = useQueryClient();
 
   const authQueryKey = getQueryKey(trpc.auth.get);

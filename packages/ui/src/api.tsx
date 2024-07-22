@@ -4,9 +4,16 @@ import { useState } from "react";
 
 import type { AppRotuerOutput, AppRouter, AppRouterInput } from "@repo/server";
 
-export const trpc = createTRPCReact<AppRouter>();
+import { AuthProvider } from "./auth";
+import { UploadProvider } from "./upload";
+
+const trpc = createTRPCReact<AppRouter>();
 export type tRPCInput = AppRouterInput;
 export type tRPCOutput = AppRotuerOutput;
+
+export const useTRPC = () => {
+  return trpc;
+};
 
 export const APIProvider = ({
   url,
@@ -45,7 +52,11 @@ export const APIProvider = ({
 
   return (
     <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <UploadProvider url={url}>{children}</UploadProvider>
+        </AuthProvider>
+      </QueryClientProvider>
     </trpc.Provider>
   );
 };

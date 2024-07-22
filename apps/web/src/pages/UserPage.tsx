@@ -11,7 +11,7 @@ import { PermissionType } from "@repo/api";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { Separator } from "@repo/shadcn/components/ui/separator";
-import { tRPCOutput, trpc } from "@repo/ui/api";
+import { tRPCOutput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
@@ -25,6 +25,7 @@ interface ProjectDataTableProps {
 
 const ProjectDataTable = ({ values, isLoading }: ProjectDataTableProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
   const navigate = useNavigate();
 
   return (
@@ -66,6 +67,7 @@ const PermissionDataTable = ({
   >([]);
 
   const { uid, hasPermission } = useAuth();
+  const trpc = useTRPC();
 
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
@@ -153,6 +155,7 @@ const LogoutButton = ({ userID }: LogoutButtonProps) => {
   const navigate = useNavigate();
 
   const { uid } = useAuth();
+  const trpc = useTRPC();
 
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
@@ -194,12 +197,14 @@ const PasswordUpdateButton = ({
   isLoading,
 }: PasswordUpdateButtonProps) => {
   const { t } = useTranslation();
+
   const [open, setOpen] = useState(false);
 
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
   const { uid, hasPermission } = useAuth();
+  const trpc = useTRPC();
 
   const { handleError } = useErrors();
 
@@ -280,6 +285,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
 
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
+  const trpc = useTRPC();
 
   const { mutateAsync: deleteUsers } = trpc.user.deleteMany.useMutation({
     onSuccess() {
@@ -347,6 +353,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
 export const UserPage = () => {
   const { userID } = useParams();
 
+  const trpc = useTRPC();
   const { handleError } = useErrors();
 
   const {

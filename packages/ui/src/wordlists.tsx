@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 
-import { trpc } from "./api";
+import { useTRPC } from "./api";
 
 const K = 1024;
 const LOG_K = Math.log(K);
@@ -41,6 +41,7 @@ export const WordlistSelect = ({
   onValueChange,
 }: WordlistSelectProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const { data: wordlistList } = trpc.wordlist.getList.useQuery();
 

@@ -17,6 +17,7 @@ import { clusterPlugin } from "./plugins/cluster/plugin";
 import prismaPlugin from "./plugins/prisma";
 import { createContext } from "./plugins/trpc/context";
 import { AppRouter, appRouter } from "./routers";
+import { upload } from "./upload";
 
 const fastify = Fastify({
   maxParamLength: 5000,
@@ -61,6 +62,11 @@ fastify.register(cors, {
 
     cb(null, true);
   },
+});
+
+fastify.register(upload, {
+  prefix: "upload",
+  url: `http://${config.cluster.name}:${config.cluster.port}`,
 });
 
 fastify.register(fastifyTRPCPlugin, {

@@ -4,10 +4,12 @@ import { useNavigate } from "react-router-dom";
 
 import { PermissionType, hasPermission } from "@repo/api";
 
-import { trpc } from "./api";
+import { useTRPC } from "./api";
 import { AuthContext, AuthInterface } from "./contexts";
 
 export function AuthProvider({ children }: { children: any }) {
+  const trpc = useTRPC();
+
   const { data, isLoading, isLoadingError, isError } = trpc.auth.get.useQuery(
     undefined,
     {

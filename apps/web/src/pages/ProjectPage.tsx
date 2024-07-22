@@ -12,7 +12,7 @@ import { HASH_TYPES, getHashName } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { Separator } from "@repo/shadcn/components/ui/separator";
-import { tRPCInput, tRPCOutput, trpc } from "@repo/ui/api";
+import { tRPCInput, tRPCOutput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { InstanceSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
@@ -48,6 +48,7 @@ const HashDataTable = ({
 }: HashDataTableProps) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
+  const trpc = useTRPC();
 
   const [newHash, setNewHash] = useState<
     tRPCInput["hash"]["createMany"]["data"][number]
@@ -253,6 +254,7 @@ const UserDataTable = ({
 }: UserDataTableProps) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
+  const trpc = useTRPC();
 
   const [newUserID, setNewUserID] = useState<string>("");
 
@@ -338,6 +340,8 @@ interface LaunchButtonProps {
 
 const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
+
   const [open, setOpen] = useState(false);
 
   const [instanceID, setInstanceID] = useState("");
@@ -429,6 +433,8 @@ interface RemoveButtonProps {
 
 const RemoveButton = ({ projectID, isLoading }: RemoveButtonProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
+
   const [open, setOpen] = useState(false);
 
   const { hasPermission } = useAuth();
@@ -496,6 +502,7 @@ export const ProjectPage = () => {
   const { projectID } = useParams();
 
   const { hasPermission } = useAuth();
+  const trpc = useTRPC();
 
   const { handleError } = useErrors();
 

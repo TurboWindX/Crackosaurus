@@ -16,6 +16,7 @@
     "./header": "./src/header.tsx",
     "./status": "./src/status.tsx",
     "./time": "./src/time.tsx",
+    "./upload": "./src/upload.tsx",
     "./users": "./src/users.tsx",
     "./wordlists": "./src/wordlists.tsx"
   },
