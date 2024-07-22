@@ -490,7 +490,7 @@ const DataTableBody = <T,>({
       <TableRow key="none">
         {hasSelect && <TableCell />}
         <TableCell>
-          {t("error.empty", { item: plural.toLowerCase() })}
+          {t("error.EMPTY", { item: plural.toLowerCase() })}
         </TableCell>
         {new Array(head.filter((label) => label).length - 1)
           .fill(0)

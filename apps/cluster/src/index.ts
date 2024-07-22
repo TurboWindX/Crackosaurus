@@ -1,9 +1,15 @@
 import fastifyMultipart from "@fastify/multipart";
+import {
+  FastifyTRPCPluginOptions,
+  fastifyTRPCPlugin,
+} from "@trpc/server/adapters/fastify";
 import Fastify from "fastify";
 
-import api from "./api";
 import config from "./config";
 import { clusterPlugin } from "./plugins/cluster";
+import { createContext } from "./plugins/trpc/context";
+import { AppRouter, appRouter } from "./routers";
+import { upload } from "./upload";
 
 const fastify = Fastify();
 
@@ -15,7 +21,17 @@ fastify.register(fastifyMultipart, {
 
 fastify.register(clusterPlugin, config.type);
 
-fastify.register(api);
+fastify.register(upload, {
+  prefix: "upload",
+});
+
+fastify.register(fastifyTRPCPlugin, {
+  prefix: "trpc",
+  trpcOptions: {
+    router: appRouter,
+    createContext,
+  } satisfies FastifyTRPCPluginOptions<AppRouter>["trpcOptions"],
+});
 
 fastify.listen(
   {

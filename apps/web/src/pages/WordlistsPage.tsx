@@ -1,23 +1,34 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { getQueryKey } from "@trpc/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { APIError } from "@repo/api";
 import { FilePicker } from "@repo/shadcn/components/ui/file-picker";
-import { useAPI } from "@repo/ui/api";
+import { useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
 import { RelativeTime } from "@repo/ui/time";
+import { useUpload } from "@repo/ui/upload";
 import { MemorySize } from "@repo/ui/wordlists";
 
 export const WordlistsPage = () => {
   const { hasPermission } = useAuth();
   const { t } = useTranslation();
 
-  const API = useAPI();
   const queryClient = useQueryClient();
+  const trpc = useTRPC();
+  const upload = useUpload();
   const { handleError } = useErrors();
+
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.wordlist.getMany),
+      getQueryKey(trpc.wordlist.getList),
+    ],
+    []
+  );
 
   const [file, setFile] = useState<File | null>(null);
 
@@ -26,11 +37,13 @@ export const WordlistsPage = () => {
     isLoading,
     error,
     isLoadingError,
-  } = useQuery({
-    queryKey: ["wordlists", "list", "page"],
-    queryFn: API.getWordlists,
+  } = trpc.wordlist.getMany.useQuery(undefined, {
     retry(count, error) {
-      if (error instanceof APIError && error.status === 401) return false;
+      if (
+        error instanceof TRPCClientError &&
+        error.data?.code === "UNAUTHORIZED"
+      )
+        return false;
       return count < 3;
     },
   });
@@ -39,25 +52,23 @@ export const WordlistsPage = () => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
 
-  const { mutateAsync: createWordlist } = useMutation({
-    mutationFn: API.createWordlist,
+  const { mutateAsync: uploadWordlist } = useMutation({
+    mutationFn: upload.wordlist,
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["wordlists", "list"],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      setFile(null);
     },
     onError: handleError,
   });
 
-  const { mutateAsync: deleteWordlists } = useMutation({
-    mutationFn: (wordlistIDs: string[]) => API.deleteWordlists({ wordlistIDs }),
-    onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["wordlists", "list"],
-      });
-    },
-    onError: handleError,
-  });
+  const { mutateAsync: deleteWordlists } = trpc.wordlist.deleteMany.useMutation(
+    {
+      onSuccess() {
+        queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      },
+      onError: handleError,
+    }
+  );
 
   return (
     <div className="p-4">
@@ -97,17 +108,15 @@ export const WordlistsPage = () => {
         }
         noAdd={!hasPermission("wordlists:add")}
         onAdd={async () => {
-          const formData = new FormData();
-
-          formData.set("data", file!);
-
-          await createWordlist(formData as any);
+          uploadWordlist(file!);
 
           return true;
         }}
         noRemove={!hasPermission("wordlists:remove")}
         onRemove={async (wordlists) => {
-          await deleteWordlists(wordlists.map((wordlist) => wordlist.WID));
+          await deleteWordlists({
+            wordlistIDs: wordlists.map((wordlist) => wordlist.WID),
+          });
 
           return true;
         }}

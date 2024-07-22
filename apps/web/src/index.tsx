@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
@@ -31,16 +30,14 @@ if (config.backend.name.length > 0 && config.backend.name !== "USE_WEB_HOST") {
   port = `:${window.location.port}`;
 }
 
-const backendUrl = `${protocol}//${hostname}${port}/api`;
+const backendUrl = `${protocol}//${hostname}${port}`;
 
 const App = () => {
   return (
     <ThemeProvider defaultTheme="dark" storageKey="ui-theme">
-      <QueryClientProvider client={new QueryClient()}>
-        <APIProvider url={backendUrl}>
-          <RouterProvider router={router} />
-        </APIProvider>
-      </QueryClientProvider>
+      <APIProvider url={backendUrl}>
+        <RouterProvider router={router} />
+      </APIProvider>
       <Toaster />
     </ThemeProvider>
   );

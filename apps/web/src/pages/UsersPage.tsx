@@ -1,17 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { getQueryKey } from "@trpc/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import {
-  APIError,
-  DEFAULT_PERMISSION_PROFILE,
-  PERMISSION_PROFILES,
-} from "@repo/api";
-import { type APIType } from "@repo/api/server";
-import { type REQ } from "@repo/api/server/client/web";
+import { DEFAULT_PERMISSION_PROFILE, PERMISSION_PROFILES } from "@repo/api";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { useAPI } from "@repo/ui/api";
+import { tRPCInput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
@@ -20,6 +16,7 @@ import { PermissionProfileSelect } from "@repo/ui/users";
 
 export const UsersPage = () => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
@@ -27,26 +24,32 @@ export const UsersPage = () => {
     DEFAULT_PERMISSION_PROFILE
   );
 
-  const [newUser, setNewUser] = useState<REQ<APIType["register"]>>({
+  const [newUser, setNewUser] = useState<tRPCInput["user"]["create"]>({
     username: "",
     password: "",
     permissions: PERMISSION_PROFILES[DEFAULT_PERMISSION_PROFILE],
   });
 
-  const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
+
+  const queryKeys = useMemo(
+    () => [getQueryKey(trpc.user.getMany), getQueryKey(trpc.user.getList)],
+    []
+  );
 
   const {
     data: users,
     isLoading,
     error,
     isLoadingError,
-  } = useQuery({
-    queryKey: ["users", "list", "page"],
-    queryFn: API.getUsers,
+  } = trpc.user.getMany.useQuery(undefined, {
     retry(count, error) {
-      if (error instanceof APIError && error.status === 401) return false;
+      if (
+        error instanceof TRPCClientError &&
+        error.data?.code === "UNAUTHORIZED"
+      )
+        return false;
       return count < 3;
     },
   });
@@ -55,22 +58,16 @@ export const UsersPage = () => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
 
-  const { mutateAsync: register } = useMutation({
-    mutationFn: API.register,
+  const { mutateAsync: createUser } = trpc.user.create.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["users", "list"],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
 
-  const { mutateAsync: deleteUsers } = useMutation({
-    mutationFn: (userIDs: string[]) => API.deleteUsers({ userIDs }),
+  const { mutateAsync: deleteUsers } = trpc.user.deleteMany.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["users", "list"],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
@@ -134,7 +131,7 @@ export const UsersPage = () => {
         }
         noAdd={!hasPermission("users:add")}
         onAdd={async () => {
-          await register(newUser);
+          await createUser(newUser);
 
           setNewUser({ ...newUser, username: "", password: "" });
 
@@ -142,7 +139,9 @@ export const UsersPage = () => {
         }}
         noRemove={!hasPermission("root")}
         onRemove={async (users) => {
-          await deleteUsers(users.map((user) => user.ID));
+          await deleteUsers({
+            userIDs: users.map((user) => user.ID),
+          });
 
           return true;
         }}

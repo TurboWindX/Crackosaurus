@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -7,8 +6,6 @@ import {
   PERMISSION_PROFILES,
   type PermissionType,
 } from "@repo/api";
-import { type APIType } from "@repo/api/server";
-import { type RES } from "@repo/api/server/client/web";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
 import {
   Select,
@@ -19,12 +16,12 @@ import {
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 
-import { useAPI } from "./api";
+import { tRPCOutput, useTRPC } from "./api";
 
 export interface UserSelectProps {
   value?: string | null;
   onValueChange?: (value: string) => void;
-  filter?: (user: RES<APIType["getUserList"]>[number]) => boolean;
+  filter?: (user: tRPCOutput["user"]["getList"][number]) => boolean;
 }
 
 export const UserSelect = ({
@@ -33,12 +30,9 @@ export const UserSelect = ({
   filter,
 }: UserSelectProps) => {
   const { t } = useTranslation();
-  const API = useAPI();
+  const trpc = useTRPC();
 
-  const { data: userList } = useQuery({
-    queryKey: ["users", "list", "component"],
-    queryFn: API.getUserList,
-  });
+  const { data: userList } = trpc.user.getList.useQuery();
 
   const filteredUserList = useMemo(
     () => (userList ?? []).filter((user) => filter?.(user) ?? true),

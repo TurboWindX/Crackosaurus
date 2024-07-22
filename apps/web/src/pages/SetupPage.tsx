@@ -10,16 +10,26 @@ import {
   CardTitle,
 } from "@repo/shadcn/components/ui/card";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { useAuth } from "@repo/ui/auth";
+import { useTRPC } from "@repo/ui/api";
+import { useErrors } from "@repo/ui/errors";
 
 export const SetupPage = () => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  const { init } = useAuth();
   const navigate = useNavigate();
+
+  const { handleError } = useErrors();
+
+  const { mutateAsync: init } = trpc.init.useMutation({
+    onSuccess() {
+      navigate("/");
+    },
+    onError: handleError,
+  });
 
   return (
     <div className="grid h-screen grid-rows-3 lg:grid-cols-3">
@@ -36,7 +46,6 @@ export const SetupPage = () => {
             onSubmit={async (event) => {
               event.preventDefault();
               await init({ username, password });
-              navigate("/");
             }}
           >
             <Input

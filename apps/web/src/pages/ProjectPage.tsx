@@ -1,19 +1,18 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { getQueryKey } from "@trpc/react-query";
 import { PlayIcon, TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
-import { APIError, Status } from "@repo/api";
-import { type APIType } from "@repo/api/server";
-import { type ProjectJob } from "@repo/api/server";
-import { type REQ, type RES } from "@repo/api/server/client/web";
+import { Status } from "@repo/api";
 import { HASH_TYPES, getHashName } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { Separator } from "@repo/shadcn/components/ui/separator";
-import { useAPI } from "@repo/ui/api";
+import { tRPCInput, tRPCOutput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { InstanceSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
@@ -25,7 +24,9 @@ import { RelativeTime } from "@repo/ui/time";
 import { UserSelect } from "@repo/ui/users";
 import { WordlistSelect } from "@repo/ui/wordlists";
 
-type ProjectJobWithType = ProjectJob & { type: number };
+type ProjectJobWithType = NonNullable<
+  NonNullable<tRPCOutput["project"]["get"]["hashes"]>[number]["jobs"]
+>[number] & { type: number };
 
 const HASH_IMPORT_VALIDATOR = z
   .object({
@@ -36,7 +37,7 @@ const HASH_IMPORT_VALIDATOR = z
 
 interface HashDataTableProps {
   projectID: string;
-  values: RES<APIType["getProject"]>["hashes"];
+  values: tRPCOutput["project"]["get"]["hashes"];
   isLoading?: boolean;
 }
 
@@ -47,15 +48,15 @@ const HashDataTable = ({
 }: HashDataTableProps) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
+  const trpc = useTRPC();
 
   const [newHash, setNewHash] = useState<
-    REQ<APIType["addHashes"]>["data"][number]
+    tRPCInput["hash"]["createMany"]["data"][number]
   >({
     hash: "",
     hashType: HASH_TYPES.plaintext,
   });
 
-  const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
@@ -66,22 +67,25 @@ const HashDataTable = ({
     [viewHashID]
   );
 
-  const { mutateAsync: addHashes } = useMutation({
-    mutationFn: API.addHashes,
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.project.get, { projectID }),
+      getQueryKey(trpc.project.getMany),
+      getQueryKey(trpc.project.getList),
+    ],
+    []
+  );
+
+  const { mutateAsync: addHashes } = trpc.hash.createMany.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["projects", projectID],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
 
-  const { mutateAsync: removeHashes } = useMutation({
-    mutationFn: (hashIDs: string[]) => API.removeHashes({ projectID, hashIDs }),
+  const { mutateAsync: removeHashes } = trpc.hash.deleteMany.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["projects", projectID],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
@@ -93,7 +97,7 @@ const HashDataTable = ({
         open={viewOpen}
         setOpen={setViewOpen}
       >
-        {viewHash ?? t("error.not_found")}
+        {viewHash ?? t("error.NOT_FOUND")}
       </DrawerDialog>
       <DataTable
         singular={t("item.hash.singular")}
@@ -136,7 +140,10 @@ const HashDataTable = ({
         }}
         noRemove={!hasPermission("hashes:remove")}
         onRemove={async (hashes) => {
-          await removeHashes(hashes.map(({ HID }) => HID));
+          await removeHashes({
+            projectID,
+            hashIDs: hashes.map(({ HID }) => HID),
+          });
           return true;
         }}
         noImport={!hasPermission("hashes:add")}
@@ -144,7 +151,6 @@ const HashDataTable = ({
           const result = HASH_IMPORT_VALIDATOR.safeParse(data);
           if (result.error) {
             console.log(result.error.format());
-            handleError(new APIError({ code: 500, message: "input" }));
             return false;
           }
 
@@ -237,7 +243,7 @@ const JobDataTable = ({ values, isLoading }: JobDataTableProps) => {
 
 interface UserDataTableProps {
   projectID: string;
-  values: RES<APIType["getProject"]>["members"];
+  values: tRPCOutput["project"]["get"]["members"];
   isLoading?: boolean;
 }
 
@@ -248,31 +254,32 @@ const UserDataTable = ({
 }: UserDataTableProps) => {
   const { t } = useTranslation();
   const { hasPermission } = useAuth();
+  const trpc = useTRPC();
 
   const [newUserID, setNewUserID] = useState<string>("");
 
-  const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
-  const { mutateAsync: addUser } = useMutation({
-    mutationFn: (userID: string) =>
-      API.addUsersToProject({ projectID, userIDs: [userID] }),
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.project.get, { projectID }),
+      getQueryKey(trpc.project.getMany),
+      getQueryKey(trpc.project.getList),
+    ],
+    []
+  );
+
+  const { mutateAsync: addUsers } = trpc.project.addUsers.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["projects", projectID],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
 
-  const { mutateAsync: removeUsers } = useMutation({
-    mutationFn: (userIDs: string[]) =>
-      API.removeUsersFromProject({ projectID, userIDs }),
+  const { mutateAsync: removeUsers } = trpc.project.removeUsers.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["projects", projectID],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
@@ -304,7 +311,10 @@ const UserDataTable = ({
       }
       noAdd={!hasPermission("projects:users:add")}
       onAdd={async () => {
-        await addUser(newUserID);
+        await addUsers({
+          projectID,
+          userIDs: [newUserID],
+        });
 
         setNewUserID("");
 
@@ -312,7 +322,10 @@ const UserDataTable = ({
       }}
       noRemove={!hasPermission("projects:users:remove")}
       onRemove={async (users) => {
-        await removeUsers(users.map(({ ID }) => ID));
+        await removeUsers({
+          projectID,
+          userIDs: users.map(({ ID }) => ID),
+        });
         return true;
       }}
     />
@@ -321,12 +334,14 @@ const UserDataTable = ({
 
 interface LaunchButtonProps {
   projectID: string;
-  hashes: RES<APIType["getProject"]>["hashes"];
+  hashes: tRPCOutput["project"]["get"]["hashes"];
   isLoading: boolean;
 }
 
 const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
+
   const [open, setOpen] = useState(false);
 
   const [instanceID, setInstanceID] = useState("");
@@ -345,30 +360,21 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
 
   const { hasPermission } = useAuth();
 
-  const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
-  const { mutateAsync: addJobs } = useMutation({
-    mutationFn: ({
-      instanceID,
-      wordlistID,
-      hashTypes,
-    }: {
-      instanceID: string;
-      wordlistID: string;
-      hashTypes: number[];
-    }) =>
-      API.createInstanceJobs({
-        instanceID,
-        data: hashTypes.map((hashType) => ({
-          wordlistID,
-          hashType,
-          projectIDs: [projectID],
-        })),
-      }),
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.project.get, { projectID }),
+      getQueryKey(trpc.project.getMany),
+      getQueryKey(trpc.project.getList),
+    ],
+    []
+  );
+
+  const { mutateAsync: createJobs } = trpc.instance.createJobs.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({ queryKey: ["projects", projectID] });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
@@ -394,10 +400,17 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
         onSubmit={async (e) => {
           e.preventDefault();
 
-          await addJobs({
+          const hashTypes = [
+            ...new Set(todoHashes.map(({ hashType }) => hashType)),
+          ];
+
+          await createJobs({
             instanceID,
-            wordlistID,
-            hashTypes: [...new Set(todoHashes.map(({ hashType }) => hashType))],
+            data: hashTypes.map((hashType) => ({
+              wordlistID,
+              hashType,
+              projectIDs: [projectID],
+            })),
           });
 
           setInstanceID("");
@@ -420,21 +433,28 @@ interface RemoveButtonProps {
 
 const RemoveButton = ({ projectID, isLoading }: RemoveButtonProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
+
   const [open, setOpen] = useState(false);
 
   const { hasPermission } = useAuth();
 
   const navigate = useNavigate();
 
-  const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
-  const { mutateAsync: deleteProject } = useMutation({
-    mutationFn: async (projectID: string) =>
-      API.deleteProjects({ projectIDs: [projectID] }),
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.project.getMany),
+      getQueryKey(trpc.project.getList),
+    ],
+    []
+  );
+
+  const { mutateAsync: deleteProjects } = trpc.project.deleteMany.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({ queryKey: ["projects", "list"] });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
 
       navigate("/projects");
     },
@@ -462,7 +482,9 @@ const RemoveButton = ({ projectID, isLoading }: RemoveButtonProps) => {
         onSubmit={async (e) => {
           e.preventDefault();
 
-          await deleteProject(projectID!);
+          await deleteProjects({
+            projectIDs: [projectID!],
+          });
         }}
       >
         <span>
@@ -480,8 +502,8 @@ export const ProjectPage = () => {
   const { projectID } = useParams();
 
   const { hasPermission } = useAuth();
+  const trpc = useTRPC();
 
-  const API = useAPI();
   const { handleError } = useErrors();
 
   const {
@@ -489,16 +511,21 @@ export const ProjectPage = () => {
     isLoading,
     error,
     isLoadingError,
-  } = useQuery({
-    queryKey: ["projects", projectID],
-    queryFn: async () => API.getProject({ projectID: projectID! }),
-    retry(count, error) {
-      if (error instanceof APIError && error.status === 401) return false;
-      return count < 3;
-    },
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: false,
-  });
+  } = trpc.project.get.useQuery(
+    { projectID: projectID! },
+    {
+      retry(count, error) {
+        if (
+          error instanceof TRPCClientError &&
+          error.data?.code === "UNAUTHORIZED"
+        )
+          return false;
+        return count < 3;
+      },
+      refetchInterval: 10_000,
+      refetchIntervalInBackground: false,
+    }
+  );
 
   useEffect(() => {
     if (!isLoadingError && error) handleError(error);

@@ -1,6 +1,6 @@
 import { Outlet, createBrowserRouter } from "react-router-dom";
 
-import { AuthProvider, AuthRoute, PermissionRoute } from "@repo/ui/auth";
+import { AuthRoute, PermissionRoute } from "@repo/ui/auth";
 import { Header } from "@repo/ui/header";
 
 import { ErrorPage } from "./ErrorPage.tsx";
@@ -18,11 +18,6 @@ import { WordlistsPage } from "./WordlistsPage.tsx";
 export const router = createBrowserRouter([
   {
     errorElement: <ErrorPage />,
-    element: (
-      <AuthProvider>
-        <Outlet />
-      </AuthProvider>
-    ),
     children: [
       {
         path: "/setup",

@@ -1,6 +1,7 @@
 {
   "name": "@repo/server",
   "version": "0.0.0",
+  "license": "MIT",
   "scripts": {
     "dev": "npm run build && npm run dev:watch",
     "dev:watch": "concurrently \"rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild --watch\" \"nodemon -w dist/index.js dist/index.js\"",
@@ -8,7 +9,9 @@
     "start": "npm run build && node dist/index.js",
     "check": "tsc --noEmit"
   },
-  "license": "MIT",
+  "exports": {
+    ".": "./src/export.ts"
+  },
   "dependencies": {
     "@fastify/cookie": "^9.2.0",
     "@fastify/cors": "^8.5.0",
@@ -20,11 +23,14 @@
     "@repo/app-config": "*",
     "@repo/hashcat": "*",
     "@repo/plugins": "*",
+    "@trpc/client": "^10.45.2",
+    "@trpc/server": "^10.45.2",
     "bcrypt": "^5.1.1",
     "fastify": "^4.0.0",
     "fastify-plugin": "^4.5.1"
   },
   "devDependencies": {
+    "@repo/cluster": "*",
     "@repo/typescript-config": "*",
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@types/bcrypt": "^5.0.2",

@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -11,7 +10,7 @@ import {
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
 
-import { useAPI } from "./api";
+import { useTRPC } from "./api";
 
 const K = 1024;
 const LOG_K = Math.log(K);
@@ -42,12 +41,9 @@ export const WordlistSelect = ({
   onValueChange,
 }: WordlistSelectProps) => {
   const { t } = useTranslation();
-  const API = useAPI();
+  const trpc = useTRPC();
 
-  const { data: wordlistList } = useQuery({
-    queryKey: ["wordlists", "list", "component"],
-    queryFn: API.getWordlistList,
-  });
+  const { data: wordlistList } = trpc.wordlist.getList.useQuery();
 
   return (
     <Select

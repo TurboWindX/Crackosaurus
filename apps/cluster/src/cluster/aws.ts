@@ -12,6 +12,10 @@ import { FileSystemCluster } from "./filesystem";
 export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
   private stepFunctions!: AWS.StepFunctions;
 
+  public getName(): string {
+    return "aws";
+  }
+
   private loadCredentials(): Promise<boolean> {
     return new Promise(async (resolve) =>
       AWS.config.getCredentials((err) => {

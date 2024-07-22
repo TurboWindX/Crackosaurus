@@ -1,17 +1,17 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { getQueryKey } from "@trpc/react-query";
 import { t } from "i18next";
 import { KeyRoundIcon, LogOutIcon, TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { APIError, PermissionType } from "@repo/api";
-import { type APIType } from "@repo/api/server";
-import { type RES } from "@repo/api/server/client/web";
+import { PermissionType } from "@repo/api";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { Separator } from "@repo/shadcn/components/ui/separator";
-import { useAPI } from "@repo/ui/api";
+import { tRPCOutput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
@@ -19,12 +19,13 @@ import { useErrors } from "@repo/ui/errors";
 import { PermissionsSelect } from "@repo/ui/users";
 
 interface ProjectDataTableProps {
-  values: RES<APIType["getUser"]>["projects"];
+  values: tRPCOutput["user"]["get"]["projects"];
   isLoading?: boolean;
 }
 
 const ProjectDataTable = ({ values, isLoading }: ProjectDataTableProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
   const navigate = useNavigate();
 
   return (
@@ -47,7 +48,7 @@ const ProjectDataTable = ({ values, isLoading }: ProjectDataTableProps) => {
 
 interface PermissionDataTableProps {
   userID: string;
-  values: RES<APIType["getUser"]>["permissions"];
+  values: tRPCOutput["user"]["get"]["permissions"];
   isLoading?: boolean;
 }
 
@@ -66,30 +67,37 @@ const PermissionDataTable = ({
   >([]);
 
   const { uid, hasPermission } = useAuth();
+  const trpc = useTRPC();
 
   const queryClient = useQueryClient();
-  const API = useAPI();
   const { handleError } = useErrors();
 
-  const { mutateAsync: addUserPermissions } = useMutation({
-    mutationFn: API.addUserPermissions,
-    onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["users", userID],
-      });
-    },
-    onError: handleError,
-  });
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.user.get, {
+        userID,
+      }),
+      getQueryKey(trpc.user.getMany),
+      getQueryKey(trpc.user.getList),
+    ],
+    []
+  );
 
-  const { mutateAsync: removeUserPermissions } = useMutation({
-    mutationFn: API.removeUserPermissions,
-    onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["users", userID],
-      });
-    },
-    onError: handleError,
-  });
+  const { mutateAsync: addUserPermissions } =
+    trpc.user.addPermissions.useMutation({
+      onSuccess() {
+        queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      },
+      onError: handleError,
+    });
+
+  const { mutateAsync: removeUserPermissions } =
+    trpc.user.removePermissions.useMutation({
+      onSuccess() {
+        queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      },
+      onError: handleError,
+    });
 
   return (
     <DataTable
@@ -146,9 +154,19 @@ const LogoutButton = ({ userID }: LogoutButtonProps) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
 
-  const { uid, logout } = useAuth();
+  const { uid } = useAuth();
+  const trpc = useTRPC();
 
   const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const { mutateAsync: logout } = trpc.auth.logout.useMutation({
+    onSuccess() {
+      queryClient.invalidateQueries();
+      navigate("/login");
+    },
+    onError: handleError,
+  });
 
   if (userID !== uid) return <></>;
 
@@ -157,11 +175,7 @@ const LogoutButton = ({ userID }: LogoutButtonProps) => {
       <Button
         variant="outline"
         onClick={async () => {
-          await logout({});
-
-          queryClient.invalidateQueries();
-
-          navigate("/login");
+          await logout();
         }}
       >
         <div className="grid grid-flow-col items-center gap-2">
@@ -183,14 +197,15 @@ const PasswordUpdateButton = ({
   isLoading,
 }: PasswordUpdateButtonProps) => {
   const { t } = useTranslation();
+
   const [open, setOpen] = useState(false);
 
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
   const { uid, hasPermission } = useAuth();
+  const trpc = useTRPC();
 
-  const API = useAPI();
   const { handleError } = useErrors();
 
   const trigger = useMemo(
@@ -205,8 +220,7 @@ const PasswordUpdateButton = ({
     []
   );
 
-  const { mutateAsync: changePassword } = useMutation({
-    mutationFn: API.changePassword,
+  const { mutateAsync: updatePassword } = trpc.user.updatePassword.useMutation({
     onError: handleError,
   });
 
@@ -227,7 +241,7 @@ const PasswordUpdateButton = ({
           onSubmit={async (e) => {
             e.preventDefault();
 
-            await changePassword({ userID, oldPassword, newPassword });
+            await updatePassword({ userID, oldPassword, newPassword });
 
             setOpen(false);
             setOldPassword("");
@@ -257,7 +271,7 @@ const PasswordUpdateButton = ({
 
 interface RemoveButtonProps {
   userID: string;
-  user?: RES<APIType["getUser"]>;
+  user?: tRPCOutput["user"]["get"];
   isLoading?: boolean;
 }
 
@@ -269,12 +283,11 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
 
   const navigate = useNavigate();
 
-  const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
+  const trpc = useTRPC();
 
-  const { mutateAsync: deleteUser } = useMutation({
-    mutationFn: (userID: string) => API.deleteUsers({ userIDs: [userID] }),
+  const { mutateAsync: deleteUsers } = trpc.user.deleteMany.useMutation({
     onSuccess() {
       if (uid === userID) {
         queryClient.invalidateQueries();
@@ -320,7 +333,9 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
           onSubmit={async (e) => {
             e.preventDefault();
 
-            await deleteUser(userID);
+            await deleteUsers({
+              userIDs: [userID],
+            });
           }}
         >
           <span>
@@ -338,7 +353,7 @@ const RemoveButton = ({ userID, user, isLoading }: RemoveButtonProps) => {
 export const UserPage = () => {
   const { userID } = useParams();
 
-  const API = useAPI();
+  const trpc = useTRPC();
   const { handleError } = useErrors();
 
   const {
@@ -346,14 +361,19 @@ export const UserPage = () => {
     isLoading,
     error,
     isLoadingError,
-  } = useQuery({
-    queryKey: ["users", userID],
-    queryFn: async () => API.getUser({ userID: userID! }),
-    retry(count, error) {
-      if (error instanceof APIError && error.status === 401) return false;
-      return count < 3;
-    },
-  });
+  } = trpc.user.get.useQuery(
+    { userID: userID! },
+    {
+      retry(count, error) {
+        if (
+          error instanceof TRPCClientError &&
+          error.data?.code === "UNAUTHORIZED"
+        )
+          return false;
+        return count < 3;
+      },
+    }
+  );
 
   useEffect(() => {
     if (!isLoadingError && error) handleError(error);

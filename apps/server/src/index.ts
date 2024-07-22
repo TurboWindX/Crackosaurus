@@ -3,16 +3,25 @@ import cors from "@fastify/cors";
 import fastifyMultipart from "@fastify/multipart";
 import { fastifySession } from "@fastify/session";
 import fastifyStatic from "@fastify/static";
+import { createTRPCProxyClient } from "@trpc/client";
+import {
+  FastifyTRPCPluginOptions,
+  fastifyTRPCPlugin,
+} from "@trpc/server/adapters/fastify";
 import Fastify from "fastify";
 import fs from "node:fs";
 import path from "node:path";
 
-import { api } from "./api";
 import config from "./config";
 import { clusterPlugin } from "./plugins/cluster/plugin";
 import prismaPlugin from "./plugins/prisma";
+import { createContext } from "./plugins/trpc/context";
+import { AppRouter, appRouter } from "./routers";
+import { upload } from "./upload";
 
-const fastify = Fastify();
+const fastify = Fastify({
+  maxParamLength: 5000,
+});
 
 fastify.register(fastifyCookie);
 fastify.register(fastifySession, {
@@ -43,9 +52,6 @@ if (fs.existsSync(staticFolder)) {
 fastify.register(prismaPlugin);
 
 fastify.register(clusterPlugin, {
-  http: {
-    url: `http://${config.cluster.name}:${config.cluster.port}`,
-  },
   pollingRateMs: 1000,
 });
 
@@ -58,7 +64,18 @@ fastify.register(cors, {
   },
 });
 
-fastify.register(api, { prefix: "api" });
+fastify.register(upload, {
+  prefix: "upload",
+  url: `http://${config.cluster.name}:${config.cluster.port}`,
+});
+
+fastify.register(fastifyTRPCPlugin, {
+  prefix: "trpc",
+  trpcOptions: {
+    router: appRouter,
+    createContext,
+  } satisfies FastifyTRPCPluginOptions<AppRouter>["trpcOptions"],
+});
 
 fastify.listen(
   {

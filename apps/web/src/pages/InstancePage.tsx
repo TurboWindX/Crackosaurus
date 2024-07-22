@@ -1,16 +1,16 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { getQueryKey } from "@trpc/react-query";
 import { TrashIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 
-import { APIError, STATUS, Status } from "@repo/api";
-import { type APIType } from "@repo/api/server";
-import { type REQ, type RES } from "@repo/api/server/client/web";
+import { STATUS, Status } from "@repo/api";
 import { HASH_TYPES } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { MultiSelect } from "@repo/shadcn/components/ui/multi-select";
-import { useAPI } from "@repo/ui/api";
+import { tRPCInput, tRPCOutput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
@@ -22,58 +22,56 @@ import { WordlistSelect } from "@repo/ui/wordlists";
 
 interface JobDataTableProps {
   instanceID: string;
-  values: RES<APIType["getInstance"]>["jobs"];
+  values: tRPCOutput["instance"]["get"]["jobs"];
   isLoading?: boolean;
 }
 
 const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const [newJob, setNewJob] = useState<
-    REQ<APIType["createInstanceJobs"]>["data"][number]
+    tRPCInput["instance"]["createJobs"]["data"][number]
   >({
     wordlistID: "",
     hashType: HASH_TYPES.plaintext,
     projectIDs: [],
   });
 
-  const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
-  const { data: projectList, error } = useQuery({
-    queryKey: ["projects", "list"],
-    queryFn: API.getProjectList,
-  });
+  const { data: projectList, error } = trpc.project.getList.useQuery();
 
   useEffect(() => {
     if (error) handleError(error);
   }, [error]);
 
-  const { mutateAsync: createInstanceJob } = useMutation({
-    mutationFn: (job: REQ<APIType["createInstanceJobs"]>["data"][number]) =>
-      API.createInstanceJobs({
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.instance.get, {
         instanceID,
-        data: [job],
       }),
-    onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["instances", instanceID],
-      });
-    },
-    onError: handleError,
-  });
+      getQueryKey(trpc.instance.getMany),
+      getQueryKey(trpc.instance.getList),
+    ],
+    []
+  );
 
-  const { mutateAsync: deleteInstanceJobs } = useMutation({
-    mutationFn: async (jobIDs: string[]) =>
-      API.deleteInstanceJobs({ instanceID, jobIDs }),
-    onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["instances", instanceID],
-      });
-    },
-    onError: handleError,
-  });
+  const { mutateAsync: createInstanceJobs } =
+    trpc.instance.createJobs.useMutation({
+      onSuccess() {
+        queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      },
+      onError: handleError,
+    });
+  const { mutateAsync: deleteInstanceJobs } =
+    trpc.instance.deleteJobs.useMutation({
+      onSuccess() {
+        queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      },
+      onError: handleError,
+    });
 
   return (
     <DataTable
@@ -114,11 +112,17 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
         newJob.projectIDs.length > 0
       }
       onAdd={async () => {
-        await createInstanceJob(newJob);
+        await createInstanceJobs({
+          instanceID,
+          data: [newJob],
+        });
         return true;
       }}
       onRemove={async (jobs) => {
-        await deleteInstanceJobs(jobs.map(({ JID }) => JID));
+        await deleteInstanceJobs({
+          instanceID,
+          jobIDs: jobs.map(({ JID }) => JID),
+        });
         return true;
       }}
       searchFilter={({ JID }, search) => JID.includes(search)}
@@ -130,13 +134,13 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
 export const InstancePage = () => {
   const { instanceID } = useParams();
   const { t } = useTranslation();
+  const trpc = useTRPC();
 
   const { hasPermission } = useAuth();
   const navigate = useNavigate();
 
   const [removeOpen, setRemoveOpen] = useState(false);
 
-  const API = useAPI();
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
@@ -145,33 +149,44 @@ export const InstancePage = () => {
     isLoading,
     error,
     isLoadingError,
-  } = useQuery({
-    queryKey: ["instances", instanceID],
-    queryFn: async () => API.getInstance({ instanceID: instanceID! }),
-    retry(count, error) {
-      if (error instanceof APIError && error.status === 401) return false;
-      return count < 3;
-    },
-    refetchInterval: 10_000,
-    refetchIntervalInBackground: false,
-  });
+  } = trpc.instance.get.useQuery(
+    { instanceID: instanceID! },
+    {
+      retry(count, error) {
+        if (
+          error instanceof TRPCClientError &&
+          error.data?.code === "UNAUTHORIZED"
+        )
+          return false;
+        return count < 3;
+      },
+      refetchInterval: 10_000,
+      refetchIntervalInBackground: false,
+    }
+  );
 
   useEffect(() => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
 
-  const { mutateAsync: deleteInstance } = useMutation({
-    mutationFn: (instanceID: string) =>
-      API.deleteInstances({ instanceIDs: [instanceID] }),
-    onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["instances", "list"],
-      });
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.instance.getMany),
+      getQueryKey(trpc.instance.getList),
+    ],
+    []
+  );
 
-      navigate("/instances");
-    },
-    onError: handleError,
-  });
+  const { mutateAsync: deleteInstances } = trpc.instance.deleteMany.useMutation(
+    {
+      onSuccess() {
+        queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+
+        navigate("/instances");
+      },
+      onError: handleError,
+    }
+  );
 
   return (
     <div className="grid gap-4 p-4">
@@ -207,7 +222,9 @@ export const InstancePage = () => {
                   onSubmit={async (e) => {
                     e.preventDefault();
 
-                    await deleteInstance(instanceID!);
+                    await deleteInstances({
+                      instanceIDs: [instanceID!],
+                    });
                   }}
                 >
                   <span>

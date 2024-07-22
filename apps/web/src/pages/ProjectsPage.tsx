@@ -1,14 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { TRPCClientError } from "@trpc/client";
+import { getQueryKey } from "@trpc/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import { APIError } from "@repo/api";
-import { type APIType } from "@repo/api/server";
-import { type REQ } from "@repo/api/server/client/web";
 import { Badge } from "@repo/shadcn/components/ui/badge";
 import { Input } from "@repo/shadcn/components/ui/input";
-import { useAPI } from "@repo/ui/api";
+import { tRPCInput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
@@ -19,26 +18,36 @@ export const ProjectsPage = () => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
 
-  const [newProject, setNewProject] = useState<REQ<APIType["createProject"]>>({
+  const [newProject, setNewProject] = useState<tRPCInput["project"]["create"]>({
     projectName: "",
   });
 
   const hasCollaborators = hasPermission("projects:users:get");
 
-  const API = useAPI();
   const queryClient = useQueryClient();
+  const trpc = useTRPC();
   const { handleError } = useErrors();
+
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.project.getMany),
+      getQueryKey(trpc.project.getList),
+    ],
+    []
+  );
 
   const {
     data: projects,
     isLoading,
     error,
     isLoadingError,
-  } = useQuery({
-    queryKey: ["projects", "list", "page"],
-    queryFn: API.getProjects,
+  } = trpc.project.getMany.useQuery(undefined, {
     retry(count, error) {
-      if (error instanceof APIError && error.status === 401) return false;
+      if (
+        error instanceof TRPCClientError &&
+        error.data?.code === "UNAUTHORIZED"
+      )
+        return false;
       return count < 3;
     },
   });
@@ -47,22 +56,16 @@ export const ProjectsPage = () => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
 
-  const { mutateAsync: createProject } = useMutation({
-    mutationFn: API.createProject,
+  const { mutateAsync: createProject } = trpc.project.create.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["projects", "list"],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
 
-  const { mutateAsync: deleteProjects } = useMutation({
-    mutationFn: (projectIDs: string[]) => API.deleteProjects({ projectIDs }),
+  const { mutateAsync: deleteProjects } = trpc.project.deleteMany.useMutation({
     onSuccess() {
-      queryClient.invalidateQueries({
-        queryKey: ["projects", "list"],
-      });
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
     },
     onError: handleError,
   });
@@ -119,7 +122,9 @@ export const ProjectsPage = () => {
         }}
         noRemove={!hasPermission("root")}
         onRemove={async (projects) => {
-          await deleteProjects(projects.map((project) => project.PID));
+          await deleteProjects({
+            projectIDs: projects.map((project) => project.PID),
+          });
 
           return true;
         }}
