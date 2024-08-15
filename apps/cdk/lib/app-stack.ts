@@ -1,4 +1,3 @@
-import { NestedStack, NestedStackProps } from "aws-cdk-lib";
 import { ISubnet, IVpc, Port, SubnetType, Vpc } from "aws-cdk-lib/aws-ec2";
 import { Cluster } from "aws-cdk-lib/aws-ecs";
 import { FileSystem } from "aws-cdk-lib/aws-efs";
@@ -6,10 +5,10 @@ import { IDatabaseInstance } from "aws-cdk-lib/aws-rds";
 import { ISecret, Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
-import { ClusterStack, ClusterStackConfig } from "./cluster-stack";
+import { ClusterStack } from "./cluster-stack";
 import { DatabaseStack, DatabaseStackConfig } from "./database-stack";
 import { InstanceStack, InstanceStackConfig } from "./instance-stack";
-import { PrismaStack, PrismaStackConfig } from "./prisma-stack";
+import { PrismaStack } from "./prisma-stack";
 import { ServerStack, ServerStackConfig } from "./server-stack";
 import { StorageStack } from "./storage-stack";
 
@@ -68,14 +67,13 @@ interface AppStackPrefixProps {
   prefix?: string;
 }
 
-export type AppStackProps = NestedStackProps &
-  AppStackPrefixProps &
+export type AppStackProps = AppStackPrefixProps &
   AppStackRequiredConfig &
   (AppStackVpcProps | AppStackVpcConfig) &
   (AppStackDatabaseProps | AppStackDatabaseConfig) &
   (AppStackDatabaseCredentialsProps | AppStackDatabaseCredentialsConfig);
 
-export class AppStack extends NestedStack {
+export class AppStack extends Construct {
   public readonly database?: DatabaseStack;
 
   public readonly appCluster: Cluster;
@@ -94,7 +92,7 @@ export class AppStack extends NestedStack {
 
   constructor(scope: Construct, props: AppStackProps) {
     const id = "app-stack";
-    super(scope, id, props);
+    super(scope, id);
 
     const prefix =
       props.prefix !== undefined ? `${props.prefix}-${id}` : undefined;
@@ -138,7 +136,7 @@ export class AppStack extends NestedStack {
         database: vpc.selectSubnets({ subnetGroupName: "database" }).subnets,
       };
     } else {
-      throw TypeError(`Unhandled vpc type ${(props as any).vpcType}`);
+      throw TypeError(`Unhandled vpc type for ${props}`);
     }
 
     /**
@@ -163,9 +161,7 @@ export class AppStack extends NestedStack {
         },
       });
     } else {
-      throw TypeError(
-        `Unhandled database type ${(props as any).databaseCreditals}`
-      );
+      throw TypeError(`Unhandled database type for ${props}`);
     }
 
     const databaseName = props.databaseName ?? AppStack.DEFAULT_DATABASE_NAME;
@@ -188,7 +184,7 @@ export class AppStack extends NestedStack {
 
       databaseInstance = props.databaseInstance;
     } else {
-      throw TypeError(`Unhandled database type ${(props as any).databaseType}`);
+      throw TypeError(`Unhandled database type for ${props}`);
     }
 
     const databaseUrl = `postgresql://${databaseSecret

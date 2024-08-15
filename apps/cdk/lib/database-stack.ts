@@ -43,11 +43,6 @@ export class DatabaseStack extends Construct {
     const id = `${DatabaseStack.NAME}-stack`;
     super(scope, id);
 
-    const prefix =
-      props.prefix !== undefined ? `${props.prefix}-${id}` : undefined;
-    const tag = (v: string) =>
-      prefix !== undefined ? `${prefix}-${v}` : undefined;
-
     this.storageEncryptionKey = new Key(this, "key");
 
     const removal = props.removal ?? DatabaseStack.DEFAULT_REMOVAL_POLICY;

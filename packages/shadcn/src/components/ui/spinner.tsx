@@ -2,10 +2,7 @@ import { cn } from "../../lib/utils";
 
 <div className="ui-grid ui-items-center ui-row-start-2 ui-row-end-2 ui-justify-center"></div>;
 
-function Spinner({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
+function Spinner({ className }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <svg
       aria-hidden="true"

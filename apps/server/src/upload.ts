@@ -21,7 +21,7 @@ function checkPermission(permission: PermissionType) {
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const chunks: any[] = [];
+    const chunks: Uint8Array[] = [];
 
     stream.on("data", (chunk) => chunks.push(chunk));
     stream.on("end", () => resolve(Buffer.concat(chunks)));

@@ -3,7 +3,6 @@ import cors from "@fastify/cors";
 import fastifyMultipart from "@fastify/multipart";
 import { fastifySession } from "@fastify/session";
 import fastifyStatic from "@fastify/static";
-import { createTRPCProxyClient } from "@trpc/client";
 import {
   FastifyTRPCPluginOptions,
   fastifyTRPCPlugin,

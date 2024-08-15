@@ -16,7 +16,7 @@ export const useErrors = () => {
   const authQueryKey = getQueryKey(trpc.auth.get);
 
   return {
-    handleError(error: any) {
+    handleError(error: unknown) {
       if (error instanceof TRPCClientError) {
         if (error.data?.code === "UNAUTHORIZED") {
           queryClient.invalidateQueries(authQueryKey);

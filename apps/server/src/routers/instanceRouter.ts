@@ -294,11 +294,12 @@ export const instanceRouter = t.router({
           )
           .map(
             (res) =>
-              (res as any).value as [
-                (typeof data)[number],
-                { HID: string }[],
-                string,
-              ]
+              (
+                res as unknown as Record<
+                  string,
+                  [(typeof data)[number], { HID: string }[], string]
+                >
+              ).value
           );
 
         await Promise.all(
@@ -316,7 +317,7 @@ export const instanceRouter = t.router({
           )
         );
 
-        return jobData.map(([_, __, JID]) => JID);
+        return jobData.map(([, , JID]) => JID);
       });
     }),
   deleteJobs: permissionProcedure(["instances:jobs:remove"])

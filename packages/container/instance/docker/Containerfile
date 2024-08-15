@@ -20,7 +20,7 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
-RUN NODE_ENV=production turbo run build --filter=instance
+RUN NODE_ENV=production turbo run build --filter=@repo/instance
 
 FROM base AS runner
 

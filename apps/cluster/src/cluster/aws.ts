@@ -17,7 +17,7 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
   }
 
   private loadCredentials(): Promise<boolean> {
-    return new Promise(async (resolve) =>
+    return new Promise((resolve) =>
       AWS.config.getCredentials((err) => {
         if (err) resolve(false);
         else resolve(true);
@@ -43,9 +43,8 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     metadata.status = STATUS.Running;
     await writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
 
-    let res = null;
     try {
-      res = await this.stepFunctions
+      await this.stepFunctions
         .startExecution({
           stateMachineArn: this.config.stepFunctionArn,
           input: JSON.stringify({

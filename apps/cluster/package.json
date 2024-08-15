@@ -18,19 +18,18 @@
     "@repo/app-config": "*",
     "@repo/filesystem": "*",
     "@repo/hashcat": "*",
-    "@repo/plugins": "*",
     "@repo/typescript-config": "*",
     "@trpc/server": "^10.45.2",
-    "aws-sdk": "^2.1553.0",
-    "fastify": "^4.0.0",
+    "aws-sdk": "^2.1675.0",
+    "fastify": "^4.28.1",
     "fastify-plugin": "^4.5.1"
   },
   "devDependencies": {
     "@rollup/plugin-node-resolve": "^15.2.3",
-    "@rollup/plugin-replace": "^5.0.5",
+    "@rollup/plugin-replace": "^5.0.7",
     "concurrently": "^8.2.2",
-    "nodemon": "^3.1.0",
-    "rollup": "^4.17.2",
+    "nodemon": "^3.1.4",
+    "rollup": "^4.20.0",
     "rollup-plugin-esbuild": "^6.1.1"
   }
 }

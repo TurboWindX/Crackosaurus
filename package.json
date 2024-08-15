@@ -7,22 +7,24 @@
     "dev": "turbo dev",
     "start": "turbo start",
     "format": "turbo format",
-    "migrate": "npm run migrate -w apps/db"
+    "migrate": "npm run migrate -w apps/db",
+    "lint": "eslint"
   },
   "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "eslint": "^9.9.0",
+    "eslint-plugin-react": "^7.35.0",
+    "globals": "^15.9.0",
     "turbo": "latest",
-    "typescript": "^5.3.3"
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.1.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
-  "packageManager": "npm@10.2.4",
+  "packageManager": "npm@10.8.2",
   "workspaces": [
     "apps/*",
     "packages/*"
-  ],
-  "dependencies": {
-    "11": "^0.0.1",
-    "hashcat": "^0.4.1"
-  }
+  ]
 }

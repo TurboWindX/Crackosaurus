@@ -2,14 +2,10 @@
   "name": "@repo/api",
   "version": "0.0.0",
   "exports": {
-    ".": "./src/index.ts",
-    "./server": "./src/server/index.ts",
-    "./server/client/web": "./src/server/client/web.ts",
-    "./cluster": "./src/cluster/index.ts",
-    "./cluster/client/node": "./src/cluster/client/node.ts"
+    ".": "./src/index.ts"
   },
   "license": "MIT",
   "dependencies": {
-    "zod": "^3.22.4"
+    "zod": "^3.23.8"
   }
 }

@@ -3,13 +3,17 @@ import { type ExternalClusterConfig } from "@repo/app-config/cluster";
 import { FileSystemCluster } from "./filesystem";
 
 export class ExternalCluster extends FileSystemCluster<ExternalClusterConfig> {
-  protected async run(_instanceID: string): Promise<void> {}
+  public getName(): string {
+    return "external";
+  }
 
-  public async createInstance(_instanceType: string): Promise<string | null> {
+  protected async run(): Promise<void> {}
+
+  public async createInstance(): Promise<string | null> {
     return null;
   }
 
-  public async deleteInstance(_instanceID: string): Promise<boolean> {
+  public async deleteInstance(): Promise<boolean> {
     return false;
   }
 }

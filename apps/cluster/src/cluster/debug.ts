@@ -40,9 +40,7 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
 
   public async createJob(
     instanceID: string,
-    wordlist: string,
-    _hashType: number,
-    _hashes: string[]
+    wordlist: string
   ): Promise<string | null> {
     const jobID = crypto.randomUUID();
 

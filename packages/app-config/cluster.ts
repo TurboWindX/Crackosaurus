@@ -123,13 +123,12 @@ function loadClusterTypeConfig(name: ClusterType) {
 }
 
 export function loadClusterConfig() {
-  const argClusterType =
-    process.env[CLUSTER_ENV.clusterType] ?? CLUSTER_TYPE.Debug;
+  const argClusterType = (process.env[CLUSTER_ENV.clusterType] ??
+    CLUSTER_TYPE.Debug) as ClusterType;
 
   let clusterType: ClusterType;
-  if (!CLUSTER_TYPES.includes(argClusterType as any))
-    clusterType = CLUSTER_TYPE.Debug;
-  else clusterType = argClusterType as any;
+  if (!CLUSTER_TYPES.includes(argClusterType)) clusterType = CLUSTER_TYPE.Debug;
+  else clusterType = argClusterType;
 
   return CLUSTER_CONFIG.parse({
     host: {

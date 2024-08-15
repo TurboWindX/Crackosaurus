@@ -35,7 +35,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
     if (status === null) return;
 
     clusterStatus = status;
-  } catch (err) {
+  } catch {
     return;
   }
 
@@ -174,5 +174,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
         )
       );
     });
-  } catch (err) {}
+  } catch {
+    // ignore error
+  }
 }

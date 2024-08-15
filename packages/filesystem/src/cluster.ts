@@ -75,7 +75,7 @@ async function safeReadFileAsync(filePath: string): Promise<string> {
   const lockFile = filePath + ".lock";
 
   await new Promise<void>((resolve) => {
-    let interval = setInterval(() => {
+    const interval = setInterval(() => {
       if (!fs.existsSync(lockFile)) {
         clearInterval(interval);
         resolve();
@@ -100,7 +100,7 @@ async function safeWriteFileAsync(
   const lockFile = filePath + ".lock";
 
   await new Promise<void>((resolve) => {
-    let interval = setInterval(() => {
+    const interval = setInterval(() => {
       if (!fs.existsSync(lockFile)) {
         fs.writeFileSync(lockFile, "");
         clearInterval(interval);
@@ -202,7 +202,7 @@ export async function getClusterFolderInstances(
 export function watchInstanceFolder(
   instanceRoot: string,
   instanceID: string,
-  callback: (event: ClusterFileSystemEvent) => any
+  callback: (event: ClusterFileSystemEvent) => unknown
 ): fs.FSWatcher {
   const instancePath = path.join(instanceRoot, instanceID);
 

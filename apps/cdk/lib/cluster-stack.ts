@@ -24,9 +24,10 @@ import {
   envClusterConfig,
 } from "@repo/app-config/cluster";
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface ClusterStackConfig {}
 
-export interface ClusterStackProps extends ClusterStackConfig {
+export interface ClusterStackProps {
   prefix?: string;
   cluster: ICluster;
   subnets: ISubnet[];

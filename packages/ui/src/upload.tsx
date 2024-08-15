@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { ReactNode, useContext } from "react";
 
 import { UploadContext, UploadInterface } from "./contexts";
 
@@ -21,7 +21,7 @@ export function UploadProvider({
   children,
 }: {
   url: string;
-  children: any;
+  children: ReactNode;
 }) {
   const value: UploadInterface = {
     wordlist: async (file) => uploadFile(`${url}/upload/wordlist`, file),

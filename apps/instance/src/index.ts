@@ -29,12 +29,14 @@ const EXIT_CASE = {
   Cooldown: EXIT_CASES[2],
 } as const;
 
-function innerMain(): Promise<ExitCase> {
+async function innerMain(): Promise<ExitCase> {
+  // eslint-disable-next-line no-async-promise-executor
   return new Promise(async (resolve) => {
     let instanceMetadata = await getInstanceMetadata(
       config.instanceRoot,
       config.instanceID
     );
+
     if (instanceMetadata.status === STATUS.Stopped) resolve(EXIT_CASE.Stop);
     else if (instanceMetadata.status === STATUS.Pending) {
       instanceMetadata.status = STATUS.Running;
@@ -255,7 +257,7 @@ async function main() {
         status = STATUS.Error;
         break;
     }
-  } catch (err) {
+  } catch {
     status = STATUS.Error;
     err = null;
   }
