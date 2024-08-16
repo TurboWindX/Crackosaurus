@@ -13,13 +13,28 @@ function main(): void {
 
   const schemaPath = path.join(providerPath, "schema.prisma");
 
-  const proc = childProcess.spawnSync(
+  const migrateProc = childProcess.spawnSync(
+    "prisma",
+    [
+      "migrate",
+      "dev",
+      `--schema=${schemaPath}`,
+      "--create-only",
+      "-n",
+      "deploy",
+    ],
+    { encoding: "utf-8", stdio: "inherit" }
+  );
+
+  if ((migrateProc.status ?? 1) !== 0) process.exit(1);
+
+  const deployProc = childProcess.spawnSync(
     "prisma",
     ["migrate", "deploy", `--schema=${schemaPath}`],
     { encoding: "utf-8", stdio: "inherit" }
   );
 
-  if ((proc.status ?? 1) !== 0) process.exit(1);
+  if ((deployProc.status ?? 1) !== 0) process.exit(1);
 }
 
 if (require.main === module) main();
