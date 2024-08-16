@@ -152,7 +152,7 @@ export class ServerStack extends Construct {
         targets: [this.service],
       })
       .configureHealthCheck({
-        path: "/api/ping",
+        path: "/ping",
       });
 
     this.service.connections.allowFrom(

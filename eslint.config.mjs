@@ -8,7 +8,7 @@ export default [
     files: ["apps/**/*.{ts,tsx}", "packages/**/*.{ts,tsx}"],
   },
   {
-    ignores: ["**/dist/*"],
+    ignores: ["**/dist/*", "**/cdk.out/*"],
   },
   {
     languageOptions: {

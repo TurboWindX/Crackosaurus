@@ -22,6 +22,8 @@ const fastify = Fastify({
   maxParamLength: 5000,
 });
 
+fastify.get("/ping", {}, () => "pong");
+
 fastify.register(fastifyCookie);
 fastify.register(fastifySession, {
   cookieName: "CrackID",

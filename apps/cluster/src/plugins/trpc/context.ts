@@ -8,7 +8,7 @@ export async function createContext({
   return {
     request,
     cluster: (request.server as unknown as Record<string, Cluster<unknown>>)
-      .cluster,
+      .cluster as Cluster<unknown>,
   };
 }
 

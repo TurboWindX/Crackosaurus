@@ -13,7 +13,7 @@ function main(): void {
 
   const schemaPath = path.join(providerPath, "schema.prisma");
 
-  const migrateProc = childProcess.spawnSync(
+  childProcess.spawnSync(
     "prisma",
     [
       "migrate",
@@ -25,8 +25,6 @@ function main(): void {
     ],
     { encoding: "utf-8", stdio: "inherit" }
   );
-
-  if ((migrateProc.status ?? 1) !== 0) process.exit(1);
 
   const deployProc = childProcess.spawnSync(
     "prisma",
