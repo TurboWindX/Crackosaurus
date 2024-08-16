@@ -10,6 +10,10 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
     return "debug";
   }
 
+  public getTypes(): string[] {
+    return [this.getName()]; 
+  }
+
   public async load(): Promise<boolean> {
     console.log("Debug Cluster loaded");
 

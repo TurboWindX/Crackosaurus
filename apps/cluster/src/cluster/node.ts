@@ -15,6 +15,10 @@ export class NodeCluster extends FileSystemCluster<NodeClusterConfig> {
     return "node";
   }
 
+  public getTypes(): string[] {
+    return [this.getName()]; 
+  }
+
   protected async run(instanceID: string): Promise<void> {
     const metadata = await getInstanceMetadata(
       this.config.instanceRoot,

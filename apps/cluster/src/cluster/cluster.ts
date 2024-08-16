@@ -5,6 +5,8 @@ export abstract class Cluster<TConfig = undefined> {
 
   public abstract getName(): string;
 
+  public abstract getTypes(): string[];
+
   public abstract getStatus(): Promise<ClusterStatus>;
 
   public abstract load(): Promise<boolean>;

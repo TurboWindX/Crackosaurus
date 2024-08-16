@@ -18,7 +18,7 @@ export const upload: FastifyPluginCallback = (instance, _opts, next) => {
   instance.post("/wordlist", {}, async (request: FastifyRequest) => {
     const cluster = (
       request.server as unknown as Record<string, Cluster<unknown>>
-    ).cluster;
+    ).cluster!;
 
     if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST" });
 

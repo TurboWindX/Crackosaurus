@@ -95,7 +95,7 @@ export const instanceRouter = t.router({
     .query(async (opts) => {
       const { cluster } = opts.ctx;
 
-      return [await cluster.info.type.query()];
+      return await cluster.info.type.query();
     }),
   create: permissionProcedure(["instances:add"])
     .input(

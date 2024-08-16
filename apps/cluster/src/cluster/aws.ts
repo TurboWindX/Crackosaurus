@@ -16,6 +16,10 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     return "aws";
   }
 
+  public getTypes(): string[] {
+    return ["t2.nano", "t2.small"];
+  }
+
   private loadCredentials(): Promise<boolean> {
     return new Promise((resolve) =>
       AWS.config.getCredentials((err) => {
