@@ -5,10 +5,10 @@ import { IDatabaseInstance } from "aws-cdk-lib/aws-rds";
 import { ISecret, Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
-import { ClusterStack } from "./cluster-stack";
+import { ClusterStack, ClusterStackConfig } from "./cluster-stack";
 import { DatabaseStack, DatabaseStackConfig } from "./database-stack";
 import { InstanceStack, InstanceStackConfig } from "./instance-stack";
-import { PrismaStack } from "./prisma-stack";
+import { PrismaStack, PrismaStackConfig } from "./prisma-stack";
 import { ServerStack, ServerStackConfig } from "./server-stack";
 import { StorageStack } from "./storage-stack";
 

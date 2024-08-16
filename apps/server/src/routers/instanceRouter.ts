@@ -300,7 +300,7 @@ export const instanceRouter = t.router({
                   [(typeof data)[number], { HID: string }[], string]
                 >
               ).value
-          );
+          ) as [(typeof data)[number], { HID: string }[], string][];
 
         await Promise.all(
           jobData.map(([{ wordlistID }, hashes, JID]) =>
