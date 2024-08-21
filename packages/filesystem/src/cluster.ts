@@ -202,36 +202,45 @@ export async function getClusterFolderInstances(
 export function watchInstanceFolder(
   instanceRoot: string,
   instanceID: string,
+  rateMs: number,
   callback: (event: ClusterFileSystemEvent) => unknown
-): fs.FSWatcher {
+): NodeJS.Timeout {
   const instancePath = path.join(instanceRoot, instanceID);
 
   const instanceMetadata = path.resolve(path.join(instancePath, METADATA_FILE));
 
-  return fs.watch(
-    instancePath,
-    { recursive: true },
-    async (_event, filename) => {
-      const filePath = path.join(instancePath, filename ?? "/");
+  let lastModified = Date.now();
 
-      if (!fs.existsSync(filePath)) return;
-
-      if (filePath === instanceMetadata) {
+  const interval = setInterval(async () => {
+    if (fs.existsSync(instanceMetadata)) {
+      const instanceStat = fs.statSync(instanceMetadata);
+      if (instanceStat.mtimeMs >= lastModified) {
         callback({
           type: CLUSTER_FILESYSTEM_TYPE.InstanceUpdate,
           instanceID,
         });
-      } else if (filePath.endsWith(METADATA_FILE)) {
-        const jobID = path.basename(path.dirname(filePath));
+      }
+    }
+
+    const jobsPath = path.join(instancePath, JOBS_FOLDER);
+    if (fs.existsSync(jobsPath)) {
+      for (const jobID of fs.readdirSync(jobsPath)) {
+        const jobMetadata = path.join(jobsPath, jobID, METADATA_FILE);
+
+        if (!fs.existsSync(jobMetadata)) continue;
 
         callback({
           type: CLUSTER_FILESYSTEM_TYPE.JobUpdate,
           instanceID,
-          jobID: jobID,
+          jobID,
         });
       }
     }
-  );
+
+    lastModified = Date.now();
+  }, rateMs);
+
+  return interval;
 }
 
 export async function getInstanceMetadata(

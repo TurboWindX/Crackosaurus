@@ -88,8 +88,11 @@ async function innerMain(): Promise<ExitCase> {
     );
 
     let eventQueue: ClusterFileSystemEvent[] = [];
-    watchInstanceFolder(config.instanceRoot, config.instanceID, async (event) =>
-      eventQueue.push(event)
+    watchInstanceFolder(
+      config.instanceRoot,
+      config.instanceID,
+      config.instanceInterval * 500,
+      async (event) => eventQueue.push(event)
     );
 
     let lastRun = new Date().getTime();

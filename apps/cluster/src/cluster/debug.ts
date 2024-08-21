@@ -11,7 +11,7 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
   }
 
   public getTypes(): string[] {
-    return [this.getName()]; 
+    return [this.getName()];
   }
 
   public async load(): Promise<boolean> {

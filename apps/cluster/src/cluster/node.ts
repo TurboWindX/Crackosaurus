@@ -16,7 +16,7 @@ export class NodeCluster extends FileSystemCluster<NodeClusterConfig> {
   }
 
   public getTypes(): string[] {
-    return [this.getName()]; 
+    return [this.getName()];
   }
 
   protected async run(instanceID: string): Promise<void> {

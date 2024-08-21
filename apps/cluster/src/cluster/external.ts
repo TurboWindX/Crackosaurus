@@ -8,7 +8,7 @@ export class ExternalCluster extends FileSystemCluster<ExternalClusterConfig> {
   }
 
   public getTypes(): string[] {
-    return [this.getName()]; 
+    return [this.getName()];
   }
 
   protected async run(): Promise<void> {}
