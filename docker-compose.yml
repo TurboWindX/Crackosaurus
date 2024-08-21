@@ -41,6 +41,14 @@ services:
     volumes:
       - instances:/data/instances
       - wordlists:/data/wordlists
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu
   cluster:
     container_name: cluster
     restart: always
@@ -48,7 +56,7 @@ services:
       context: .
       dockerfile: packages/container/cluster/Containerfile
       args:
-        CLUSTER_PORT: 8080
+        CLUSTER_PORT: 13337
     environment:
       CLUSTER_HOST: cluster
       CLUSTER_TYPE: external
@@ -74,7 +82,7 @@ services:
       WEB_HOST: localhost
       WEB_PORT: 8080
       CLUSTER_HOST: cluster
-      CLUSTER_PORT: 8080
+      CLUSTER_PORT: 13337
       BACKEND_SECRET: SECRET:123456789012345678901234567890
       DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
     ports:
