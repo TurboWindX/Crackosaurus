@@ -1,5 +1,5 @@
 import { type ChildProcess } from "child_process";
-import process from "node:process";
+import process from "process";
 
 import { STATUS } from "@repo/api";
 import {

@@ -1,4 +1,4 @@
-import crypto from "node:crypto";
+import crypto from "crypto";
 
 import { type ClusterStatus, STATUS } from "@repo/api";
 import { type FileSystemClusterConfig } from "@repo/app-config/cluster";

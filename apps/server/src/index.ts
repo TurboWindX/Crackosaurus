@@ -8,8 +8,8 @@ import {
   fastifyTRPCPlugin,
 } from "@trpc/server/adapters/fastify";
 import Fastify from "fastify";
-import fs from "node:fs";
-import path from "node:path";
+import fs from "fs";
+import path from "path";
 
 import config from "./config";
 import { clusterPlugin } from "./plugins/cluster/plugin";

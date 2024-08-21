@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
-import crypto from "node:crypto";
-import path from "node:path";
-import { Readable } from "node:stream";
+import crypto from "crypto";
+import path from "path";
+import { Readable } from "stream";
 
 import { PermissionType, hasPermission } from "@repo/api";
 

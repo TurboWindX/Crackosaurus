@@ -16,7 +16,7 @@ import {
 import { ManagedPolicy } from "aws-cdk-lib/aws-iam";
 import { IStateMachine } from "aws-cdk-lib/aws-stepfunctions";
 import { Construct } from "constructs";
-import * as path from "node:path";
+import * as path from "path";
 
 import {
   ClusterConfig,

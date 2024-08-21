@@ -1,5 +1,5 @@
-import childProcess from "node:child_process";
-import fs from "node:fs";
+import childProcess from "child_process";
+import fs from "fs";
 
 import { parseHashcatPot } from "./data";
 

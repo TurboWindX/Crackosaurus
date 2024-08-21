@@ -22,7 +22,7 @@ import {
 } from "aws-cdk-lib/aws-stepfunctions";
 import { CallAwsService } from "aws-cdk-lib/aws-stepfunctions-tasks";
 import { Construct } from "constructs";
-import path from "node:path";
+import path from "path";
 
 import { envInstanceConfig } from "@repo/app-config/instance";
 

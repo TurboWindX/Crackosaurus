@@ -1,6 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { FastifyPluginCallback, FastifyRequest } from "fastify";
-import { Readable } from "node:stream";
+import { Readable } from "stream";
 
 import { Cluster } from "./cluster/cluster";
 

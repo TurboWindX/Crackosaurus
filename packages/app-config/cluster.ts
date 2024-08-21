@@ -1,4 +1,4 @@
-import path from "node:path";
+import path from "path";
 import { z } from "zod";
 
 import { CLUSTER_DEFAULT_PORT, DEFAULT_HOST } from "./host";
