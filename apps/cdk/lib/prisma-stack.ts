@@ -13,8 +13,9 @@ import {
   EcsRunTask,
 } from "aws-cdk-lib/aws-stepfunctions-tasks";
 import { Construct } from "constructs";
-import * as path from "node:path";
+import * as path from "path";
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface PrismaStackConfig {}
 
 export interface PrismaStackProps extends PrismaStackConfig {

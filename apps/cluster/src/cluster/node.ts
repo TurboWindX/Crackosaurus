@@ -1,4 +1,4 @@
-import childProcess from "node:child_process";
+import childProcess from "child_process";
 
 import { STATUS } from "@repo/api";
 import { type NodeClusterConfig } from "@repo/app-config/cluster";
@@ -13,6 +13,10 @@ import { FileSystemCluster } from "./filesystem";
 export class NodeCluster extends FileSystemCluster<NodeClusterConfig> {
   public getName(): string {
     return "node";
+  }
+
+  public getTypes(): string[] {
+    return [this.getName()];
   }
 
   protected async run(instanceID: string): Promise<void> {

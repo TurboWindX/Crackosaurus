@@ -15,7 +15,7 @@ import {
 } from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
-import * as path from "node:path";
+import * as path from "path";
 
 import {
   BackendConfig,
@@ -152,7 +152,7 @@ export class ServerStack extends Construct {
         targets: [this.service],
       })
       .configureHealthCheck({
-        path: "/api/ping",
+        path: "/ping",
       });
 
     this.service.connections.allowFrom(

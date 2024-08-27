@@ -7,7 +7,8 @@ export async function createContext({
 }: CreateFastifyContextOptions) {
   return {
     request,
-    cluster: (request.server as any).cluster as Cluster<any>,
+    cluster: (request.server as unknown as Record<string, Cluster<unknown>>)
+      .cluster!,
   };
 }
 

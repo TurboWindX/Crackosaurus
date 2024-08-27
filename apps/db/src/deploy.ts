@@ -1,6 +1,6 @@
-import childProcess from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
+import childProcess from "child_process";
+import fs from "fs";
+import path from "path";
 
 import config from "./config";
 
@@ -13,13 +13,26 @@ function main(): void {
 
   const schemaPath = path.join(providerPath, "schema.prisma");
 
-  const proc = childProcess.spawnSync(
+  childProcess.spawnSync(
+    "prisma",
+    [
+      "migrate",
+      "dev",
+      `--schema=${schemaPath}`,
+      "--create-only",
+      "-n",
+      "deploy",
+    ],
+    { encoding: "utf-8", stdio: "inherit" }
+  );
+
+  const deployProc = childProcess.spawnSync(
     "prisma",
     ["migrate", "deploy", `--schema=${schemaPath}`],
     { encoding: "utf-8", stdio: "inherit" }
   );
 
-  if ((proc.status ?? 1) !== 0) process.exit(1);
+  if ((deployProc.status ?? 1) !== 0) process.exit(1);
 }
 
 if (require.main === module) main();

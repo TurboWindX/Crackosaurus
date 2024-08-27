@@ -25,7 +25,6 @@ interface ProjectDataTableProps {
 
 const ProjectDataTable = ({ values, isLoading }: ProjectDataTableProps) => {
   const { t } = useTranslation();
-  const trpc = useTRPC();
   const navigate = useNavigate();
 
   return (

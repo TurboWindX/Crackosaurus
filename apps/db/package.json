@@ -19,8 +19,8 @@
   "devDependencies": {
     "@repo/typescript-config": "*",
     "@rollup/plugin-node-resolve": "^15.2.3",
-    "prisma": "^5.7.1",
-    "rollup": "^4.17.2",
+    "prisma": "^5.18.0",
+    "rollup": "^4.20.0",
     "rollup-plugin-esbuild": "^6.1.1"
   }
 }

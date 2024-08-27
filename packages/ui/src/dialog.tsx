@@ -1,3 +1,4 @@
+import { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@repo/shadcn/components/ui/button";
@@ -23,9 +24,9 @@ import { useMediaQuery } from "@repo/shadcn/hooks/use-media-query";
 
 export interface DrawerDialogProps {
   title: string;
-  trigger?: any;
+  trigger?: ReactNode;
   description?: string;
-  children?: any;
+  children?: ReactNode;
   open?: boolean;
   setOpen?: (state: boolean) => void;
 }

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createTRPCReact, httpBatchLink } from "@trpc/react-query";
-import { useState } from "react";
+import { ReactNode, useState } from "react";
 
 import type { AppRotuerOutput, AppRouter, AppRouterInput } from "@repo/server";
 
@@ -20,7 +20,7 @@ export const APIProvider = ({
   children,
 }: {
   url: string;
-  children: any;
+  children: ReactNode;
 }) => {
   const [queryClient] = useState(
     () =>
@@ -28,12 +28,12 @@ export const APIProvider = ({
         defaultOptions: {
           queries: {
             staleTime: 1000 * 60 * 1, // Every minute
-            cacheTime: 1000 * 60 * 1, // Every minute
             refetchOnWindowFocus: false,
           },
         },
       })
   );
+
   const [trpcClient] = useState(() =>
     trpc.createClient({
       links: [
@@ -51,12 +51,12 @@ export const APIProvider = ({
   );
 
   return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}>
+      <trpc.Provider client={trpcClient} queryClient={queryClient}>
         <AuthProvider>
           <UploadProvider url={url}>{children}</UploadProvider>
         </AuthProvider>
-      </QueryClientProvider>
-    </trpc.Provider>
+      </trpc.Provider>
+    </QueryClientProvider>
   );
 };

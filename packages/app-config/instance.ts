@@ -41,7 +41,6 @@ export function loadInstanceConfig() {
 export function envInstanceConfig(
   config: InstanceConfig
 ): Record<string, string> {
-  config.instanceInterval;
   return {
     [INSTANCE_ENV.instanceID]: config.instanceID,
     [INSTANCE_ENV.hashcatPath]: config.hashcatPath,

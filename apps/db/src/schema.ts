@@ -1,5 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
+import fs from "fs";
+import path from "path";
 
 import config from "./config";
 
@@ -20,7 +20,7 @@ function main(): void {
   if (!fs.existsSync(schemaPath))
     throw ReferenceError(`Could not find schema at ${schemaPath}`);
 
-  let schema = fs.readFileSync(schemaPath, { encoding: "utf-8" });
+  const schema = fs.readFileSync(schemaPath, { encoding: "utf-8" });
 
   const mergedSchema = `${schema}\n${COMMON_SCHEMA}`;
 

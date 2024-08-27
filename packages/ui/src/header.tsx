@@ -6,6 +6,7 @@ import {
   UserIcon,
   UsersIcon,
 } from "lucide-react";
+import { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
@@ -13,7 +14,6 @@ import { PermissionType } from "@repo/api";
 import {
   NavigationMenu,
   NavigationMenuItem,
-  NavigationMenuLink,
   NavigationMenuList,
   navigationMenuTriggerStyle,
 } from "@repo/shadcn/components/ui/navigation-menu";
@@ -33,7 +33,7 @@ import { useAuth } from "./auth";
 interface HeaderLinkProps {
   label: string;
   path: string;
-  icon: any;
+  icon: ReactNode;
   permission?: PermissionType;
 }
 
@@ -41,38 +41,39 @@ const LINKS: readonly HeaderLinkProps[] = [
   {
     label: "app",
     path: "/",
-    icon: LockIcon,
+    icon: <LockIcon />,
   },
   {
     label: "item.project.plural",
     path: "/projects",
-    icon: FolderIcon,
+    icon: <FolderIcon />,
   },
   {
     label: "item.instance.plural",
     path: "/instances",
-    icon: CpuIcon,
+    icon: <CpuIcon />,
     permission: "instances:get",
   },
   {
     label: "item.wordlist.plural",
     path: "/wordlists",
-    icon: ALargeSmallIcon,
+    icon: <ALargeSmallIcon />,
     permission: "wordlists:get",
   },
   {
     label: "item.user.plural",
     path: "/users",
-    icon: UsersIcon,
+    icon: <UsersIcon />,
     permission: "users:get",
   },
 ] as const;
 
 export const Header = () => {
-  const { uid, username, hasPermission, isLoading } = useAuth();
+  const { uid, username, hasPermission, isLoading, isAuthenticated } =
+    useAuth();
   const { t } = useTranslation();
 
-  if (isLoading) return <></>;
+  if (isLoading || !isAuthenticated) return <></>;
 
   return (
     <div>
@@ -84,15 +85,14 @@ export const Header = () => {
                 (link) =>
                   (!link.permission || hasPermission(link.permission)) && (
                     <NavigationMenuItem key={link.path}>
-                      <Link
-                        className={navigationMenuTriggerStyle()}
-                        to={link.path}
-                      >
-                        <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
-                          <link.icon />
-                          <span className="ui-hidden md:ui-block">
-                            {t(link.label)}
-                          </span>
+                      <Link to={link.path}>
+                        <div className={navigationMenuTriggerStyle()}>
+                          <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
+                            {link.icon}
+                            <span className="ui-hidden md:ui-block">
+                              {t(link.label)}
+                            </span>
+                          </div>
                         </div>
                       </Link>
                     </NavigationMenuItem>
@@ -107,13 +107,11 @@ export const Header = () => {
               <NavigationMenuItem>
                 <Sheet>
                   <SheetTrigger asChild>
-                    <NavigationMenuLink
-                      className={
-                        navigationMenuTriggerStyle() + " ui-cursor-pointer"
-                      }
-                    >
-                      <LockIcon />
-                    </NavigationMenuLink>
+                    <Link to="#">
+                      <div className={navigationMenuTriggerStyle()}>
+                        <LockIcon />
+                      </div>
+                    </Link>
                   </SheetTrigger>
                   <SheetContent side="left">
                     <SheetHeader>
@@ -145,13 +143,12 @@ export const Header = () => {
           <NavigationMenu>
             <NavigationMenuList>
               <NavigationMenuItem>
-                <Link
-                  className={navigationMenuTriggerStyle()}
-                  to={`/users/${uid}`}
-                >
-                  <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
-                    <UserIcon />
-                    <span className="ui-hidden md:ui-block">{username}</span>
+                <Link to={`/users/${uid}`}>
+                  <div className={navigationMenuTriggerStyle()}>
+                    <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
+                      <UserIcon />
+                      <span className="ui-hidden md:ui-block">{username}</span>
+                    </div>
                   </div>
                 </Link>
               </NavigationMenuItem>

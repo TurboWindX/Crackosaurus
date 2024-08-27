@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server";
+import crypto from "crypto";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
-import crypto from "node:crypto";
-import path from "node:path";
-import { Readable } from "node:stream";
+import path from "path";
+import { Readable } from "stream";
 
 import { PermissionType, hasPermission } from "@repo/api";
 
@@ -21,7 +21,7 @@ function checkPermission(permission: PermissionType) {
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const chunks: any[] = [];
+    const chunks: Uint8Array[] = [];
 
     stream.on("data", (chunk) => chunks.push(chunk));
     stream.on("end", () => resolve(Buffer.concat(chunks)));

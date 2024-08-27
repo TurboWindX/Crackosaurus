@@ -25,7 +25,7 @@ export const MultiSelect = (props: MultiSelectProps) => {
     if (props.onValueChange)
       props.onValueChange(
         Object.entries(map)
-          .filter(([_, state]) => state)
+          .filter(([, state]) => state)
           .map(([value]) => value)
       );
   }
@@ -52,7 +52,7 @@ export const MultiSelect = (props: MultiSelectProps) => {
               {props.selectedValues.length === 0
                 ? props.label
                 : props.selectedValues
-                    .map((v) => props.values.find(([ov, _]) => v === ov)?.[1])
+                    .map((v) => props.values.find(([ov]) => v === ov)?.[1])
                     .join(", ")}
             </span>
             <ChevronDown className="scn-h-4 scn-w-4 scn-opacity-50" />

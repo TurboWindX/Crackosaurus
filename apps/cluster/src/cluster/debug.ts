@@ -10,6 +10,10 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
     return "debug";
   }
 
+  public getTypes(): string[] {
+    return [this.getName()];
+  }
+
   public async load(): Promise<boolean> {
     console.log("Debug Cluster loaded");
 
@@ -40,9 +44,7 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
 
   public async createJob(
     instanceID: string,
-    wordlist: string,
-    _hashType: number,
-    _hashes: string[]
+    wordlist: string
   ): Promise<string | null> {
     const jobID = crypto.randomUUID();
 

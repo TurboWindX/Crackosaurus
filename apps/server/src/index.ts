@@ -3,14 +3,13 @@ import cors from "@fastify/cors";
 import fastifyMultipart from "@fastify/multipart";
 import { fastifySession } from "@fastify/session";
 import fastifyStatic from "@fastify/static";
-import { createTRPCProxyClient } from "@trpc/client";
 import {
   FastifyTRPCPluginOptions,
   fastifyTRPCPlugin,
 } from "@trpc/server/adapters/fastify";
 import Fastify from "fastify";
-import fs from "node:fs";
-import path from "node:path";
+import fs from "fs";
+import path from "path";
 
 import config from "./config";
 import { clusterPlugin } from "./plugins/cluster/plugin";
@@ -22,6 +21,8 @@ import { upload } from "./upload";
 const fastify = Fastify({
   maxParamLength: 5000,
 });
+
+fastify.get("/ping", {}, () => "pong");
 
 fastify.register(fastifyCookie);
 fastify.register(fastifySession, {

@@ -1,5 +1,5 @@
 import { type ChildProcess } from "child_process";
-import process from "node:process";
+import process from "process";
 
 import { STATUS } from "@repo/api";
 import {
@@ -29,12 +29,14 @@ const EXIT_CASE = {
   Cooldown: EXIT_CASES[2],
 } as const;
 
-function innerMain(): Promise<ExitCase> {
+async function innerMain(): Promise<ExitCase> {
+  // eslint-disable-next-line no-async-promise-executor
   return new Promise(async (resolve) => {
     let instanceMetadata = await getInstanceMetadata(
       config.instanceRoot,
       config.instanceID
     );
+
     if (instanceMetadata.status === STATUS.Stopped) resolve(EXIT_CASE.Stop);
     else if (instanceMetadata.status === STATUS.Pending) {
       instanceMetadata.status = STATUS.Running;
@@ -86,8 +88,11 @@ function innerMain(): Promise<ExitCase> {
     );
 
     let eventQueue: ClusterFileSystemEvent[] = [];
-    watchInstanceFolder(config.instanceRoot, config.instanceID, async (event) =>
-      eventQueue.push(event)
+    watchInstanceFolder(
+      config.instanceRoot,
+      config.instanceID,
+      config.instanceInterval * 500,
+      async (event) => eventQueue.push(event)
     );
 
     let lastRun = new Date().getTime();
@@ -255,7 +260,7 @@ async function main() {
         status = STATUS.Error;
         break;
     }
-  } catch (err) {
+  } catch {
     status = STATUS.Error;
     err = null;
   }

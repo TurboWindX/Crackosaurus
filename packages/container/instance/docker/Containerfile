@@ -20,13 +20,16 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
-RUN NODE_ENV=production turbo run build --filter=instance
+RUN NODE_ENV=production turbo run build --filter=@repo/instance
 
-FROM base AS runner
+FROM nvidia/cuda:12.4.1-base-ubuntu22.04 AS runner
 
-RUN echo "https://dl-cdn.alpinelinux.org/alpine/edge/testing/" >> /etc/apk/repositories
-RUN apk update
-RUN apk add hashcat
+RUN curl -fsSL -o- https://deb.nodesource.com/setup_20.x | bash
+
+RUN apt update
+RUN apt install -y hashcat nodejs
+
+WORKDIR /app
 
 RUN addgroup --system --gid 1001 instance
 RUN adduser --system --uid 1001 instance

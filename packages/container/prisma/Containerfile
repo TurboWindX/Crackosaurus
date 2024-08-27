@@ -20,21 +20,14 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
-RUN NODE_ENV=production turbo run build --filter=db
+RUN NODE_ENV=production turbo run build --filter=@repo/db
 
 FROM base AS runner
 
 RUN npm install -g prisma
 
-RUN addgroup --system --gid 1001 prisma
-RUN adduser --system --uid 1001 prisma
-
-RUN chown -R prisma:prisma /app
-
-USER prisma
-
-COPY --from=installer --chown=prisma:prisma /app/node_modules/ ./node_modules/
-COPY --from=installer --chown=prisma:prisma /app/apps/db /app/apps/db
+COPY --from=installer /app/node_modules/ ./node_modules/
+COPY --from=installer /app/apps/db /app/apps/db
 
 WORKDIR /app/apps/db
 

@@ -1,12 +1,12 @@
 import { TRPCError } from "@trpc/server";
-import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
-import { Readable } from "node:stream";
+import { FastifyPluginCallback, FastifyRequest } from "fastify";
+import { Readable } from "stream";
 
 import { Cluster } from "./cluster/cluster";
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const chunks: any[] = [];
+    const chunks: Uint8Array[] = [];
 
     stream.on("data", (chunk) => chunks.push(chunk));
     stream.on("end", () => resolve(Buffer.concat(chunks)));
@@ -14,9 +14,11 @@ async function streamToBuffer(stream: Readable): Promise<Buffer> {
   });
 }
 
-export const upload: FastifyPluginCallback<{}> = (instance, _opts, next) => {
+export const upload: FastifyPluginCallback = (instance, _opts, next) => {
   instance.post("/wordlist", {}, async (request: FastifyRequest) => {
-    const cluster = (request.server as any).cluster as Cluster<any>;
+    const cluster = (
+      request.server as unknown as Record<string, Cluster<unknown>>
+    ).cluster!;
 
     if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST" });
 

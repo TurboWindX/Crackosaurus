@@ -3,7 +3,8 @@
   "globalDependencies": ["**/.env.*local"],
   "tasks": {
     "build": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "env": ["BACKEND_HOST", "BACKEND_PORT"]
     },
     "check": {
       "dependsOn": ["^check"]

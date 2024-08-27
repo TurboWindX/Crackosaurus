@@ -1,5 +1,5 @@
 import { DownloadIcon, ImportIcon, PlusIcon, TrashIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@repo/shadcn/components/ui/button";
@@ -24,7 +24,7 @@ export interface AddDialogProps {
   setOpen: (state: boolean) => void;
   validate?: () => boolean;
   onSubmit?: () => void;
-  children: any;
+  children: ReactNode;
 }
 
 export const AddDialog = ({
@@ -184,19 +184,19 @@ export interface DataTableProps<T> {
   plural: string;
   values: T[];
   head: (string | null)[];
-  row: (value: T) => any[];
+  row: (value: T) => unknown[];
   valueKey: (value: T) => string | number;
   isLoading?: boolean;
   sort?: (a: T, b: T) => number;
   rowClick?: (value: T) => void;
-  addDialog?: any;
+  addDialog?: unknown;
   addValidate?: () => boolean;
   searchFilter?: (value: T, search: string) => boolean;
   exportPrefix?: string;
   onAdd?: () => Promise<boolean>;
   onRemove?: (values: T[]) => Promise<boolean>;
-  onImport?: (data: any[]) => Promise<boolean>;
-  onExport?: (values: T[]) => Promise<any[]>;
+  onImport?: (data: unknown[]) => Promise<boolean>;
+  onExport?: (values: T[]) => Promise<unknown[]>;
   noAdd?: boolean;
   noRemove?: boolean;
   noImport?: boolean;
@@ -341,7 +341,9 @@ export function DataTable<T>({
                   data = JSON.parse(contents);
 
                   if (!(data instanceof Array)) data = [];
-                } catch (e) {}
+                } catch {
+                  // ignore error
+                }
 
                 if (!(await onImport(data))) return;
 
@@ -453,7 +455,7 @@ export interface DataTableBodyProps<T> {
   valueKey: (value: T) => string | number;
   selects: Record<string | number, boolean>;
   setSelects: (data: Record<string | number, boolean>) => void;
-  row: (value: T) => any[];
+  row: (value: T) => unknown[];
   rowClick?: (value: T) => void;
   isLoading?: boolean;
 }

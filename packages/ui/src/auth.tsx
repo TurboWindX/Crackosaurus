@@ -1,5 +1,5 @@
 import { TRPCClientError } from "@trpc/client";
-import { useContext, useEffect, useMemo } from "react";
+import { ReactNode, useContext, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { PermissionType, hasPermission } from "@repo/api";
@@ -7,7 +7,7 @@ import { PermissionType, hasPermission } from "@repo/api";
 import { useTRPC } from "./api";
 import { AuthContext, AuthInterface } from "./contexts";
 
-export function AuthProvider({ children }: { children: any }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const trpc = useTRPC();
 
   const { data, isLoading, isLoadingError, isError } = trpc.auth.get.useQuery(
@@ -57,7 +57,7 @@ export function PermissionRoute({
   children,
 }: {
   permission: PermissionType;
-  children: any;
+  children: ReactNode;
 }) {
   const navigate = useNavigate();
   const { isLoading, isAuthenticated, hasPermission } = useAuth();
@@ -69,12 +69,12 @@ export function PermissionRoute({
     }
   }, [isLoading, isAuthenticated, hasPermission]);
 
-  if (isLoading) <></>;
+  if (isLoading || !isAuthenticated) return <></>;
 
   return children;
 }
 
-export function AuthRoute({ children }: { children: any }) {
+export function AuthRoute({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { isLoading, isAuthenticated } = useAuth();
 
@@ -82,7 +82,7 @@ export function AuthRoute({ children }: { children: any }) {
     if (!isLoading && !isAuthenticated) navigate("/login");
   }, [isLoading, isAuthenticated]);
 
-  if (isLoading) <></>;
+  if (isLoading || !isAuthenticated) return <></>;
 
   return children;
 }

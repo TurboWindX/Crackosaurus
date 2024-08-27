@@ -13,20 +13,19 @@
     ".": "./src/export.ts"
   },
   "dependencies": {
-    "@fastify/cookie": "^9.2.0",
-    "@fastify/cors": "^8.5.0",
+    "@fastify/cookie": "^9.3.1",
+    "@fastify/cors": "^9.0.1",
     "@fastify/multipart": "^8.3.0",
-    "@fastify/session": "^10.7.0",
-    "@fastify/static": "^7.0.3",
-    "@prisma/client": "^5.7.1",
+    "@fastify/session": "^10.9.0",
+    "@fastify/static": "^7.0.4",
+    "@prisma/client": "^5.18.0",
     "@repo/api": "*",
     "@repo/app-config": "*",
     "@repo/hashcat": "*",
-    "@repo/plugins": "*",
     "@trpc/client": "^10.45.2",
     "@trpc/server": "^10.45.2",
     "bcrypt": "^5.1.1",
-    "fastify": "^4.0.0",
+    "fastify": "^4.28.1",
     "fastify-plugin": "^4.5.1"
   },
   "devDependencies": {
@@ -34,10 +33,10 @@
     "@repo/typescript-config": "*",
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@types/bcrypt": "^5.0.2",
-    "@types/node": "^20.10.5",
+    "@types/node": "^22.3.0",
     "concurrently": "^8.2.2",
-    "nodemon": "^3.1.0",
-    "rollup": "^4.17.2",
+    "nodemon": "^3.1.4",
+    "rollup": "^4.20.0",
     "rollup-plugin-esbuild": "^6.1.1"
   }
 }

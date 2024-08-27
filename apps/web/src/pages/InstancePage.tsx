@@ -196,7 +196,9 @@ export const InstancePage = () => {
             {instance?.name || instance?.IID || "Instance"}
           </span>
           <div>
-            <StatusBadge status={(instance?.status ?? STATUS.Unknown) as any} />
+            <StatusBadge
+              status={(instance?.status ?? STATUS.Unknown) as Status}
+            />
           </div>
         </div>
         <div className="flex flex-1 flex-wrap justify-end gap-2">

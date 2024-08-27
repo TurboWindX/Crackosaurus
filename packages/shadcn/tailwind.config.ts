@@ -1,7 +1,8 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimation from "tailwindcss-animate";
 
 const config = {
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimation],
   content: ["src/**/*.{ts,tsx}"],
   prefix: "scn-",
   corePlugins: {

@@ -95,7 +95,7 @@ export const instanceRouter = t.router({
     .query(async (opts) => {
       const { cluster } = opts.ctx;
 
-      return [await cluster.info.type.query()];
+      return await cluster.info.type.query();
     }),
   create: permissionProcedure(["instances:add"])
     .input(
@@ -155,13 +155,11 @@ export const instanceRouter = t.router({
           },
         });
 
-        const results = await cluster.instance.deleteMany.mutate({
-          instanceIDs: instances.map(({ IID }) => IID),
+        await cluster.instance.deleteMany.mutate({
+          instanceIDs: instances.map(({ tag }) => tag),
         });
 
-        const deletedIDs = instances
-          .filter((_, index) => results[index])
-          .map(({ IID }) => IID);
+        const deletedIDs = instances.map(({ IID }) => IID);
 
         await tx.job.deleteMany({
           where: {
@@ -294,12 +292,13 @@ export const instanceRouter = t.router({
           )
           .map(
             (res) =>
-              (res as any).value as [
-                (typeof data)[number],
-                { HID: string }[],
-                string,
-              ]
-          );
+              (
+                res as unknown as Record<
+                  string,
+                  [(typeof data)[number], { HID: string }[], string]
+                >
+              ).value
+          ) as [(typeof data)[number], { HID: string }[], string][];
 
         await Promise.all(
           jobData.map(([{ wordlistID }, hashes, JID]) =>
@@ -316,7 +315,7 @@ export const instanceRouter = t.router({
           )
         );
 
-        return jobData.map(([_, __, JID]) => JID);
+        return jobData.map(([, , JID]) => JID);
       });
     }),
   deleteJobs: permissionProcedure(["instances:jobs:remove"])

@@ -13,6 +13,8 @@ import { upload } from "./upload";
 
 const fastify = Fastify();
 
+fastify.get("/ping", {}, () => "pong");
+
 fastify.register(fastifyMultipart, {
   limits: {
     fileSize: 268_435_456_000,

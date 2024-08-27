@@ -6,7 +6,7 @@ import { DebugCluster } from "./debug";
 import { ExternalCluster } from "./external";
 import { NodeCluster } from "./node";
 
-export function buildCluster(options: ClusterTypeConfig): Cluster<any> {
+export function buildCluster(options: ClusterTypeConfig): Cluster<unknown> {
   switch (options.name) {
     case CLUSTER_TYPE.AWS:
       return new AWSCluster(options);
