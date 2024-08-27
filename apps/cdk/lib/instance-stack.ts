@@ -30,14 +30,23 @@ export interface InstanceStackConfig {
   interval?: number;
   cooldown?: number;
   sshKey?: string;
+  imageId?: string;
 }
 
 export interface InstanceStackProps extends InstanceStackConfig {
   prefix?: string;
   vpc: IVpc;
-  subnets: ISubnet[];
+  subnet: ISubnet;
   fileSystem: IFileSystem;
   fileSystemPath: string;
+}
+
+interface UserDataTemplateProps {
+  s3ObjectUrl: string;
+  hashcatPath: string;
+  fileSystemId: string;
+  instanceEnvString: string;
+  scriptPath: string;
 }
 
 export class InstanceStack extends Construct {
@@ -108,7 +117,9 @@ export class InstanceStack extends Construct {
       service: "ec2",
       action: "runInstances",
       parameters: {
-        ImageId: MachineImage.latestAmazonLinux2023().getImage(this).imageId,
+        ImageId:
+          props.imageId ??
+          MachineImage.latestAmazonLinux2023().getImage(this).imageId,
         InstanceType: JsonPath.stringAt("$.instanceType"),
         MinCount: 1,
         MaxCount: 1,
@@ -136,7 +147,7 @@ export class InstanceStack extends Construct {
         ],
         NetworkInterfaces: [
           {
-            SubnetId: props.subnets[0]?.subnetId,
+            SubnetId: props.subnet.subnetId,
             AssociatePublicIpAddress: false,
             DeviceIndex: 0,
             Groups: [this.instanceSG.securityGroupId],
@@ -204,34 +215,55 @@ export class InstanceStack extends Construct {
       )
       .join(" ");
 
+    const templateProps: UserDataTemplateProps = {
+      s3ObjectUrl: this.asset.s3ObjectUrl,
+      hashcatPath,
+      fileSystemId: props.fileSystem.fileSystemId,
+      instanceEnvString,
+      scriptPath,
+    };
+
+    return this.getUserDataTemplateAmazonLinux(templateProps);
+  }
+
+  protected getUserDataTemplateAmazonLinux(props: UserDataTemplateProps): string {
     return `#!/bin/bash
+
+    # Instance Info
+    TOKEN=$(curl -s --request PUT "http://169.254.169.254/latest/api/token" --header "X-aws-ec2-metadata-token-ttl-seconds: 3600")
+    EC2_INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id --header "X-aws-ec2-metadata-token: $TOKEN")
 
     # Install Packages
     yum update -y
     yum install -y aws-cli amazon-efs-utils nfs-utils
 
-    # Install Node
-    curl -fsSL https://rpm.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
-    bash /tmp/nodesource_setup.sh
-    dnf install nodejs -y
-    rm -f /tmp/nodesource_setup.sh
+    # Install Drivers
+    dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/amzn2023/x86_64/cuda-amzn2023.repo
+    dnf clean expire-cache
+    dnf update -y
+    dnf install -y kernel-devel kernel-modules-extra
+    dnf module install -y nvidia-driver:latest-dkms
+    dnf install -y cuda-toolkit
 
-    # Install App
-    aws s3 cp ${this.asset.s3ObjectUrl} /tmp/package.zip
-    unzip /tmp/package.zip -d /
-    rm -f /tmp/package.zip
-    chmod +x ${hashcatPath}
+    # Install Node
+    curl -fsSL -o- https://rpm.nodesource.com/setup_20.x | bash
+    dnf install nodejs -y
 
     # Mount EFS
     mkdir /efs
-    mount -t efs -o tls ${props.fileSystem.fileSystemId}:/ /efs
+    mount -t efs -o tls ${props.fileSystemId}:/ /efs
+
+    # Install App
+    aws s3 cp ${props.s3ObjectUrl} /tmp/package.zip
+    unzip /tmp/package.zip -d /
+    rm -f /tmp/package.zip
+    chown 1000:1000 -R /app
+    chmod a+x ${props.hashcatPath}
 
     # Run App
-    ${instanceEnvString} node ${scriptPath} 2>&1 > /tmp/session.log
+    su ec2-user -c '${props.instanceEnvString} node ${props.scriptPath} 2>&1 > /tmp/session.log'
 
     # Stop Instance
-    TOKEN=$(curl -s --request PUT "http://169.254.169.254/latest/api/token" --header "X-aws-ec2-metadata-token-ttl-seconds: 3600")
-    EC2_INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id --header "X-aws-ec2-metadata-token: $TOKEN")
     aws ec2 terminate-instances --instance-ids $EC2_INSTANCE_ID
     `;
   }

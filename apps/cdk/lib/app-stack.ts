@@ -215,7 +215,7 @@ export class AppStack extends Construct {
       ...props.instance,
       prefix,
       vpc,
-      subnets: subnets.app,
+      subnet: subnets.app[0]!,
       fileSystem: this.storage.fileSystem,
       fileSystemPath: this.storage.fileSystemPath,
     });
