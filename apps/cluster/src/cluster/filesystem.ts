@@ -90,12 +90,19 @@ export abstract class FileSystemCluster<
   }
 
   public async deleteInstance(instanceID: string): Promise<boolean> {
-    const metadata = await getInstanceMetadata(
+    const jobs = await getInstanceFolderJobs(
       this.config.instanceRoot,
       instanceID
     );
 
-    if (metadata.status === STATUS.Unknown) return true;
+    await Promise.allSettled(
+      jobs.map(async (jobID: string) => await this.deleteJob(instanceID, jobID))
+    );
+
+    const metadata = await getInstanceMetadata(
+      this.config.instanceRoot,
+      instanceID
+    );
 
     metadata.status = STATUS.Stopped;
 
@@ -134,8 +141,6 @@ export abstract class FileSystemCluster<
       instanceID,
       jobID
     );
-
-    if (metadata.status === STATUS.Unknown) return true;
 
     metadata.status = STATUS.Stopped;
 

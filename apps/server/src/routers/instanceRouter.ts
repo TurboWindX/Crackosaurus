@@ -155,13 +155,11 @@ export const instanceRouter = t.router({
           },
         });
 
-        const results = await cluster.instance.deleteMany.mutate({
-          instanceIDs: instances.map(({ IID }) => IID),
+        await cluster.instance.deleteMany.mutate({
+          instanceIDs: instances.map(({ tag }) => tag),
         });
 
-        const deletedIDs = instances
-          .filter((_, index) => results[index])
-          .map(({ IID }) => IID);
+        const deletedIDs = instances.map(({ IID }) => IID);
 
         await tx.job.deleteMany({
           where: {

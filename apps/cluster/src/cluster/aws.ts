@@ -9,6 +9,8 @@ import {
 
 import { FileSystemCluster } from "./filesystem";
 
+const DEFAULT_TYPE = "p3.2xlarge";
+
 export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
   private stepFunctions!: AWS.StepFunctions;
 
@@ -17,7 +19,21 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
   }
 
   public getTypes(): string[] {
-    return ["t2.nano", "t2.small"];
+    return [
+      DEFAULT_TYPE,
+      "p3.8xlarge",
+      "p3.16xlarge",
+      "p3dn.24xlarge",
+      "g4dn.xlarge",
+      "g4dn.2xlarge",
+      "g4dn.4xlarge",
+      "g4dn.8xlarge",
+      "g4dn.16xlarge",
+      "g5.xlarge",
+      "g5.2xlarge",
+      "g5.4xlarge",
+      "g5.8xlarge",
+    ];
   }
 
   private loadCredentials(): Promise<boolean> {
@@ -53,7 +69,7 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
           stateMachineArn: this.config.stepFunctionArn,
           input: JSON.stringify({
             instanceID,
-            instanceType: metadata.type ?? "t2.micro",
+            instanceType: metadata.type ?? DEFAULT_TYPE,
           }),
         })
         .promise();
