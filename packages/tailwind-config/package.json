@@ -1,11 +1,11 @@
 {
   "name": "@repo/tailwind-config",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.0.1",
+  "license": "MIT",
   "exports": {
     ".": "./tailwind.config.ts"
   },
   "devDependencies": {
-    "tailwindcss": "^3.3.5"
+    "tailwindcss": "^3.4.10"
   }
 }

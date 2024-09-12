@@ -1,0 +1,103 @@
+version: "3"
+services:
+  database:
+    container_name: database
+    image: docker.io/postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    networks:
+      - app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  prisma:
+    container_name: prisma
+    restart: on-failure
+    build:
+      context: .
+      dockerfile: packages/container/prisma/Containerfile
+      args:
+        DATABASE_PROVIDER: postgresql
+    environment:
+      DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
+    networks:
+      - app
+    depends_on:
+      - database
+  instance:
+    container_name: instance
+    restart: always
+    build:
+      context: .
+      dockerfile: packages/container/instance/docker/Containerfile
+    environment:
+      INSTANCE_ID: docker
+      INSTANCE_ROOT: /data/instances
+      WORDLIST_ROOT: /data/wordlists
+    user: 0:0
+    networks:
+      - app
+    volumes:
+      - instances:/data/instances
+      - wordlists:/data/wordlists
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu
+  cluster:
+    container_name: cluster
+    restart: always
+    build:
+      context: .
+      dockerfile: packages/container/cluster/Containerfile
+      args:
+        CLUSTER_PORT: 13337
+    environment:
+      CLUSTER_HOST: cluster
+      CLUSTER_TYPE: external
+      CLUSTER_INSTANCE_ROOT: /data/instances
+      CLUSTER_WORDLIST_ROOT: /data/wordlists
+    user: 0:0
+    networks:
+      - app
+    volumes:
+      - instances:/data/instances
+      - wordlists:/data/wordlists
+  server:
+    container_name: server
+    restart: always
+    build:
+      context: .
+      dockerfile: packages/container/server/Containerfile
+      args:
+        DATABASE_PROVIDER: postgresql
+        BACKEND_HOST: USE_WEB_HOST
+        BACKEND_PORT: 8080
+    environment:
+      WEB_HOST: localhost
+      WEB_PORT: 8080
+      CLUSTER_HOST: cluster
+      CLUSTER_PORT: 13337
+      BACKEND_SECRET: SECRET:123456789012345678901234567890
+      DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
+    ports:
+      - "8080:8080"
+    networks:
+      - app
+    depends_on:
+      - cluster
+      - database
+
+networks:
+  app:
+    driver: bridge
+
+volumes:
+  instances:
+  pgdata:
+  wordlists:

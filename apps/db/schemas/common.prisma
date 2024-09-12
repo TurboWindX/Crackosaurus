@@ -1,0 +1,64 @@
+model User {
+  ID          String    @id @default(uuid())
+  username    String    @unique
+  password    String
+  permissions String    @default("")
+  projects    Project[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+}
+
+model Project {
+  PID       String   @id @default(uuid())
+  name      String
+  members   User[]
+  hashes    Hash[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Hash {
+  HID       String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [PID])
+  jobs      Job[]
+  hash      String
+  hashType  Int
+  status    String   @default("NOT_FOUND")
+  value     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Wordlist {
+  WID       String   @id @default(uuid())
+  name      String?
+  size      Int
+  checksum  String
+  jobs      Job[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Instance {
+  IID       String   @id @default(uuid())
+  name      String?
+  tag       String
+  type      String?
+  jobs      Job[]
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Job {
+  JID        String    @id @default(uuid())
+  instanceId String
+  instance   Instance  @relation(fields: [instanceId], references: [IID])
+  wordlistId String?
+  wordlist   Wordlist? @relation(fields: [wordlistId], references: [WID])
+  hashes     Hash[]
+  status     String    @default("PENDING")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @default(now()) @updatedAt
+}

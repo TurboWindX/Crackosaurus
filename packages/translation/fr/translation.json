@@ -1,0 +1,158 @@
+{
+  "app": "Crackosaurus",
+  "action": {
+    "add": {
+      "text": "Ajouter",
+      "item": "Ajouter {{item}}"
+    },
+    "cancel": {
+      "text": "Annuler",
+      "item": "Annuler {{item}}"
+    },
+    "export": {
+      "text": "Exporter",
+      "item": "Exporter {{item}}"
+    },
+    "import": {
+      "text": "Importer",
+      "item": "Importer {{item}}"
+    },
+    "launch": {
+      "text": "Débuter",
+      "item": "Débuter {{item}}"
+    },
+    "loading": {
+      "text": "Chargement"
+    },
+    "logout": {
+      "text": "Déconnexion"
+    },
+    "remove": {
+      "text": "Supprimer",
+      "item": "Supprimer {{item}}",
+      "warn": "Voulez-vous supprimer {{item}}?",
+      "warn_count": "Voulez-vous supprimer {{count}} {{item}}?"
+    },
+    "search": {
+      "text": "Rechercher",
+      "item": "Rechercher {{item}}"
+    },
+    "update": {
+      "text": "Mise à jour",
+      "item": "Mise à jour de {{item}}"
+    }
+  },
+  "error": {
+    "UNAUTHORIZED": "Autorisations invalide",
+    "BAD_REQUEST": "Entrée invalide",
+    "INTERNAL_SERVER_ERROR": "Erreur interne",
+    "NOT_FOUND": "Pas trouvé",
+    "EMPTY": "Aucun(e)s {{item}}"
+  },
+  "item": {
+    "checksum": {
+      "singular": "Somme de contrôle",
+      "plural": "Somme de contrôles"
+    },
+    "collaborator": {
+      "singular": "Collaborateur",
+      "plural": "Collaborateurs"
+    },
+    "error": {
+      "singular": "Erreur",
+      "plural": "Erreurs"
+    },
+    "hash": {
+      "singular": "Hash",
+      "plural": "Hashes"
+    },
+    "instance": {
+      "singular": "Instance",
+      "plural": "Instances"
+    },
+    "job": {
+      "singular": "Tâche",
+      "plural": "Tâches"
+    },
+    "name": {
+      "singular": "Nom",
+      "plural": "Nom"
+    },
+    "password": {
+      "singular": "Mot de passe",
+      "plural": "Mots de passe"
+    },
+    "permission": {
+      "singular": "Autorisation",
+      "plural": "Autorisations"
+    },
+    "profile": {
+      "singular": "Profile",
+      "plural": "Profiles"
+    },
+    "project": {
+      "singular": "Projet",
+      "plural": "Projets"
+    },
+    "size": {
+      "singular": "Taille",
+      "plural": "Tailles"
+    },
+    "status": "Statut",
+    "time": {
+      "update": "Dernière mise à jour"
+    },
+    "type": {
+      "singular": "Type",
+      "plural": "Types"
+    },
+    "user": {
+      "singular": "Utilisateur",
+      "plural": "Utilisateurs"
+    },
+    "username": {
+      "singular": "Nom d'utilisateur",
+      "plural": "Nom d'utilisateurs"
+    },
+    "value": {
+      "singular": "Valeur",
+      "plural": "Valeurs"
+    },
+    "wordlist": {
+      "singular": "Dictionnaire",
+      "plural": "Dictionnaires"
+    }
+  },
+  "page": {
+    "error": {
+      "header": "Une erreur s'est produite",
+      "button": "Retour à l'acceuil"
+    },
+    "home": {
+      "title": "Accueil",
+      "header": "Bienvenue sur Crackosaurus",
+      "p1": "Crackosaurus est la première plateforme source ouverte de récupération de mots de passe. Le système principal est alimenté par hashcat, l'outil de récupération de mot de passe le plus rapide et le plus avancé au monde. Une nouvelle approche est utilisée pour distribuer la récupération de mot de passe sur plusieurs systèmes de manière sûre et sécurisée. Collaborez avec votre équipe pour identifier les mots de passe faibles dans votre organisation.",
+      "p2": "Nouvel utilisateur de Crackosaurus? Vous revenez après ne pas avoir utilisé la plateforme pendant un certain temps? Vous cherchez plus d'informations? Notre développeur principal Alex vous fera un rapide tour d'horizon de Crackosaurus:",
+      "video": "Vidéo d'introduction"
+    },
+    "login": {
+      "header": "Entrez votre nom d'utilisateur et votre mot de passe ci-dessous pour vous connecter",
+      "button": "Connexion"
+    },
+    "setup": {
+      "title": "Installation",
+      "header": "Entrez les informations pour démarrer la plateforme",
+      "button": "Installer"
+    }
+  },
+  "status": {
+    "PENDING": "En attente",
+    "RUNNING": "En cours",
+    "STOPPED": "Arrêter",
+    "COMPLETE": "Compléter",
+    "ERROR": "Erreur",
+    "UNKNOWN": "Inconnu",
+    "FOUND": "Trouver",
+    "NOT_FOUND": "Pas trouver"
+  }
+}

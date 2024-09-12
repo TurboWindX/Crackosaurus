@@ -1,0 +1,39 @@
+FROM docker.io/node:20-alpine AS base
+
+RUN apk update
+RUN npm install -g turbo
+
+WORKDIR /app
+
+FROM base AS builder
+
+COPY . .
+
+RUN turbo prune @repo/db --docker
+
+FROM base AS installer
+
+COPY --from=builder /app/out/json .
+COPY --from=builder /app/out/package-lock.json ./package-lock.json
+
+RUN npm install
+
+COPY --from=builder /app/out/full .
+
+RUN NODE_ENV=production turbo run build --filter=@repo/db
+
+FROM base AS runner
+
+RUN npm install -g prisma
+
+COPY --from=installer /app/node_modules/ ./node_modules/
+COPY --from=installer /app/apps/db /app/apps/db
+
+WORKDIR /app/apps/db
+
+ARG DATABASE_PROVIDER
+ENV DATABASE_PROVIDER=$DATABASE_PROVIDER
+
+RUN DATABASE_PROVIDER=$DATABASE_PROVIDER node dist/schema.js
+
+CMD ["node", "dist/deploy.js"]

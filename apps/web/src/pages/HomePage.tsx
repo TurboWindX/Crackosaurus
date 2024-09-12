@@ -1,59 +1,23 @@
-import useSWR from "swr";
-
-import {
-  Menubar,
-  MenubarContent,
-  MenubarItem,
-  MenubarMenu,
-  MenubarSeparator,
-  MenubarShortcut,
-  MenubarTrigger,
-} from "@repo/shadcn/components/ui/menubar";
-
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@repo/shadcn/components/ui/card";
-
-const API_URL = "http://localhost:8080/api";
+import { useTranslation } from "react-i18next";
 
 export const HomePage = () => {
-  const { data, error, isLoading } = useSWR(
-    `${API_URL}/ping`, 
-    (...args: any) => fetch(...args).then((res) => res.text())
-  );
+  const { t } = useTranslation();
 
   return (
-    <>
-      <Menubar>
-        <MenubarMenu>
-          <MenubarTrigger>File</MenubarTrigger>
-          <MenubarContent>
-            <MenubarItem>
-              New Tab <MenubarShortcut>⌘T</MenubarShortcut>
-            </MenubarItem>
-            <MenubarItem>New Window</MenubarItem>
-            <MenubarSeparator />
-            <MenubarItem>Share</MenubarItem>
-            <MenubarSeparator />
-            <MenubarItem>Print</MenubarItem>
-          </MenubarContent>
-        </MenubarMenu>
-      </Menubar>
-      <br />
-      <Card>
-        <CardHeader>
-          <CardTitle>Message</CardTitle>
-          <CardDescription>From Server</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p>{data}</p>
-        </CardContent>
-      </Card>
-    </>
-  )
+    <div className="grid gap-2 p-4 text-justify">
+      <h1 className="text-center text-2xl font-bold md:text-left">
+        {t("page.home.header")}
+      </h1>
+      <p>{t("page.home.p1")}</p>
+      <p>{t("page.home.p2")}</p>
+      <div className="flex justify-center">
+        <iframe
+          title={t("page.home.video")}
+          className="my-4 h-[135px] w-[240px] rounded-lg border sm:h-[180px] sm:w-[320px] md:h-[270px] md:w-[480px] lg:h-[540px] lg:w-[960px]"
+          src="https://www.youtube.com/embed/z5OlO57livI"
+          allowFullScreen
+        />
+      </div>
+    </div>
+  );
 };

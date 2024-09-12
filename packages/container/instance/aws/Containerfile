@@ -1,0 +1,39 @@
+FROM docker.io/node:20-alpine AS base
+
+RUN apk update
+RUN npm install -g turbo
+
+WORKDIR /app
+
+FROM base AS builder
+
+COPY . .
+
+RUN turbo prune @repo/instance --docker
+
+FROM base AS installer
+
+COPY --from=builder /app/out/json .
+COPY --from=builder /app/out/package-lock.json ./package-lock.json
+
+RUN npm install
+
+COPY --from=builder /app/out/full .
+
+RUN NODE_ENV=production turbo run build --filter=@repo/instance
+
+FROM base AS build
+
+RUN apk add 7zip wget zip
+
+ARG HASHCAT_VERSION=6.2.6
+
+RUN wget https://github.com/hashcat/hashcat/releases/download/v${HASHCAT_VERSION}/hashcat-${HASHCAT_VERSION}.7z
+RUN 7z x hashcat-${HASHCAT_VERSION}.7z
+RUN mv hashcat-${HASHCAT_VERSION} hashcat
+
+COPY --from=installer /app/apps/instance/dist .
+
+RUN zip -r /package.zip /app/index.js /app/hashcat
+
+CMD ["sh", "-c", "cp /package.zip /asset-output"]

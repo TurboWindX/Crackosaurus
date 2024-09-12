@@ -1,0 +1,14 @@
+**/LICENSE
+**/README.md
+**/.turbo
+**/node_modules
+**/dist
+**/*.sqlite
+
+/docker-compose.yml
+/.dockerignore
+/.git*
+/apps/cdk
+/apps/db/providers/**/*.prisma
+/apps/format
+/packages/lint

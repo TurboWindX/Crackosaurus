@@ -1,0 +1,24 @@
+{
+  "name": "@repo/instance",
+  "version": "0.0.1",
+  "license": "MIT",
+  "scripts": {
+    "dev": "npm run build && npm run dev:watch",
+    "dev:watch": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild --watch",
+    "build": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild",
+    "start": "npm run build"
+  },
+  "dependencies": {
+    "@repo/api": "*",
+    "@repo/app-config": "*",
+    "@repo/filesystem": "*",
+    "@repo/hashcat": "*",
+    "@repo/typescript-config": "*"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-replace": "^5.0.7",
+    "rollup": "^4.20.0",
+    "rollup-plugin-esbuild": "^6.1.1"
+  }
+}

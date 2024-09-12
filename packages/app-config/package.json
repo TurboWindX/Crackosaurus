@@ -1,0 +1,19 @@
+{
+  "name": "@repo/app-config",
+  "version": "0.0.1",
+  "exports": {
+    "./cluster": "./cluster.ts",
+    "./db": "./db.ts",
+    "./host": "./host.ts",
+    "./instance": "./instance.ts",
+    "./server": "./server.ts",
+    "./web": "./web.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.3.0"
+  }
+}

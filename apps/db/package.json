@@ -1,0 +1,26 @@
+{
+  "name": "@repo/db",
+  "version": "0.0.1",
+  "license": "MIT",
+  "scripts": {
+    "build": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild",
+    "deploy": "npm run build && npm run deploy:run",
+    "deploy:run": "node dist/schema.js && node dist/deploy.js",
+    "generate": "npm run build && npm run generate:run",
+    "generate:run": "node dist/schema.js && node dist/generate.js",
+    "format": "npm run build && npm run format:run",
+    "format:run": "node dist/format.js",
+    "migrate": "npm run build && npm run migrate:run",
+    "migrate:run": "node dist/schema.js && node dist/migrate.js"
+  },
+  "dependencies": {
+    "@repo/app-config": "*"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "*",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "prisma": "^5.18.0",
+    "rollup": "^4.20.0",
+    "rollup-plugin-esbuild": "^6.1.1"
+  }
+}
