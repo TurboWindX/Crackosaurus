@@ -6,12 +6,12 @@ import { loadWebConfig } from "../../packages/app-config/web";
 const config = loadWebConfig();
 
 export default defineConfig({
+  plugins: [react()],
   clearScreen: false,
   server: {
     host: "0.0.0.0",
     port: config.host.port,
   },
-  plugins: [react()],
   define: {
     PACKAGE_WEB_CONFIG: config,
   },

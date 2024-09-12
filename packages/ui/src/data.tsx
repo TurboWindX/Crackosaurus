@@ -312,7 +312,7 @@ export function DataTable<T>({
                 if (await onAdd?.()) setAddDialogOpen(false);
               }}
             >
-              {addDialog}
+              {addDialog as ReactNode}
             </AddDialog>
           )}
           {hasImport && (
@@ -526,7 +526,7 @@ const DataTableBody = <T,>({
             }`}
             onClick={() => rowClick?.(value)}
           >
-            {column}
+            {column as ReactNode}
           </TableCell>
         ) : null
       )}

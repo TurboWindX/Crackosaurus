@@ -30,7 +30,7 @@ fastify.register(fastifySession, {
   secret: config.secret,
   cookie: {
     secure: false,
-    maxAge: 24 * 60 * 60,
+    maxAge: 900000, // 15 minutes in milliseconds
   },
 });
 fastify.register(fastifyMultipart, {
@@ -56,12 +56,11 @@ fastify.register(clusterPlugin, {
   pollingRateMs: 1000,
 });
 
+const allowCORS = config.web.port !== config.host.port;
 fastify.register(cors, {
   credentials: true,
   origin: (_origin, cb) => {
-    // TODO: Proper CORS
-
-    cb(null, true);
+    cb(null, allowCORS);
   },
 });
 
