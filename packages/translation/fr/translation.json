@@ -39,7 +39,7 @@
     },
     "update": {
       "text": "Mise à jour",
-      "item": "Mise à jour {{item}}"
+      "item": "Mise à jour de {{item}}"
     }
   },
   "error": {

@@ -69,7 +69,7 @@ http://localhost:8080/setup
 
 ### 🔗 PR
 
-Development of the app is done via [feature branches](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow) off of the `dev` branch. Make sure to have this configured before continuing.
+Development of the app is done via [feature branches](https://www.atlassian.com/git/tutorials/comparing-workflows/feature-branch-workflow) off the current version branch. Make sure to have this configured before continuing.
 
 ### 🧩 Dependencies
 
@@ -83,13 +83,14 @@ The following is only necessary for deployment:
 - [Docker](https://www.docker.com/)
   - [Docker Compose](https://docs.docker.com/compose/)
 
-### 🎨 Format
+### 🔍 Checks
 
-Formatting is required before PR. This can easily be done on all the monorepo using:
+Checks are required before PR. This can easily be done on all the monorepo using:
 
 ```
 npm install
 npm run format
+npm run lint
 ```
 
 ### 🖥️ Setup
@@ -113,10 +114,18 @@ The microservices can be found at:
 - Backend: http://localhost:8080/
 - Cluster: http://localhost:13337/
 
-#### Debug
+#### ⚙️ Debug
 
 This is a dummy cluster that prints API commands.
 
 ```
 npm run dev
 ```
+
+## 🐛 Bugs
+
+Following are a list of known bugs with their fixes.
+
+### Server/cluster hangs on requests
+
+This is most likely due to a `.lock` file not being removed. You can manually remove them from the data folder.
