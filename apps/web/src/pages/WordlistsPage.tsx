@@ -24,8 +24,8 @@ export const WordlistsPage = () => {
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.wordlist.getMany),
-      getQueryKey(trpc.wordlist.getList),
+      getQueryKey(trpc.wordlist.getMany, undefined, "any"),
+      getQueryKey(trpc.wordlist.getList, undefined, "any"),
     ],
     []
   );

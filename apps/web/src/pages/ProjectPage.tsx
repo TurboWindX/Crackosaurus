@@ -69,9 +69,9 @@ const HashDataTable = ({
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.project.get, { projectID }),
-      getQueryKey(trpc.project.getMany),
-      getQueryKey(trpc.project.getList),
+      getQueryKey(trpc.project.get, { projectID }, "any"),
+      getQueryKey(trpc.project.getMany, undefined, "any"),
+      getQueryKey(trpc.project.getList, undefined, "any"),
     ],
     []
   );
@@ -263,9 +263,9 @@ const UserDataTable = ({
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.project.get, { projectID }),
-      getQueryKey(trpc.project.getMany),
-      getQueryKey(trpc.project.getList),
+      getQueryKey(trpc.project.get, { projectID }, "any"),
+      getQueryKey(trpc.project.getMany, undefined, "any"),
+      getQueryKey(trpc.project.getList, undefined, "any"),
     ],
     []
   );
@@ -365,16 +365,23 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.project.get, { projectID }),
-      getQueryKey(trpc.project.getMany),
-      getQueryKey(trpc.project.getList),
+      getQueryKey(trpc.project.get, { projectID }, "any"),
+      getQueryKey(trpc.project.getMany, undefined, "any"),
+      getQueryKey(trpc.project.getList, undefined, "any"),
     ],
     []
   );
 
   const { mutateAsync: createJobs } = trpc.instance.createJobs.useMutation({
-    onSuccess() {
-      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+    onSuccess(_, { instanceID }) {
+      const instanceQueryKeys = [
+        getQueryKey(trpc.instance.get, { instanceID }, "any"),
+        getQueryKey(trpc.instance.getList, undefined, "any"),
+      ];
+
+      [...queryKeys, ...instanceQueryKeys].forEach((key) =>
+        queryClient.invalidateQueries(key)
+      );
     },
     onError: handleError,
   });
@@ -446,8 +453,8 @@ const RemoveButton = ({ projectID, isLoading }: RemoveButtonProps) => {
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.project.getMany),
-      getQueryKey(trpc.project.getList),
+      getQueryKey(trpc.project.getMany, undefined, "any"),
+      getQueryKey(trpc.project.getList, undefined, "any"),
     ],
     []
   );

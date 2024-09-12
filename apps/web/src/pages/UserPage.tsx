@@ -73,11 +73,15 @@ const PermissionDataTable = ({
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.user.get, {
-        userID,
-      }),
-      getQueryKey(trpc.user.getMany),
-      getQueryKey(trpc.user.getList),
+      getQueryKey(
+        trpc.user.get,
+        {
+          userID,
+        },
+        "any"
+      ),
+      getQueryKey(trpc.user.getMany, undefined, "any"),
+      getQueryKey(trpc.user.getList, undefined, "any"),
     ],
     []
   );

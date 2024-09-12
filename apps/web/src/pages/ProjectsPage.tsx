@@ -30,8 +30,8 @@ export const ProjectsPage = () => {
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.project.getMany),
-      getQueryKey(trpc.project.getList),
+      getQueryKey(trpc.project.getMany, undefined, "any"),
+      getQueryKey(trpc.project.getList, undefined, "any"),
     ],
     []
   );
