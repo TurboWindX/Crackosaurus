@@ -234,6 +234,7 @@ export class AppStack extends Construct {
     this.prisma = new PrismaStack(this, {
       prefix,
       databaseUrl,
+      databaseArn: databaseInstance.instanceArn,
       cluster: this.appCluster,
       subnets: subnets.app,
     });
