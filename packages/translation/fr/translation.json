@@ -146,7 +146,7 @@
   },
   "status": {
     "PENDING": "En attente",
-    "RUNNING": "En cours d'exécution",
+    "RUNNING": "En cours",
     "STOPPED": "Arrêter",
     "COMPLETE": "Compléter",
     "ERROR": "Erreur",

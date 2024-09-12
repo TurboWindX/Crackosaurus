@@ -43,7 +43,7 @@
     }
   },
   "error": {
-    "UNAUTHORIZED": "Autorisations invalide",
+    "UNAUTHORIZED": "Unauthorized",
     "BAD_REQUEST": "Invalid input",
     "INTERNAL_SERVER_ERROR": "Internal error",
     "NOT_FOUND": "Not found",
@@ -100,7 +100,7 @@
     },
     "status": "Status",
     "time": {
-      "update": "Last Updated"
+      "update": "Last updated"
     },
     "type": {
       "singular": "Type",
