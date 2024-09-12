@@ -234,7 +234,9 @@ const PasswordUpdateButton = ({
   return (
     <div className="w-max">
       <DrawerDialog
-        title={t("action.update.item", { item: t("item.password.singular").toLowerCase() })}
+        title={t("action.update.item", {
+          item: t("item.password.singular").toLowerCase(),
+        })}
         open={open}
         setOpen={setOpen}
         trigger={trigger}

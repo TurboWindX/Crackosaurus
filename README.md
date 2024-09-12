@@ -10,15 +10,15 @@ Crackosaurus is designed to be deployable anywhere. Find your favorite infrastru
 
 ### ☁️ AWS CDK
 
-AWS CDK is recommended to deploy on the cloud. Following is an overview of the infrastructure:
+AWS CDK is recommended to deploy on the cloud.
 
-![Diagram](.github/aws/diagram.png)
+It is strongly recommended to make a [private fork](https://gist.github.com/0xjac/85097472043b697ab57ba1b1c7530274) of this repository. Make a branch `YOUR_ORG` and copy `apps/cdk/lib/cdk-stack.ts` to `apps/cdk/lib/YOUR_ORG-stack.ts` and update `apps/cdk/bin/cdk.ts` to point to your new stack. This will allow to tweak the infrastructure settings.
 
-Install the following dependencies:
+#### Dependencies
 
 - [Docker](https://www.docker.com/)
 - [Node](https://nodejs.org/en)
-  - [NPM](https://www.npmjs.com/)
+- [NPM](https://www.npmjs.com/)
 
 For Docker, make sure that the deployment user is part of the `docker` group:
 
@@ -26,9 +26,7 @@ For Docker, make sure that the deployment user is part of the `docker` group:
 sudo usermod -aG docker YOUR_USERNAME
 ```
 
-It is strongly recommended to make a [private fork](https://gist.github.com/0xjac/85097472043b697ab57ba1b1c7530274) of this repository. Make a branch `YOUR_ORG` and copy `apps/cdk/lib/cdk-stack.ts` to `apps/cdk/lib/YOUR_ORG-stack.ts` and update `apps/cdk/bin/cdk.ts` to point to your new stack. This will allow to tweak the infrastructure settings.
-
-Deploy using the following commands:
+#### Deploy
 
 ```
 npm install
@@ -43,16 +41,23 @@ Setup the platform using:
 http://LINK_TO_APP/setup
 ```
 
+Note: run the deploy step function once the containers are running.
+
+#### Infrastructure
+
+![Diagram](.github/aws/diagram.png)
+
 ### 🐋 Docker
 
-Docker is recommended to deploy locally. Currently, this is only intended for pre-production purposes.
+Docker is recommended to deploy locally.
 
-Install the following dependencies:
+#### Dependencies
 
 - [Docker](https://www.docker.com/)
-  - [Docker Compose](https://docs.docker.com/compose/)
+- [Docker Compose](https://docs.docker.com/compose/)
+- [CUDA](https://developer.nvidia.com/cuda-toolkit)
 
-Deploy using the following commands:
+#### Deploy
 
 ```
 sudo docker-compose build
@@ -65,6 +70,8 @@ Setup the platform using:
 http://localhost:8080/setup
 ```
 
+Note: if the instance fails, update the `nvidia/cuda` container version in the [instance Containerfile](packages/container/instance/docker/Containerfile) to match the system CUDA version.
+
 ## 🔨 Development
 
 ### 🔗 PR
@@ -76,12 +83,12 @@ Development of the app is done via [feature branches](https://www.atlassian.com/
 Crackosaurus is a full TypeScript Monorepo. The following is required:
 
 - [Node](https://nodejs.org/en)
-  - [NPM](https://www.npmjs.com/)
+- [NPM](https://www.npmjs.com/)
 
 The following is only necessary for deployment:
 
 - [Docker](https://www.docker.com/)
-  - [Docker Compose](https://docs.docker.com/compose/)
+- [Docker Compose](https://docs.docker.com/compose/)
 
 ### 🔍 Checks
 
