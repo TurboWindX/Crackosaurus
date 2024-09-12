@@ -1,6 +1,7 @@
 {
   "name": "@repo/db",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "license": "MIT",
   "scripts": {
     "build": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild",
     "deploy": "npm run build && npm run deploy:run",
@@ -10,8 +11,7 @@
     "format": "npm run build && npm run format:run",
     "format:run": "node dist/format.js",
     "migrate": "npm run build && npm run migrate:run",
-    "migrate:run": "node dist/schema.js && node dist/migrate.js",
-    "check": "tsc --noEmit"
+    "migrate:run": "node dist/schema.js && node dist/migrate.js"
   },
   "dependencies": {
     "@repo/app-config": "*"

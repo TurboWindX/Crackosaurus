@@ -1,6 +1,7 @@
 {
   "name": "@repo/shadcn",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "license": "MIT",
   "sideEffects": [
     "**/*.css"
   ],
@@ -31,11 +32,9 @@
     "./components/ui/toaster": "./src/components/ui/toaster.tsx",
     "./components/ui/use-toast": "./src/components/ui/use-toast.ts"
   },
-  "license": "MIT",
   "scripts": {
     "build": "tailwindcss -i ./src/index.css -o dist/index.css",
-    "dev": "tailwindcss -i ./src/index.css -o ./dist/index.css --watch",
-    "check": "tsc --noEmit"
+    "dev": "tailwindcss -i ./src/index.css -o ./dist/index.css --watch"
   },
   "peerDependencies": {
     "react": "^18.2.0"

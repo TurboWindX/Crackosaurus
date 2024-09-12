@@ -1,9 +1,9 @@
 {
   "name": "@repo/hashcat",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "license": "MIT",
   "exports": {
     "./exe": "./src/exe.ts",
     "./data": "./src/data.ts"
-  },
-  "license": "MIT"
+  }
 }

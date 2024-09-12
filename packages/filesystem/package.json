@@ -1,11 +1,11 @@
 {
   "name": "@repo/filesystem",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "license": "MIT",
   "exports": {
     "./cluster": "./src/cluster.ts",
     "./wordlist": "./src/wordlist.ts"
   },
-  "license": "MIT",
   "dependencies": {
     "zod": "^3.23.8"
   }

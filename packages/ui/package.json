@@ -1,6 +1,7 @@
 {
   "name": "@repo/ui",
   "version": "0.0.0",
+  "license": "MIT",
   "sideEffects": [
     "**/*.css"
   ],
@@ -20,11 +21,9 @@
     "./users": "./src/users.tsx",
     "./wordlists": "./src/wordlists.tsx"
   },
-  "license": "MIT",
   "scripts": {
     "build": "tailwindcss -i ./src/index.css -o dist/index.css",
-    "dev": "tailwindcss -i ./src/index.css -o ./dist/index.css --watch",
-    "check": "tsc --noEmit"
+    "dev": "tailwindcss -i ./src/index.css -o ./dist/index.css --watch"
   },
   "peerDependencies": {
     "react": "^18.2.0"

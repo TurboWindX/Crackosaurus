@@ -1,14 +1,14 @@
 {
-  "name": "cdk",
-  "version": "0.1.0",
+  "name": "@repo/cdk",
+  "version": "0.0.1",
+  "license": "MIT",
   "bin": {
     "cdk": "bin/cdk.js"
   },
   "scripts": {
     "build": "tsc",
     "watch": "tsc -w",
-    "cdk": "cdk",
-    "check": "tsc --noEmit"
+    "cdk": "cdk"
   },
   "devDependencies": {
     "@repo/typescript-config": "*",
