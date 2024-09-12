@@ -12,6 +12,7 @@ export const HomePage = () => {
       <p>{t("page.home.p2")}</p>
       <div className="flex justify-center">
         <iframe
+          title={t("page.home.video")}
           className="my-4 h-[135px] w-[240px] rounded-lg border sm:h-[180px] sm:w-[320px] md:h-[270px] md:w-[480px] lg:h-[540px] lg:w-[960px]"
           src="https://www.youtube.com/embed/z5OlO57livI"
           allowFullScreen
