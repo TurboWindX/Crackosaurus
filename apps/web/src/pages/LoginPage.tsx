@@ -29,7 +29,7 @@ export const LoginPage = () => {
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
-  const authQueryKey = getQueryKey(trpc.auth.get);
+  const authQueryKey = getQueryKey(trpc.auth.get, undefined, "any");
 
   const { mutateAsync: login } = trpc.auth.login.useMutation({
     onSuccess() {

@@ -53,8 +53,8 @@ export const InstancesPage = () => {
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.instance.getMany),
-      getQueryKey(trpc.instance.getList),
+      getQueryKey(trpc.instance.getMany, undefined, "any"),
+      getQueryKey(trpc.instance.getList, undefined, "any"),
     ],
     []
   );

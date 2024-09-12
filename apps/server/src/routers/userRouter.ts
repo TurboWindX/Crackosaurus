@@ -7,7 +7,7 @@ import { permissionProcedure, t } from "../plugins/trpc";
 import { checkPassword, hashPassword } from "./authRouter";
 
 export const userRouter = t.router({
-  get: permissionProcedure(["users:get"])
+  get: permissionProcedure(["auth"])
     .input(
       z.object({
         userID: z.string(),
@@ -140,7 +140,7 @@ export const userRouter = t.router({
         return user.ID;
       });
     }),
-  deleteMany: permissionProcedure(["users:remove"])
+  deleteMany: permissionProcedure(["auth"])
     .input(
       z.object({
         userIDs: z.string().array(),
@@ -180,7 +180,7 @@ export const userRouter = t.router({
         return count;
       });
     }),
-  addPermissions: permissionProcedure(["users:remove"])
+  addPermissions: permissionProcedure(["users:edit"])
     .input(
       z.object({
         userID: z.string(),
@@ -270,7 +270,7 @@ export const userRouter = t.router({
         return permissionSet.size;
       });
     }),
-  updatePassword: permissionProcedure(["users:edit"])
+  updatePassword: permissionProcedure(["auth"])
     .input(
       z.object({
         userID: z.string(),

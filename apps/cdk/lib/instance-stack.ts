@@ -226,7 +226,9 @@ export class InstanceStack extends Construct {
     return this.getUserDataTemplateAmazonLinux(templateProps);
   }
 
-  protected getUserDataTemplateAmazonLinux(props: UserDataTemplateProps): string {
+  protected getUserDataTemplateAmazonLinux(
+    props: UserDataTemplateProps
+  ): string {
     return `#!/bin/bash
 
     # Instance Info

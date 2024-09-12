@@ -1,14 +1,13 @@
 {
   "name": "@repo/instance",
-  "version": "0.0.0",
+  "version": "0.0.1",
+  "license": "MIT",
   "scripts": {
     "dev": "npm run build && npm run dev:watch",
     "dev:watch": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild --watch",
     "build": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild",
-    "start": "npm run build",
-    "check": "tsc --noEmit"
+    "start": "npm run build"
   },
-  "license": "MIT",
   "dependencies": {
     "@repo/api": "*",
     "@repo/app-config": "*",

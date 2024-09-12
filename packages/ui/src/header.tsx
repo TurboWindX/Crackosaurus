@@ -2,7 +2,6 @@ import {
   ALargeSmallIcon,
   CpuIcon,
   FolderIcon,
-  LockIcon,
   UserIcon,
   UsersIcon,
 } from "lucide-react";
@@ -29,6 +28,7 @@ import {
 } from "@repo/shadcn/components/ui/sheet";
 
 import { useAuth } from "./auth";
+import { LogoIcon } from "./icon";
 
 interface HeaderLinkProps {
   label: string;
@@ -41,7 +41,7 @@ const LINKS: readonly HeaderLinkProps[] = [
   {
     label: "app",
     path: "/",
-    icon: <LockIcon />,
+    icon: <LogoIcon />,
   },
   {
     label: "item.project.plural",
@@ -109,7 +109,7 @@ export const Header = () => {
                   <SheetTrigger asChild>
                     <Link to="#">
                       <div className={navigationMenuTriggerStyle()}>
-                        <LockIcon />
+                        <LogoIcon />
                       </div>
                     </Link>
                   </SheetTrigger>

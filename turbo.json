@@ -6,13 +6,17 @@
       "dependsOn": ["^build"],
       "env": ["BACKEND_HOST", "BACKEND_PORT"]
     },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "start": {
+      "cache": false,
+      "persistent": true
+    },
     "check": {
       "dependsOn": ["^check"]
     },
-    "dev": {
-      "cache": false
-    },
-    "start": {},
     "format": {
       "dependsOn": ["^format"],
       "cache": false

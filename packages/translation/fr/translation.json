@@ -39,7 +39,7 @@
     },
     "update": {
       "text": "Mise à jour",
-      "item": "Mise à jour {{item}}"
+      "item": "Mise à jour de {{item}}"
     }
   },
   "error": {
@@ -132,7 +132,8 @@
       "title": "Accueil",
       "header": "Bienvenue sur Crackosaurus",
       "p1": "Crackosaurus est la première plateforme source ouverte de récupération de mots de passe. Le système principal est alimenté par hashcat, l'outil de récupération de mot de passe le plus rapide et le plus avancé au monde. Une nouvelle approche est utilisée pour distribuer la récupération de mot de passe sur plusieurs systèmes de manière sûre et sécurisée. Collaborez avec votre équipe pour identifier les mots de passe faibles dans votre organisation.",
-      "p2": "Nouvel utilisateur de Crackosaurus? Vous revenez après ne pas avoir utilisé la plateforme pendant un certain temps? Vous cherchez plus d'informations? Notre développeur principal Alex vous fera un rapide tour d'horizon de Crackosaurus :"
+      "p2": "Nouvel utilisateur de Crackosaurus? Vous revenez après ne pas avoir utilisé la plateforme pendant un certain temps? Vous cherchez plus d'informations? Notre développeur principal Alex vous fera un rapide tour d'horizon de Crackosaurus:",
+      "video": "Vidéo d'introduction"
     },
     "login": {
       "header": "Entrez votre nom d'utilisateur et votre mot de passe ci-dessous pour vous connecter",
@@ -146,7 +147,7 @@
   },
   "status": {
     "PENDING": "En attente",
-    "RUNNING": "En cours d'exécution",
+    "RUNNING": "En cours",
     "STOPPED": "Arrêter",
     "COMPLETE": "Compléter",
     "ERROR": "Erreur",

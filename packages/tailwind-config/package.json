@@ -1,7 +1,7 @@
 {
   "name": "@repo/tailwind-config",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.0.1",
+  "license": "MIT",
   "exports": {
     ".": "./tailwind.config.ts"
   },

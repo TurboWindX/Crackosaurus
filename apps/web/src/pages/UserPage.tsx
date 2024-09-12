@@ -73,11 +73,15 @@ const PermissionDataTable = ({
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.user.get, {
-        userID,
-      }),
-      getQueryKey(trpc.user.getMany),
-      getQueryKey(trpc.user.getList),
+      getQueryKey(
+        trpc.user.get,
+        {
+          userID,
+        },
+        "any"
+      ),
+      getQueryKey(trpc.user.getMany, undefined, "any"),
+      getQueryKey(trpc.user.getList, undefined, "any"),
     ],
     []
   );
@@ -230,7 +234,9 @@ const PasswordUpdateButton = ({
   return (
     <div className="w-max">
       <DrawerDialog
-        title={t("action.update.item", { item: t("item.password.singular") })}
+        title={t("action.update.item", {
+          item: t("item.password.singular").toLowerCase(),
+        })}
         open={open}
         setOpen={setOpen}
         trigger={trigger}

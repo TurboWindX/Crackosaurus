@@ -30,8 +30,8 @@ export const ProjectsPage = () => {
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.project.getMany),
-      getQueryKey(trpc.project.getList),
+      getQueryKey(trpc.project.getMany, undefined, "any"),
+      getQueryKey(trpc.project.getList, undefined, "any"),
     ],
     []
   );
@@ -88,7 +88,7 @@ export const ProjectsPage = () => {
         row={({ name, members, updatedAt }) => [
           name,
           hasCollaborators ? (
-            <div className="grid max-w-max grid-flow-col gap-2">
+            <div className="flex flex-wrap gap-2">
               {(members ?? []).map((member) => (
                 <Badge key={member.ID}>{member.username}</Badge>
               ))}

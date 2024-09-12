@@ -1,6 +1,6 @@
 {
   "name": "@repo/app-config",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "exports": {
     "./cluster": "./cluster.ts",
     "./db": "./db.ts",

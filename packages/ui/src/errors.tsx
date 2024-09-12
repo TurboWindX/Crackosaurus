@@ -13,7 +13,7 @@ export const useErrors = () => {
   const trpc = useTRPC();
   const queryClient = useQueryClient();
 
-  const authQueryKey = getQueryKey(trpc.auth.get);
+  const authQueryKey = getQueryKey(trpc.auth.get, undefined, "any");
 
   return {
     handleError(error: unknown) {

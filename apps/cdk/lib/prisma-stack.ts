@@ -7,6 +7,8 @@ import {
   ICluster,
   LogDriver,
 } from "aws-cdk-lib/aws-ecs";
+import { Rule } from "aws-cdk-lib/aws-events";
+import { SfnStateMachine } from "aws-cdk-lib/aws-events-targets";
 import { DefinitionBody, StateMachine } from "aws-cdk-lib/aws-stepfunctions";
 import {
   EcsFargateLaunchTarget,
@@ -21,6 +23,7 @@ export interface PrismaStackConfig {}
 export interface PrismaStackProps extends PrismaStackConfig {
   prefix?: string;
   databaseUrl: string;
+  databaseArn: string;
   cluster: ICluster;
   subnets: ISubnet[];
 }
@@ -29,6 +32,7 @@ export class PrismaStack extends Construct {
   public readonly runTask: EcsRunTask;
   public readonly taskDefinition: FargateTaskDefinition;
   public readonly stateMachine: StateMachine;
+  public readonly databaseRule: Rule;
 
   public static readonly NAME = "prisma";
 
@@ -81,5 +85,16 @@ export class PrismaStack extends Construct {
       definitionBody: DefinitionBody.fromChainable(this.runTask),
       timeout: Duration.minutes(3),
     });
+
+    this.databaseRule = new Rule(this, "database-trigger", {
+      eventPattern: {
+        source: ["aws.rds"],
+        detail: {
+          SourceArn: [props.databaseArn],
+          EventID: ["RDS-EVENT-0006", "RDS-EVENT-0088"],
+        },
+      },
+    });
+    this.databaseRule.addTarget(new SfnStateMachine(this.stateMachine, {}));
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@repo/format",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "license": "MIT",
   "scripts": {
     "check": "prettier --config .prettierrc.json --ignore-path .prettierignore --check \"../../**/*.{ts,tsx,js,mjs,md,json}\"",

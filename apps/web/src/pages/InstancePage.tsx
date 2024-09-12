@@ -49,19 +49,33 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.instance.get, {
-        instanceID,
-      }),
-      getQueryKey(trpc.instance.getMany),
-      getQueryKey(trpc.instance.getList),
+      getQueryKey(
+        trpc.instance.get,
+        {
+          instanceID,
+        },
+        "any"
+      ),
+      getQueryKey(trpc.instance.getMany, undefined, "any"),
+      getQueryKey(trpc.instance.getList, undefined, "any"),
     ],
     []
   );
 
   const { mutateAsync: createInstanceJobs } =
     trpc.instance.createJobs.useMutation({
-      onSuccess() {
-        queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      onSuccess(_, { data }) {
+        const projectIDs: string[] = [
+          ...new Set<string>(data.flatMap(({ projectIDs }) => projectIDs)),
+        ];
+
+        const projectQueryKeys = projectIDs.map((projectID) =>
+          getQueryKey(trpc.project.get, { projectID }, "any")
+        );
+
+        [...queryKeys, ...projectQueryKeys].forEach((key) =>
+          queryClient.invalidateQueries(key)
+        );
       },
       onError: handleError,
     });
@@ -171,8 +185,8 @@ export const InstancePage = () => {
 
   const queryKeys = useMemo(
     () => [
-      getQueryKey(trpc.instance.getMany),
-      getQueryKey(trpc.instance.getList),
+      getQueryKey(trpc.instance.getMany, undefined, "any"),
+      getQueryKey(trpc.instance.getList, undefined, "any"),
     ],
     []
   );
