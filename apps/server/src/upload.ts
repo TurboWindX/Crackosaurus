@@ -1,8 +1,10 @@
 import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
+import fs from "fs";
 import path from "path";
 import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 
 import { PermissionType, hasPermission } from "@repo/api";
 
@@ -61,28 +63,40 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
       const multipart = await request.file();
       if (multipart === undefined) throw new TRPCError({ code: "BAD_REQUEST" });
 
-      const buffer = await streamToBuffer(multipart.file);
-      const checksum = crypto.createHash("sha256").update(buffer).digest("hex");
+      const fileName = path.basename(multipart.filename);
+      const tempPath = path.join("/tmp", `upload-${Date.now()}-${fileName}`);
 
+      // Stream file to disk
+      await pipeline(multipart.file, fs.createWriteStream(tempPath));
+
+      // Compute checksum from file stream (optional: stream again, or use hashing stream during first write)
+      const hash = crypto.createHash("sha256");
+      const fileStream = fs.createReadStream(tempPath);
+      for await (const chunk of fileStream) {
+        hash.update(chunk);
+      }
+      const checksum = hash.digest("hex");
+
+      // Check for duplicate
       if (
         await prisma.wordlist.findFirst({
-          select: {
-            WID: true,
-          },
-          where: {
-            checksum,
-          },
+          select: { WID: true },
+          where: { checksum },
         })
-      )
+      ) {
+        fs.unlinkSync(tempPath);
         throw new TRPCError({ code: "BAD_REQUEST" });
+      }
 
-      const fileName = path.basename(multipart.filename);
-      const size = buffer.length;
-
+      // Upload to remote and get wordlistID
+      const fileBuffer = fs.readFileSync(tempPath); // Only if necessary for remote upload
       const wordlistID = await uploadFile(
         `${url}/upload/wordlist`,
-        new File([buffer], checksum, { type: "text/plain" })
+        new File([fileBuffer], checksum, { type: "text/plain" })
       );
+
+      fs.unlinkSync(tempPath); // Clean up
+
       if (!wordlistID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
       return await prisma.$transaction(async (tx) => {
@@ -90,7 +104,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
           data: {
             WID: wordlistID,
             name: fileName,
-            size,
+            size: fileBuffer.length,
             checksum,
           },
         });

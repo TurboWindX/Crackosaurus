@@ -22,12 +22,15 @@ export const WordlistsPage = () => {
   const upload = useUpload();
   const { handleError } = useErrors();
 
+  const [progress, setProgress] = useState<number | null>(null);
+
   const queryKeys = useMemo(
     () => [
       getQueryKey(trpc.wordlist.getMany, undefined, "any"),
       getQueryKey(trpc.wordlist.getList, undefined, "any"),
     ],
     []
+    
   );
 
   const [file, setFile] = useState<File | null>(null);
@@ -52,11 +55,21 @@ export const WordlistsPage = () => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
 
-  const { mutateAsync: uploadWordlist } = useMutation({
-    mutationFn: upload.wordlist,
+  const { mutateAsync: uploadWordlist } = useMutation<
+  void,
+  Error,
+  { file: File; onProgress?: (percent: number) => void }
+  >({
+    mutationFn: async ({ file, onProgress }) => {
+      await upload.wordlist(file, onProgress);
+    },
     onSuccess() {
-      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
-      setFile(null);
+      setProgress(100);
+      setTimeout(() => {
+        queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+        setFile(null);
+        setProgress(null);
+      }, 1000);
     },
     onError: handleError,
   });
@@ -104,14 +117,30 @@ export const WordlistsPage = () => {
               file={file}
               onChange={(file) => setFile(file)}
             />
+        
+            {progress !== null && (
+              <div className="mt-4 w-full">
+                <div className="h-2 bg-gray-300 rounded">
+                  <div
+                    className="h-2 bg-blue-500 rounded transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+                <div className="text-sm text-gray-600 mt-1 text-center">
+                  {Math.round(progress)}%
+                </div>
+              </div>
+            )}
           </>
         }
+        
         noAdd={!hasPermission("wordlists:add")}
         onAdd={async () => {
-          uploadWordlist(file!);
-
+          setProgress(0);
+          await uploadWordlist({ file: file!, onProgress: setProgress });
           return true;
         }}
+        
         noRemove={!hasPermission("wordlists:remove")}
         onRemove={async (wordlists) => {
           await deleteWordlists({
