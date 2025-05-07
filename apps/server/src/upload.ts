@@ -3,7 +3,6 @@ import crypto from "crypto";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import fs from "fs";
 import path from "path";
-import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 
 import { PermissionType, hasPermission } from "@repo/api";
@@ -19,16 +18,6 @@ function checkPermission(permission: PermissionType) {
 
     next();
   };
-}
-
-async function streamToBuffer(stream: Readable): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Uint8Array[] = [];
-
-    stream.on("data", (chunk) => chunks.push(chunk));
-    stream.on("end", () => resolve(Buffer.concat(chunks)));
-    stream.on("error", (err) => reject(err));
-  });
 }
 
 async function uploadFile(url: string, file: File): Promise<string | null> {
@@ -88,8 +77,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
         throw new TRPCError({ code: "BAD_REQUEST" });
       }
 
-      // Upload to remote and get wordlistID
-      const fileBuffer = fs.readFileSync(tempPath); // Only if necessary for remote upload
+      const fileBuffer = fs.readFileSync(tempPath); 
       const wordlistID = await uploadFile(
         `${url}/upload/wordlist`,
         new File([fileBuffer], checksum, { type: "text/plain" })

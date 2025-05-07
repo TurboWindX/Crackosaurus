@@ -24,6 +24,7 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
       "p3.8xlarge",
       "p3.16xlarge",
       "p3dn.24xlarge",
+      "g3.16xlarge",
       "g4dn.xlarge",
       "g4dn.2xlarge",
       "g4dn.4xlarge",
