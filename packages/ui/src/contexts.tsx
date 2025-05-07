@@ -26,8 +26,10 @@ export const AuthContext = createContext<AuthInterface>({
 });
 
 export interface UploadInterface {
-  wordlist: (file: File, onProgress?: (percent: number) => void) => Promise<string | null>;
-
+  wordlist: (
+    file: File,
+    onProgress?: (percent: number) => void
+  ) => Promise<string | null>;
 }
 
 export const UploadContext = createContext<UploadInterface>({

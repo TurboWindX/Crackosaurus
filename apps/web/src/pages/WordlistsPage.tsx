@@ -30,7 +30,6 @@ export const WordlistsPage = () => {
       getQueryKey(trpc.wordlist.getList, undefined, "any"),
     ],
     []
-    
   );
 
   const [file, setFile] = useState<File | null>(null);
@@ -56,9 +55,9 @@ export const WordlistsPage = () => {
   }, [isLoadingError, error]);
 
   const { mutateAsync: uploadWordlist } = useMutation<
-  void,
-  Error,
-  { file: File; onProgress?: (percent: number) => void }
+    void,
+    Error,
+    { file: File; onProgress?: (percent: number) => void }
   >({
     mutationFn: async ({ file, onProgress }) => {
       await upload.wordlist(file, onProgress);
@@ -117,30 +116,28 @@ export const WordlistsPage = () => {
               file={file}
               onChange={(file) => setFile(file)}
             />
-        
+
             {progress !== null && (
               <div className="mt-4 w-full">
-                <div className="h-2 bg-gray-300 rounded">
+                <div className="h-2 rounded bg-gray-300">
                   <div
-                    className="h-2 bg-blue-500 rounded transition-all duration-300"
+                    className="h-2 rounded bg-blue-500 transition-all duration-300"
                     style={{ width: `${progress}%` }}
                   />
                 </div>
-                <div className="text-sm text-gray-600 mt-1 text-center">
+                <div className="mt-1 text-center text-sm text-gray-600">
                   {Math.round(progress)}%
                 </div>
               </div>
             )}
           </>
         }
-        
         noAdd={!hasPermission("wordlists:add")}
         onAdd={async () => {
           setProgress(0);
           await uploadWordlist({ file: file!, onProgress: setProgress });
           return true;
         }}
-        
         noRemove={!hasPermission("wordlists:remove")}
         onRemove={async (wordlists) => {
           await deleteWordlists({

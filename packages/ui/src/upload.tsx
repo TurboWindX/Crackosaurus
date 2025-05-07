@@ -45,7 +45,8 @@ export function UploadProvider({
   children: ReactNode;
 }) {
   const value: UploadInterface = {
-    wordlist: (file, onProgress) => uploadFile(`${url}/upload/wordlist`, file, onProgress),
+    wordlist: (file, onProgress) =>
+      uploadFile(`${url}/upload/wordlist`, file, onProgress),
   };
 
   return (
