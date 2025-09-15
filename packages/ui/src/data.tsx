@@ -25,6 +25,7 @@ export interface AddDialogProps {
   validate?: () => boolean;
   onSubmit?: () => void;
   children: ReactNode;
+  preventClose?: boolean;
 }
 
 export const AddDialog = ({
@@ -34,6 +35,7 @@ export const AddDialog = ({
   onSubmit,
   children,
   validate,
+  preventClose = false,
 }: AddDialogProps) => {
   const { t } = useTranslation();
 
@@ -47,6 +49,7 @@ export const AddDialog = ({
       title={t("action.add.item", { item: singular })}
       open={open}
       setOpen={setOpen}
+      preventClose={preventClose}
       trigger={
         <Button variant="outline">
           <div className="ui-grid ui-grid-flow-col ui-items-center ui-gap-2">
@@ -197,6 +200,7 @@ export interface DataTableProps<T> {
   onRemove?: (values: T[]) => Promise<boolean>;
   onImport?: (data: unknown[]) => Promise<boolean>;
   onExport?: (values: T[]) => Promise<unknown[]>;
+  preventAddDialogClose?: boolean;
   noAdd?: boolean;
   noRemove?: boolean;
   noImport?: boolean;
@@ -221,6 +225,7 @@ export function DataTable<T>({
   onRemove,
   onImport,
   onExport,
+  preventAddDialogClose = false,
   noAdd,
   noRemove,
   noImport,
@@ -308,6 +313,7 @@ export function DataTable<T>({
               open={addDialogOpen}
               setOpen={setAddDialogOpen}
               validate={addValidate}
+              preventClose={preventAddDialogClose}
               onSubmit={async () => {
                 if (await onAdd?.()) setAddDialogOpen(false);
               }}

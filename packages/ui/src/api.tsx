@@ -2,14 +2,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createTRPCReact, httpBatchLink } from "@trpc/react-query";
 import { ReactNode, useState } from "react";
 
-import type { AppRotuerOutput, AppRouter, AppRouterInput } from "@repo/server";
+import type { AppRouter, AppRouterInput, AppRouterOutput } from "@repo/server";
 
 import { AuthProvider } from "./auth";
 import { UploadProvider } from "./upload";
 
 const trpc = createTRPCReact<AppRouter>();
 export type tRPCInput = AppRouterInput;
-export type tRPCOutput = AppRotuerOutput;
+export type tRPCOutput = AppRouterOutput;
 
 export const useTRPC = () => {
   return trpc;

@@ -4,10 +4,11 @@ import { getQueryKey } from "@trpc/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Button } from "@repo/shadcn/components/ui/button";
 import { FilePicker } from "@repo/shadcn/components/ui/file-picker";
 import { useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
-import { DataTable } from "@repo/ui/data";
+import { DataTable, AddDialog } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
 import { RelativeTime } from "@repo/ui/time";
 import { useUpload } from "@repo/ui/upload";
@@ -23,6 +24,8 @@ export const WordlistsPage = () => {
   const { handleError } = useErrors();
 
   const [progress, setProgress] = useState<number | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
 
   const queryKeys = useMemo(
     () => [
@@ -33,6 +36,35 @@ export const WordlistsPage = () => {
   );
 
   const [file, setFile] = useState<File | null>(null);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+
+  // Prevent closing dialog during upload
+  const handleDialogOpenChange = (open: boolean) => {
+    if (!open && isUploading) {
+      // Don't allow closing during upload
+      return;
+    }
+    setAddDialogOpen(open);
+    
+    // Reset states when dialog closes
+    if (!open) {
+      setFile(null);
+      setProgress(null);
+      setIsUploading(false);
+      setAbortController(null);
+    }
+  };
+
+  // Cancel upload function
+  const handleCancelUpload = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+      setIsUploading(false);
+      setProgress(null);
+      setAddDialogOpen(false);
+    }
+  };
 
   const {
     data: wordlists,
@@ -57,10 +89,10 @@ export const WordlistsPage = () => {
   const { mutateAsync: uploadWordlist } = useMutation<
     void,
     Error,
-    { file: File; onProgress?: (percent: number) => void }
+    { file: File; onProgress?: (percent: number) => void; abortSignal?: AbortSignal }
   >({
-    mutationFn: async ({ file, onProgress }) => {
-      await upload.wordlist(file, onProgress);
+    mutationFn: async ({ file, onProgress, abortSignal }) => {
+      await upload.wordlist(file, onProgress, abortSignal);
     },
     onSuccess() {
       setProgress(100);
@@ -115,6 +147,7 @@ export const WordlistsPage = () => {
               placeholder={t("item.wordlist.singular")}
               file={file}
               onChange={(file) => setFile(file)}
+              disabled={isUploading}
             />
 
             {progress !== null && (
@@ -126,17 +159,48 @@ export const WordlistsPage = () => {
                   />
                 </div>
                 <div className="mt-1 text-center text-sm text-gray-600">
-                  {Math.round(progress)}%
+                  {Math.round(progress)}% {isUploading && "(uploading...)"}
                 </div>
+                {isUploading && (
+                  <div className="mt-2 flex justify-center">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCancelUpload}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      Cancel Upload
+                    </Button>
+                  </div>
+                )}
               </div>
             )}
           </>
         }
+        preventAddDialogClose={isUploading}
         noAdd={!hasPermission("wordlists:add")}
         onAdd={async () => {
+          const controller = new AbortController();
+          setAbortController(controller);
+          setIsUploading(true);
           setProgress(0);
-          await uploadWordlist({ file: file!, onProgress: setProgress });
-          return true;
+          try {
+            await uploadWordlist({ 
+              file: file!, 
+              onProgress: setProgress,
+              abortSignal: controller.signal
+            });
+            return true;
+          } catch (error) {
+            if (error instanceof Error && error.message === "Upload aborted") {
+              // Don't show error for user-initiated cancellation
+              return false;
+            }
+            throw error;
+          } finally {
+            setIsUploading(false);
+            setAbortController(null);
+          }
         }}
         noRemove={!hasPermission("wordlists:remove")}
         onRemove={async (wordlists) => {

@@ -1,6 +1,21 @@
+import {
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  PutObjectCommand,
+  S3Client,
+  UploadPartCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
+import config from "../config";
 import { permissionProcedure, t } from "../plugins/trpc";
+
+type PrismaTransaction = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>;
 
 export const wordlistRouter = t.router({
   get: permissionProcedure(["wordlists:get"])
@@ -23,8 +38,8 @@ export const wordlistRouter = t.router({
 
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
-        return tx.wordlist.findUniqueOrThrow({
+      return await prisma.$transaction(async (tx: PrismaTransaction) => {
+        const row = await tx.wordlist.findUniqueOrThrow({
           select: {
             WID: true,
             name: true,
@@ -36,6 +51,11 @@ export const wordlistRouter = t.router({
             WID: wordlistID,
           },
         });
+
+        return {
+          ...row,
+          size: Number(row.size as unknown as bigint),
+        };
       });
     }),
   getMany: permissionProcedure(["wordlists:get"])
@@ -53,8 +73,8 @@ export const wordlistRouter = t.router({
     .query(async (opts) => {
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
-        return tx.wordlist.findMany({
+      return await prisma.$transaction(async (tx: PrismaTransaction) => {
+        const rows = await tx.wordlist.findMany({
           select: {
             WID: true,
             name: true,
@@ -63,6 +83,20 @@ export const wordlistRouter = t.router({
             updatedAt: true,
           },
         });
+
+        return rows.map(
+          (row: {
+            WID: string;
+            name: string | null;
+            size: bigint;
+            checksum: string;
+            createdAt: Date;
+            updatedAt: Date;
+          }) => ({
+            ...row,
+            size: Number(row.size as unknown as bigint),
+          })
+        );
       });
     }),
   getList: permissionProcedure(["wordlists:get"])
@@ -77,7 +111,7 @@ export const wordlistRouter = t.router({
     .query(async (opts) => {
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: PrismaTransaction) => {
         return tx.wordlist.findMany({
           select: {
             WID: true,
@@ -125,7 +159,7 @@ export const wordlistRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: PrismaTransaction) => {
         const result = await cluster.wordlist.deleteMany.mutate({
           wordlistIDs,
         });
@@ -142,6 +176,176 @@ export const wordlistRouter = t.router({
 
         return count;
       });
+    }),
+  getUploadUrl: permissionProcedure(["wordlists:add"])
+    .input(
+      z.object({
+        fileName: z.string(),
+        fileSize: z.number().int().min(0),
+        checksum: z.string(),
+      })
+    )
+    .output(
+      z.object({
+        uploadUrl: z.string().optional(),
+        uploadId: z.string().optional(),
+        partUrls: z
+          .array(z.object({ partNumber: z.number(), url: z.string() }))
+          .optional(),
+        s3Key: z.string(),
+        wordlistId: z.string(),
+        isMultipart: z.boolean(),
+      })
+    )
+    .mutation(async (opts) => {
+      const { fileName, fileSize, checksum } = opts.input;
+      const { prisma } = opts.ctx;
+
+      // Extract bucket name from ARN (arn:aws:s3:::bucket-name)
+      const bucketName = config.s3.bucketArn.split(":").pop()!;
+
+      // Generate unique S3 key
+      const wordlistId = `wl_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+      const s3Key = `uploads/${wordlistId}/${fileName}`;
+
+      // Check for duplicate checksum
+      const existingWordlist = await prisma.wordlist.findFirst({
+        where: { checksum },
+        select: { WID: true },
+      });
+
+      if (existingWordlist) {
+        throw new Error("File with this checksum already exists");
+      }
+
+      // Create S3 client (will use IAM role from ECS task)
+      const s3Client = new S3Client({
+        region: process.env.AWS_REGION || "us-east-1",
+      });
+
+      // Note: Do not create a DB record here. We will only create it after
+      // the upload is completed successfully in the server complete handler.
+
+      // Use multipart upload for files larger than 5GB
+      const useMultipart = fileSize > 5 * 1024 * 1024 * 1024; // 5GB
+
+      if (useMultipart) {
+        // Create multipart upload
+        const createCommand = new CreateMultipartUploadCommand({
+          Bucket: bucketName,
+          Key: s3Key,
+          ContentType: "application/octet-stream",
+          Metadata: {
+            checksum,
+            originalName: fileName,
+            size: fileSize.toString(),
+          },
+        });
+
+        const multipartUpload = await s3Client.send(createCommand);
+        const uploadId = multipartUpload.UploadId!;
+
+        // Calculate number of parts (each part 100MB, minimum 5MB required by S3)
+        const partSize = 100 * 1024 * 1024; // 100MB per part
+        const numParts = Math.ceil(fileSize / partSize);
+
+        // Generate presigned URLs for each part
+        const partUrls = [];
+        for (let partNumber = 1; partNumber <= numParts; partNumber++) {
+          const uploadPartCommand = new UploadPartCommand({
+            Bucket: bucketName,
+            Key: s3Key,
+            PartNumber: partNumber,
+            UploadId: uploadId,
+          });
+
+          const partUrl = await getSignedUrl(s3Client, uploadPartCommand, {
+            expiresIn: 3600, // 1 hour
+          });
+
+          partUrls.push({ partNumber, url: partUrl });
+        }
+
+        return {
+          uploadId,
+          partUrls,
+          s3Key,
+          wordlistId,
+          isMultipart: true,
+        };
+      } else {
+        // Use single-part upload for smaller files
+        const putCommand = new PutObjectCommand({
+          Bucket: bucketName,
+          Key: s3Key,
+          ContentType: "application/octet-stream",
+          Metadata: {
+            checksum,
+            originalName: fileName,
+            size: fileSize.toString(),
+          },
+        });
+
+        // Generate presigned URL (expires in 1 hour)
+        const uploadUrl = await getSignedUrl(s3Client, putCommand, {
+          expiresIn: 3600,
+        });
+
+        return {
+          uploadUrl,
+          s3Key,
+          wordlistId,
+          isMultipart: false,
+        };
+      }
+    }),
+  completeMultipartUpload: permissionProcedure(["wordlists:add"])
+    .input(
+      z.object({
+        uploadId: z.string(),
+        s3Key: z.string(),
+        wordlistId: z.string(),
+        parts: z.array(
+          z.object({
+            partNumber: z.number(),
+            etag: z.string(),
+          })
+        ),
+      })
+    )
+    .output(z.object({ success: z.boolean() }))
+    .mutation(async (opts) => {
+      const { uploadId, s3Key, parts } = opts.input;
+
+      // Extract bucket name from ARN
+      const bucketName = config.s3.bucketArn.split(":").pop()!;
+
+      // Create S3 client
+      const s3Client = new S3Client({
+        region: process.env.AWS_REGION || "us-east-1",
+      });
+
+      try {
+        // Complete the multipart upload
+        const completeCommand = new CompleteMultipartUploadCommand({
+          Bucket: bucketName,
+          Key: s3Key,
+          UploadId: uploadId,
+          MultipartUpload: {
+            Parts: parts.map(({ partNumber, etag }) => ({
+              PartNumber: partNumber,
+              ETag: etag,
+            })),
+          },
+        });
+
+        await s3Client.send(completeCommand);
+
+        return { success: true };
+      } catch (error) {
+        console.error("Failed to complete multipart upload:", error);
+        throw new Error("Failed to complete multipart upload");
+      }
     }),
 });
 

@@ -408,6 +408,40 @@ export async function writeWordlistFile(
   fs.writeFileSync(wordlistFile, data);
 }
 
+export async function writeWordlistFileFromStream(
+  wordlistRoot: string,
+  wordlistID: string,
+  stream: NodeJS.ReadableStream
+): Promise<void> {
+  const wordlistFile = path.join(wordlistRoot, wordlistID);
+  const writeStream = fs.createWriteStream(wordlistFile);
+
+  return new Promise((resolve, reject) => {
+    // Use pipeline for better error handling
+    stream.pipe(writeStream);
+
+    writeStream.on("finish", () => {
+      console.log(`[writeWordlistFileFromStream] completed: ${wordlistID}`);
+      resolve();
+    });
+
+    writeStream.on("error", (err) => {
+      console.error(
+        `[writeWordlistFileFromStream] write error: ${err.message}`
+      );
+      reject(err);
+    });
+
+    stream.on("error", (err) => {
+      console.error(
+        `[writeWordlistFileFromStream] stream error: ${err.message}`
+      );
+      writeStream.destroy();
+      reject(err);
+    });
+  });
+}
+
 export async function deleteWordlistFile(
   wordlistRoot: string,
   wordlistID: string

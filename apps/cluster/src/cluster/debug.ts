@@ -69,6 +69,21 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
     return wordlistID;
   }
 
+  public async createWordlistFromStream(
+    stream: NodeJS.ReadableStream
+  ): Promise<string | null> {
+    const wordlistID = crypto.randomUUID();
+
+    console.log(`Creating wordlist ${wordlistID} from stream`);
+
+    // For debug cluster, just consume the stream without buffering
+    return new Promise((resolve, reject) => {
+      stream.on("end", () => resolve(wordlistID));
+      stream.on("error", reject);
+      stream.resume(); // Consume the stream
+    });
+  }
+
   public async deleteWordlist(wordlistID: string): Promise<boolean> {
     console.log(`Deleted wordlist ${wordlistID}`);
 

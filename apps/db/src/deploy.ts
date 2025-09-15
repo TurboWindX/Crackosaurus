@@ -26,13 +26,20 @@ function main(): void {
     { encoding: "utf-8", stdio: "inherit" }
   );
 
-  const deployProc = childProcess.spawnSync(
+  childProcess.spawnSync(
     "prisma",
     ["migrate", "deploy", `--schema=${schemaPath}`],
     { encoding: "utf-8", stdio: "inherit" }
   );
 
-  if ((deployProc.status ?? 1) !== 0) process.exit(1);
+  // Always ensure the DB schema exists (covers fresh DBs or empty migrations)
+  const pushProc = childProcess.spawnSync(
+    "prisma",
+    ["db", "push", `--schema=${schemaPath}`, "--accept-data-loss"],
+    { encoding: "utf-8", stdio: "inherit" }
+  );
+
+  if ((pushProc.status ?? 1) !== 0) process.exit(1);
 }
 
 if (require.main === module) main();

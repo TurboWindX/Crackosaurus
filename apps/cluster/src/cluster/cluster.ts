@@ -31,5 +31,9 @@ export abstract class Cluster<TConfig = undefined> {
 
   public abstract createWordlist(data: Buffer): Promise<string | null>;
 
+  public abstract createWordlistFromStream(
+    stream: NodeJS.ReadableStream
+  ): Promise<string | null>;
+
   public abstract deleteWordlist(wordlistID: string): Promise<boolean>;
 }

@@ -61,7 +61,10 @@ export class PrismaStack extends Construct {
       },
     });
 
-    this.taskDefinition = new FargateTaskDefinition(this, "task");
+    this.taskDefinition = new FargateTaskDefinition(this, "task", {
+      cpu: 1024,
+      memoryLimitMiB: 2048,
+    });
 
     this.taskDefinition.addContainer("container", {
       containerName: tag("container"),
@@ -83,7 +86,7 @@ export class PrismaStack extends Construct {
     this.stateMachine = new StateMachine(this, "trigger-task", {
       stateMachineName: tag("trigger-task"),
       definitionBody: DefinitionBody.fromChainable(this.runTask),
-      timeout: Duration.minutes(3),
+      timeout: Duration.minutes(10),
     });
 
     this.databaseRule = new Rule(this, "database-trigger", {

@@ -33,7 +33,7 @@ model Hash {
 model Wordlist {
   WID       String   @id @default(uuid())
   name      String?
-  size      Int
+  size      BigInt
   checksum  String
   jobs      Job[]
   createdAt DateTime @default(now())

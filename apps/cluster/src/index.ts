@@ -11,9 +11,18 @@ import { createContext } from "./plugins/trpc/context";
 import { AppRouter, appRouter } from "./routers";
 import { upload } from "./upload";
 
-const fastify = Fastify();
+const fastify = Fastify({
+  // allow large raw uploads (e.g., > 2 GiB)
+  bodyLimit: 5 * 1024 * 1024 * 1024,
+});
 
 fastify.get("/ping", {}, () => "pong");
+
+// Accept raw octet-stream uploads as a stream
+fastify.addContentTypeParser(
+  "application/octet-stream",
+  (_req, payload, done) => done(null, payload)
+);
 
 fastify.register(fastifyMultipart, {
   limits: {
