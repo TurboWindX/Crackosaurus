@@ -79,6 +79,8 @@ export class ClusterStack extends Construct {
 
     const volumeName = "crackosaurus";
     this.taskDefinition = new FargateTaskDefinition(this, "task", {
+      cpu: 2048, // Very high CPU for large file processing
+      memoryLimitMiB: 4096, // 4GB memory to handle 4GB+ files safely
       volumes: [
         {
           name: volumeName,
@@ -112,10 +114,12 @@ export class ClusterStack extends Construct {
       healthCheck: {
         command: [
           "CMD-SHELL",
-          `wget -q --tries=1 --spider http://localhost:${config.host.port}/ping || exit 1`,
+          `curl -f http://localhost:${config.host.port}/ping || exit 1`,
         ],
-        interval: Duration.seconds(30),
-        retries: 2,
+        interval: Duration.seconds(60),
+        retries: 5,
+        timeout: Duration.seconds(30),
+        startPeriod: Duration.minutes(2),
       },
       logging: LogDriver.awsLogs({
         streamPrefix: tag("container") ?? id,
@@ -141,6 +145,8 @@ export class ClusterStack extends Construct {
         subnets: props.subnets,
       },
       securityGroups: [serviceSG],
+      desiredCount: 1,
+      healthCheckGracePeriod: Duration.minutes(5),
     });
 
     this.service.node.addDependency(props.fileSystem);
@@ -167,6 +173,10 @@ export class ClusterStack extends Construct {
       })
       .configureHealthCheck({
         path: "/ping",
+        healthyThresholdCount: 2,
+        unhealthyThresholdCount: 5,
+        timeout: Duration.seconds(30),
+        interval: Duration.seconds(60),
       });
 
     this.service.connections.allowFrom(

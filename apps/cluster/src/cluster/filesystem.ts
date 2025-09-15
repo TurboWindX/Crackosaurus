@@ -15,6 +15,7 @@ import {
   writeInstanceMetadata,
   writeJobMetadata,
   writeWordlistFile,
+  writeWordlistFileFromStream,
 } from "@repo/filesystem/cluster";
 import { createWordlistFolder } from "@repo/filesystem/wordlist";
 
@@ -158,6 +159,20 @@ export abstract class FileSystemCluster<
     const wordlistID = crypto.randomUUID();
 
     await writeWordlistFile(this.config.wordlistRoot, wordlistID, data);
+
+    return wordlistID;
+  }
+
+  public async createWordlistFromStream(
+    stream: NodeJS.ReadableStream
+  ): Promise<string | null> {
+    const wordlistID = crypto.randomUUID();
+
+    await writeWordlistFileFromStream(
+      this.config.wordlistRoot,
+      wordlistID,
+      stream
+    );
 
     return wordlistID;
   }

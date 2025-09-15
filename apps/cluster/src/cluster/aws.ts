@@ -21,6 +21,7 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
   public getTypes(): string[] {
     return [
       DEFAULT_TYPE,
+      "t3.small",
       "p3.8xlarge",
       "p3.16xlarge",
       "p3dn.24xlarge",
@@ -34,6 +35,7 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
       "g5.2xlarge",
       "g5.4xlarge",
       "g5.8xlarge",
+      "g5.48xlarge",
     ];
   }
 

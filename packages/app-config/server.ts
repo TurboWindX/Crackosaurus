@@ -8,7 +8,7 @@ import {
   WEB_DEFAULT_PORT,
 } from "./host";
 
-const BACKEND_ENV = {
+export const BACKEND_ENV = {
   backendHost: "BACKEND_HOST",
   backendPort: "BACKEND_PORT",
   backendSecret: "BACKEND_SECRET",
@@ -18,6 +18,8 @@ const BACKEND_ENV = {
   webPort: "WEB_PORT",
   clusterHost: "CLUSTER_HOST",
   clusterPort: "CLUSTER_PORT",
+  s3BucketArn: "S3_BUCKET_ARN",
+  s3RoleArn: "S3_ROLE_ARN",
 } as const;
 
 export const BACKEND_DEFAULT_SECRET = "$SECRET:123456789012345678901234567890$";
@@ -40,12 +42,24 @@ export const BACKEND_CONFIG = z.object({
     port: z.number().int().min(0),
   }),
   secret: z.string().min(32),
+  s3: z.object({
+    bucketArn: z.string(),
+    roleArn: z.string(),
+  }),
 });
 export type BackendConfig = z.infer<typeof BACKEND_CONFIG>;
 
 export function loadBackendConfig(): BackendConfig {
-  if (!process.env[BACKEND_ENV.databasePath])
-    process.env[BACKEND_ENV.databasePath] = "file:./db.sqlite";
+  if (!process.env[BACKEND_ENV.databasePath]) {
+    // Set appropriate default based on provider
+    const provider = process.env[BACKEND_ENV.databaseProvider] ?? "sqlite";
+    if (provider === "postgresql") {
+      process.env[BACKEND_ENV.databasePath] =
+        "postgresql://user:password@localhost:5432/crackosaurus";
+    } else {
+      process.env[BACKEND_ENV.databasePath] = "file:./db.sqlite";
+    }
+  }
 
   return BACKEND_CONFIG.parse({
     host: {
@@ -72,6 +86,10 @@ export function loadBackendConfig(): BackendConfig {
       ),
     },
     secret: process.env[BACKEND_ENV.backendSecret] ?? BACKEND_DEFAULT_SECRET,
+    s3: {
+      bucketArn: process.env[BACKEND_ENV.s3BucketArn] ?? "",
+      roleArn: process.env[BACKEND_ENV.s3RoleArn] ?? "",
+    },
   } satisfies BackendConfig);
 }
 
@@ -82,6 +100,8 @@ export function argsBackendConfig(
     [BACKEND_ENV.backendHost]: config.host.name,
     [BACKEND_ENV.backendPort]: config.host.port.toString(),
     [BACKEND_ENV.databaseProvider]: config.database.provider,
+    [BACKEND_ENV.s3BucketArn]: config.s3.bucketArn,
+    [BACKEND_ENV.s3RoleArn]: config.s3.roleArn,
   };
 }
 
@@ -95,5 +115,7 @@ export function envBackendConfig(
     [BACKEND_ENV.databasePath]: config.database.path,
     [BACKEND_ENV.clusterHost]: config.cluster.name,
     [BACKEND_ENV.clusterPort]: config.cluster.port.toString(),
+    [BACKEND_ENV.s3BucketArn]: config.s3.bucketArn,
+    [BACKEND_ENV.s3RoleArn]: config.s3.roleArn,
   };
 }

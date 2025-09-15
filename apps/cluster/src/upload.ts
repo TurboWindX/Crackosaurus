@@ -30,5 +30,16 @@ export const upload: FastifyPluginCallback = (instance, _opts, next) => {
     return await cluster.createWordlist(buffer);
   });
 
+  // Raw octet-stream alternative to avoid multipart limits for very large files
+  instance.post("/wordlist/raw", {}, async (request: FastifyRequest) => {
+    const cluster = (
+      request.server as unknown as Record<string, Cluster<unknown>>
+    ).cluster!;
+
+    // request.body is a Readable stream thanks to the content type parser
+    const raw = request.body as unknown as Readable;
+    return await cluster.createWordlistFromStream(raw);
+  });
+
   next();
 };

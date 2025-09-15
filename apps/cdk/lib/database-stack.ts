@@ -56,7 +56,7 @@ export class DatabaseStack extends Construct {
       port: props.port,
       instanceType: InstanceType.of(InstanceClass.T3, InstanceSize.MICRO),
       engine: DatabaseInstanceEngine.postgres({
-        version: PostgresEngineVersion.VER_16_2,
+        version: PostgresEngineVersion.VER_16_3,
       }),
       storageEncryptionKey: this.storageEncryptionKey,
       credentials: Credentials.fromSecret(props.credentials),

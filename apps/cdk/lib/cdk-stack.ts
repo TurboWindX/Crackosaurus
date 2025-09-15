@@ -16,7 +16,9 @@ export class CdkStack extends Stack {
       database: {},
       cluster: {},
       prisma: {},
-      server: {},
+      server: {
+        internet: true,
+      },
       instance: {},
     });
   }

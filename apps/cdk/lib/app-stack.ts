@@ -9,6 +9,7 @@ import { ClusterStack, ClusterStackConfig } from "./cluster-stack";
 import { DatabaseStack, DatabaseStackConfig } from "./database-stack";
 import { InstanceStack, InstanceStackConfig } from "./instance-stack";
 import { PrismaStack, PrismaStackConfig } from "./prisma-stack";
+import { S3Stack } from "./s3-stack";
 import { ServerStack, ServerStackConfig } from "./server-stack";
 import { StorageStack } from "./storage-stack";
 
@@ -82,6 +83,7 @@ export class AppStack extends Construct {
   public readonly instance: InstanceStack;
   public readonly server: ServerStack;
   public readonly storage: StorageStack;
+  public readonly s3: S3Stack;
   public readonly prisma: PrismaStack;
 
   public static readonly DEFAULT_DATABASE_USER = "postgres";
@@ -211,6 +213,10 @@ export class AppStack extends Construct {
       subnets: subnets.app,
     });
 
+    this.s3 = new S3Stack(this, {
+      prefix,
+    });
+
     this.instance = new InstanceStack(this, {
       ...props.instance,
       prefix,
@@ -247,6 +253,8 @@ export class AppStack extends Construct {
       loadBalancerSubnets: subnets.internet,
       clusterLoaderBalancer: this.cluster.loadBalancer,
       databaseUrl,
+      uploadsBucketArn: this.s3.uploadsBucketArn,
+      s3PresignedUrlRoleArn: this.s3.s3PresignedUrlRoleArn,
     });
 
     // Make sure database is built before running server.
