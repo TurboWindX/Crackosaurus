@@ -201,8 +201,11 @@ export const wordlistRouter = t.router({
       const { fileName, fileSize, checksum } = opts.input;
       const { prisma } = opts.ctx;
 
-      // Extract bucket name from ARN (arn:aws:s3:::bucket-name)
-      const bucketName = config.s3.bucketArn.split(":").pop()!;
+      // Get bucket name from config
+      const bucketName = config.s3.bucketArn.split(':').pop();
+      if (!bucketName) {
+        throw new Error("Invalid S3 bucket ARN configuration");
+      }
 
       // Generate unique S3 key
       const wordlistId = `wl_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
@@ -218,9 +221,27 @@ export const wordlistRouter = t.router({
         throw new Error("File with this checksum already exists");
       }
 
-      // Create S3 client (will use IAM role from ECS task)
+      // Create S3 client with LocalStack configuration for internal operations
       const s3Client = new S3Client({
         region: process.env.AWS_REGION || "us-east-1",
+        endpoint: process.env.AWS_ENDPOINT_URL,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test"
+        },
+        forcePathStyle: true // Required for LocalStack
+      });
+
+      // Create separate S3 client for presigned URLs with public endpoint
+      const publicEndpoint = config.s3.publicEndpoint || process.env.AWS_ENDPOINT_URL;
+      const s3ClientForPresign = new S3Client({
+        region: process.env.AWS_REGION || "us-east-1",
+        endpoint: publicEndpoint,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test"
+        },
+        forcePathStyle: true
       });
 
       // Note: Do not create a DB record here. We will only create it after
@@ -259,7 +280,7 @@ export const wordlistRouter = t.router({
             UploadId: uploadId,
           });
 
-          const partUrl = await getSignedUrl(s3Client, uploadPartCommand, {
+          const partUrl = await getSignedUrl(s3ClientForPresign, uploadPartCommand, {
             expiresIn: 3600, // 1 hour
           });
 
@@ -287,7 +308,7 @@ export const wordlistRouter = t.router({
         });
 
         // Generate presigned URL (expires in 1 hour)
-        const uploadUrl = await getSignedUrl(s3Client, putCommand, {
+        const uploadUrl = await getSignedUrl(s3ClientForPresign, putCommand, {
           expiresIn: 3600,
         });
 
@@ -317,12 +338,21 @@ export const wordlistRouter = t.router({
     .mutation(async (opts) => {
       const { uploadId, s3Key, parts } = opts.input;
 
-      // Extract bucket name from ARN
-      const bucketName = config.s3.bucketArn.split(":").pop()!;
+      // Get bucket name from config
+      const bucketName = config.s3.bucketArn.split(':').pop();
+      if (!bucketName) {
+        throw new Error("Invalid S3 bucket ARN configuration");
+      }
 
-      // Create S3 client
+      // Create S3 client with LocalStack configuration
       const s3Client = new S3Client({
         region: process.env.AWS_REGION || "us-east-1",
+        endpoint: process.env.AWS_ENDPOINT_URL,
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test"
+        },
+        forcePathStyle: true // Required for LocalStack
       });
 
       try {

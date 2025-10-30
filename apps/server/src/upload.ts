@@ -177,12 +177,15 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
     // Extract bucket name from ARN
     const bucketName = config.s3.bucketArn.split(":").pop()!;
 
-    // Create S3 client
+    // Create S3 client with LocalStack configuration
     const s3Client = new S3Client({
-      region:
-        process.env.AWS_REGION ||
-        process.env.AWS_DEFAULT_REGION ||
-        "ca-central-1",
+      region: process.env.AWS_REGION || "us-east-1",
+      endpoint: process.env.AWS_ENDPOINT_URL,
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test"
+      },
+      forcePathStyle: true, // Required for LocalStack
     });
 
     try {

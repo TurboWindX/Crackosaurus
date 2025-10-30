@@ -19,7 +19,7 @@
     "@fastify/multipart": "^8.3.0",
     "@fastify/session": "^10.9.0",
     "@fastify/static": "^7.0.4",
-    "@prisma/client": "^5.18.0",
+    "@prisma/client": "^6.18.0",
     "@repo/api": "*",
     "@repo/app-config": "*",
     "@repo/hashcat": "*",

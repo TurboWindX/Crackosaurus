@@ -20,6 +20,7 @@ export const BACKEND_ENV = {
   clusterPort: "CLUSTER_PORT",
   s3BucketArn: "S3_BUCKET_ARN",
   s3RoleArn: "S3_ROLE_ARN",
+  s3PublicEndpoint: "S3_PUBLIC_ENDPOINT_URL",
 } as const;
 
 export const BACKEND_DEFAULT_SECRET = "$SECRET:123456789012345678901234567890$";
@@ -45,6 +46,7 @@ export const BACKEND_CONFIG = z.object({
   s3: z.object({
     bucketArn: z.string(),
     roleArn: z.string(),
+    publicEndpoint: z.string().optional(),
   }),
 });
 export type BackendConfig = z.infer<typeof BACKEND_CONFIG>;
@@ -89,6 +91,7 @@ export function loadBackendConfig(): BackendConfig {
     s3: {
       bucketArn: process.env[BACKEND_ENV.s3BucketArn] ?? "",
       roleArn: process.env[BACKEND_ENV.s3RoleArn] ?? "",
+      publicEndpoint: process.env[BACKEND_ENV.s3PublicEndpoint],
     },
   } satisfies BackendConfig);
 }

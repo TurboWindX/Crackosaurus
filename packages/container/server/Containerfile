@@ -2,7 +2,7 @@ FROM docker.io/node:20-alpine3.20 AS base
 
 
 RUN apk update
-RUN apk add curl
+RUN apk add curl openssl
 RUN npm install -g turbo
 
 WORKDIR /app
@@ -26,7 +26,13 @@ RUN NODE_ENV=production turbo run build --filter=@repo/db
 
 ARG DATABASE_PROVIDER
 
-RUN DATABASE_PROVIDER=$DATABASE_PROVIDER npm run generate:run -w apps/db
+WORKDIR /app/apps/db
+
+RUN DATABASE_PROVIDER=$DATABASE_PROVIDER node dist/schema.js && \
+    npm install @prisma/client && \
+    npx prisma generate --schema=providers/${DATABASE_PROVIDER}/schema.prisma
+
+WORKDIR /app
 
 ARG BACKEND_HOST
 ARG BACKEND_PORT

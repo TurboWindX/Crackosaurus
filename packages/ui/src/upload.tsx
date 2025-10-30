@@ -160,6 +160,29 @@ async function getPresignedUrl(
   }
 }
 
+function rewritePresignedUrlForBrowser(originalUrl: string) {
+  try {
+    const u = new URL(originalUrl);
+    // If hostname looks like <bucket>.localstack (with optional port),
+    // convert to path-style on localhost:4566 so the browser can resolve it.
+    if (u.hostname.includes("localstack") && u.hostname.includes(".")) {
+      const bucket = u.hostname.split(".")[0];
+      // Use localhost and the default localstack gateway port
+      u.host = `localhost:4566`;
+      u.pathname = `/${bucket}${u.pathname}`;
+      return u.toString();
+    }
+    // Also replace any hostname that contains localstack to localhost
+    if (u.hostname.includes("localstack")) {
+      u.host = u.host.replace("localstack", "localhost");
+      return u.toString();
+    }
+    return originalUrl;
+  } catch (err) {
+    return originalUrl;
+  }
+}
+
 async function calculateChecksum(file: File): Promise<string> {
   try {
     // Check if we're in a secure context
@@ -267,11 +290,22 @@ export function UploadProvider({
           isMultipart,
         } = uploadInfo;
 
+        // Rewrite presigned URLs returned by the server so they resolve from the
+        // browser (convert bucket.localstack:4566 -> localhost:4566/<bucket>/...)
+        const rewrittenPartUrls = partUrls?.map(({ partNumber, url }) => ({
+          partNumber,
+          url: rewritePresignedUrlForBrowser(url),
+        }));
+
+        const rewrittenUploadUrl = uploadUrl
+          ? rewritePresignedUrlForBrowser(uploadUrl)
+          : undefined;
+
         if (isMultipart && partUrls && uploadId) {
           // Multipart upload for large files
           onProgress?.(10);
 
-          const parts = await uploadMultipart(file, partUrls, (percent) => {
+          const parts = await uploadMultipart(file, rewrittenPartUrls || [], (percent) => {
             // Scale progress from 10% to 90%
             onProgress?.(10 + percent * 0.8);
           }, abortSignal);
@@ -284,10 +318,10 @@ export function UploadProvider({
             wordlistId,
             parts,
           });
-        } else if (uploadUrl) {
+        } else if (rewrittenUploadUrl) {
           // Single-part upload for smaller files
           onProgress?.(10);
-          await uploadFile(uploadUrl, file, (percent) => {
+          await uploadFile(rewrittenUploadUrl, file, (percent) => {
             // Scale progress from 10% to 90%
             onProgress?.(10 + percent * 0.8);
           }, abortSignal);

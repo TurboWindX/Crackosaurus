@@ -20,10 +20,13 @@ function main(): void {
   if (!fs.existsSync(schemaPath))
     throw ReferenceError(`Could not find schema at ${schemaPath}`);
 
-  const schema = fs.readFileSync(schemaPath, { encoding: "utf-8" });
+  // Read provider-specific configuration (generator and datasource)
+  const providerConfig = fs.readFileSync(schemaPath, { encoding: "utf-8" });
 
-  const mergedSchema = `${schema}\n${COMMON_SCHEMA}`;
+  // Create the final schema with provider config first, then common models
+  const mergedSchema = `${providerConfig}\n\n// Common models\n${COMMON_SCHEMA}`;
 
+  // Write the merged schema to the provider directory
   const mergeSchemaPath = path.join(providerPath, "schema.prisma");
   fs.writeFileSync(mergeSchemaPath, mergedSchema);
 }

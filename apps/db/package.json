@@ -14,13 +14,13 @@
     "migrate:run": "node dist/schema.js && node dist/migrate.js"
   },
   "dependencies": {
-    "@repo/app-config": "*"
+    "@repo/app-config": "*",
+    "@prisma/client": "^6.18.0"
   },
   "devDependencies": {
-    "@prisma/client": "^6.18.0",
     "@repo/typescript-config": "*",
     "@rollup/plugin-node-resolve": "^15.2.3",
-    "prisma": "^5.22.0",
+    "prisma": "^6.18.0",
     "rollup": "^4.20.0",
     "rollup-plugin-esbuild": "^6.1.1"
   }
