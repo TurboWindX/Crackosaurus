@@ -2,7 +2,6 @@ import {
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   PutObjectCommand,
-  S3Client,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -10,7 +9,9 @@ import type { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import config from "../config";
+import { getInitializedBucketName } from "../plugins/s3Init";
 import { permissionProcedure, t } from "../plugins/trpc";
+import { createS3Client } from "../utils/s3";
 
 type PrismaTransaction = Omit<
   PrismaClient,
@@ -201,11 +202,8 @@ export const wordlistRouter = t.router({
       const { fileName, fileSize, checksum } = opts.input;
       const { prisma } = opts.ctx;
 
-      // Get bucket name from config
-      const bucketName = config.s3.bucketArn.split(':').pop();
-      if (!bucketName) {
-        throw new Error("Invalid S3 bucket ARN configuration");
-      }
+      // Get bucket name (initialized at server startup)
+      const bucketName = getInitializedBucketName();
 
       // Generate unique S3 key
       const wordlistId = `wl_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
@@ -221,28 +219,9 @@ export const wordlistRouter = t.router({
         throw new Error("File with this checksum already exists");
       }
 
-      // Create S3 client with LocalStack configuration for internal operations
-      const s3Client = new S3Client({
-        region: process.env.AWS_REGION || "us-east-1",
-        endpoint: process.env.AWS_ENDPOINT_URL,
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test"
-        },
-        forcePathStyle: true // Required for LocalStack
-      });
-
-      // Create separate S3 client for presigned URLs with public endpoint
-      const publicEndpoint = config.s3.publicEndpoint || process.env.AWS_ENDPOINT_URL;
-      const s3ClientForPresign = new S3Client({
-        region: process.env.AWS_REGION || "us-east-1",
-        endpoint: publicEndpoint,
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test"
-        },
-        forcePathStyle: true
-      });
+      // Create S3 clients for internal operations and presigned URLs
+      const s3Client = createS3Client(config);
+      const s3ClientForPresign = createS3Client(config, { usePublicEndpoint: true });
 
       // Note: Do not create a DB record here. We will only create it after
       // the upload is completed successfully in the server complete handler.
@@ -338,22 +317,11 @@ export const wordlistRouter = t.router({
     .mutation(async (opts) => {
       const { uploadId, s3Key, parts } = opts.input;
 
-      // Get bucket name from config
-      const bucketName = config.s3.bucketArn.split(':').pop();
-      if (!bucketName) {
-        throw new Error("Invalid S3 bucket ARN configuration");
-      }
+      // Get bucket name (initialized at server startup)
+      const bucketName = getInitializedBucketName();
 
-      // Create S3 client with LocalStack configuration
-      const s3Client = new S3Client({
-        region: process.env.AWS_REGION || "us-east-1",
-        endpoint: process.env.AWS_ENDPOINT_URL,
-        credentials: {
-          accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test"
-        },
-        forcePathStyle: true // Required for LocalStack
-      });
+      // Create S3 client
+      const s3Client = createS3Client(config);
 
       try {
         // Complete the multipart upload

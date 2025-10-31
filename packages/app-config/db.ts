@@ -5,11 +5,12 @@ const DATABASE_ENV = {
   databasePath: "DATABASE_PATH",
 } as const;
 
-export const DATABASE_PROVIDERS = ["postgresql"] as const;
+export const DATABASE_PROVIDERS = ["postgresql", "sqlite"] as const;
 export type DatabaseProvider = (typeof DATABASE_PROVIDERS)[number];
 
 export const DATABASE_PROVIDER = {
   Postgres: DATABASE_PROVIDERS[0],
+  Sqlite: DATABASE_PROVIDERS[1],
 } as const;
 
 export const DATABASE_CONFIG = z.object({

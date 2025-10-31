@@ -10,42 +10,78 @@ Crackosaurus is designed to be deployable anywhere. Find your favorite infrastru
 
 ### ☁️ AWS CDK
 
-AWS CDK is recommended to deploy on the cloud.
+AWS CDK deployment provides a complete, production-ready infrastructure with:
 
-It is strongly recommended to make a [private fork](https://gist.github.com/0xjac/85097472043b697ab57ba1b1c7530274) of this repository. Make a branch `YOUR_ORG` and copy `apps/cdk/lib/cdk-stack.ts` to `apps/cdk/lib/YOUR_ORG-stack.ts` and update `apps/cdk/bin/cdk.ts` to point to your new stack. This will allow to tweak the infrastructure settings.
+- **VPC** with multi-AZ high availability
+- **RDS PostgreSQL 16** with automated backups and secrets management
+- **ECS Fargate** for serverless container deployment
+- **Application Load Balancer** with health checks
+- **Auto-scaling** in production (2-10 tasks based on CPU)
+- **S3 auto-creation** with dynamic bucket naming (`crackosaurus-*`)
+- **IAM roles** with least-privilege permissions
+- **CloudWatch Logs** for monitoring
+- **Service Discovery** for inter-service communication
 
-#### Dependencies
+#### Quick Start
 
-- [Docker](https://www.docker.com/)
-- [Node](https://nodejs.org/en)
-- [NPM](https://www.npmjs.com/)
+See [apps/cdk/DEPLOYMENT.md](apps/cdk/DEPLOYMENT.md) for comprehensive instructions.
 
-For Docker, make sure that the deployment user is part of the `docker` group:
+**Prerequisites:**
+- AWS CLI configured with credentials
+- Docker running locally
+- Node.js 18+
 
-```
-sudo usermod -aG docker YOUR_USERNAME
-```
+**Deploy in 3 steps:**
 
-#### Deploy
+```powershell
+# 1. Setup ECR and build images
+.\apps\cdk\setup-ecr.ps1 -Region ca-central-1
 
-```
-npm install
+# 2. Bootstrap CDK (once per account)
 cd apps/cdk
-AWS_PROFILE=YOUR_PROFILE npm run cdk bootstrap
-AWS_PROFILE=YOUR_PROFILE npm run cdk deploy
+npx cdk bootstrap
+
+# 3. Deploy the stack
+.\cdk-helper.ps1 -Action deploy -Environment dev
 ```
 
-Setup the platform using:
+**Environment Options:**
+- `dev`: Cost-optimized (db.t3.micro, 1 task) - ~$100/month
+- `prod`: Production-ready (db.t3.medium, auto-scaling) - ~$350+/month
 
+**Access your deployment:**
+The Application Load Balancer DNS will be in the CloudFormation outputs.
+
+#### Helper Scripts
+
+```powershell
+# Deploy to production
+.\apps\cdk\cdk-helper.ps1 -Action deploy -Environment prod
+
+# View differences before deploying
+.\apps\cdk\cdk-helper.ps1 -Action diff -Environment dev
+
+# Check deployment outputs
+.\apps\cdk\cdk-helper.ps1 -Action outputs -Environment dev
+
+# View logs
+.\apps\cdk\cdk-helper.ps1 -Action logs -Environment dev
+
+# Destroy stack
+.\apps\cdk\cdk-helper.ps1 -Action destroy -Environment dev
 ```
-http://LINK_TO_APP/setup
-```
 
-Note: run the deploy step function once the containers are running.
+#### Documentation
 
-#### Infrastructure
+- **[DEPLOYMENT.md](apps/cdk/DEPLOYMENT.md)** - Complete deployment guide
+- **[README.md](apps/cdk/README.md)** - Quick reference and architecture
 
-![Diagram](.github/aws/diagram.png)
+#### Key Features
+
+- **No manual S3 setup**: Buckets auto-created with `crackosaurus-{random}` naming
+- **Secure by default**: Secrets Manager for passwords, IAM roles for authentication
+- **Production-ready**: Auto-scaling, multi-AZ, deletion protection in prod
+- **Cost-optimized**: Single NAT Gateway, right-sized instances per environment
 
 ### 🐋 Docker
 

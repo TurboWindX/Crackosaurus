@@ -90,9 +90,8 @@ services:
       AWS_SECRET_ACCESS_KEY: test
       AWS_DEFAULT_REGION: us-east-1
       AWS_ENDPOINT_URL: http://localstack:4566
-      S3_BUCKET_ARN: arn:aws:s3:::crackosaurus-wordlists
-      S3_ROLE_ARN: arn:aws:iam::000000000000:role/CrackosaurusS3Role
       S3_PUBLIC_ENDPOINT_URL: http://localhost:4566
+      # S3_BUCKET_NAME will be auto-generated if not specified (crackosaurus-{random})
     ports:
       - "8080:8080"
     networks:

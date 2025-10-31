@@ -1,4 +1,4 @@
-import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
@@ -7,6 +7,9 @@ import fs from "fs";
 import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
+
+import { getInitializedBucketName } from "./plugins/s3Init";
+import { createS3Client } from "./utils/s3";
 
 import { PermissionType, hasPermission } from "@repo/api";
 
@@ -174,19 +177,11 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
       throw new TRPCError({ code: "BAD_REQUEST" });
     }
 
-    // Extract bucket name from ARN
-    const bucketName = config.s3.bucketArn.split(":").pop()!;
+    // Get bucket name (initialized at server startup)
+    const bucketName = getInitializedBucketName();
 
-    // Create S3 client with LocalStack configuration
-    const s3Client = new S3Client({
-      region: process.env.AWS_REGION || "us-east-1",
-      endpoint: process.env.AWS_ENDPOINT_URL,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test"
-      },
-      forcePathStyle: true, // Required for LocalStack
-    });
+    // Create S3 client
+    const s3Client = createS3Client(config);
 
     try {
       console.log("[upload.complete] start", { bucketName, s3Key, wordlistId });

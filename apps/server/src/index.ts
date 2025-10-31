@@ -14,6 +14,7 @@ import path from "path";
 import config from "./config";
 import { clusterPlugin } from "./plugins/cluster/plugin";
 import prismaPlugin from "./plugins/prisma";
+import s3InitPlugin from "./plugins/s3Init";
 import { createContext } from "./plugins/trpc/context";
 import { AppRouter, appRouter } from "./routers";
 import { upload } from "./upload";
@@ -30,7 +31,7 @@ fastify.register(fastifySession, {
   secret: config.secret,
   cookie: {
     secure: false,
-    maxAge: 900000, // 15 minutes in milliseconds
+    maxAge: 3600000, // 1 hour in milliseconds
   },
 });
 fastify.register(fastifyMultipart, {
@@ -51,6 +52,8 @@ if (fs.existsSync(staticFolder)) {
 }
 
 fastify.register(prismaPlugin);
+
+fastify.register(s3InitPlugin);
 
 fastify.register(clusterPlugin, {
   pollingRateMs: 1000,

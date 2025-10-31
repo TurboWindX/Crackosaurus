@@ -18,9 +18,11 @@ export const BACKEND_ENV = {
   webPort: "WEB_PORT",
   clusterHost: "CLUSTER_HOST",
   clusterPort: "CLUSTER_PORT",
-  s3BucketArn: "S3_BUCKET_ARN",
+  s3BucketName: "S3_BUCKET_NAME",
+  s3BucketArn: "S3_BUCKET_ARN", // Deprecated, use S3_BUCKET_NAME
   s3RoleArn: "S3_ROLE_ARN",
   s3PublicEndpoint: "S3_PUBLIC_ENDPOINT_URL",
+  nodeEnv: "NODE_ENV",
 } as const;
 
 export const BACKEND_DEFAULT_SECRET = "$SECRET:123456789012345678901234567890$";
@@ -44,10 +46,12 @@ export const BACKEND_CONFIG = z.object({
   }),
   secret: z.string().min(32),
   s3: z.object({
-    bucketArn: z.string(),
-    roleArn: z.string(),
+    bucketName: z.string().optional(),
+    bucketArn: z.string().optional(), // Deprecated, for backward compatibility
+    roleArn: z.string().optional(),
     publicEndpoint: z.string().optional(),
   }),
+  environment: z.enum(["development", "production"]).default("development"),
 });
 export type BackendConfig = z.infer<typeof BACKEND_CONFIG>;
 
@@ -89,10 +93,12 @@ export function loadBackendConfig(): BackendConfig {
     },
     secret: process.env[BACKEND_ENV.backendSecret] ?? BACKEND_DEFAULT_SECRET,
     s3: {
-      bucketArn: process.env[BACKEND_ENV.s3BucketArn] ?? "",
-      roleArn: process.env[BACKEND_ENV.s3RoleArn] ?? "",
+      bucketName: process.env[BACKEND_ENV.s3BucketName],
+      bucketArn: process.env[BACKEND_ENV.s3BucketArn],
+      roleArn: process.env[BACKEND_ENV.s3RoleArn],
       publicEndpoint: process.env[BACKEND_ENV.s3PublicEndpoint],
     },
+    environment: (process.env[BACKEND_ENV.nodeEnv] === "production" ? "production" : "development") as "development" | "production",
   } satisfies BackendConfig);
 }
 
@@ -103,8 +109,9 @@ export function argsBackendConfig(
     [BACKEND_ENV.backendHost]: config.host.name,
     [BACKEND_ENV.backendPort]: config.host.port.toString(),
     [BACKEND_ENV.databaseProvider]: config.database.provider,
-    [BACKEND_ENV.s3BucketArn]: config.s3.bucketArn,
-    [BACKEND_ENV.s3RoleArn]: config.s3.roleArn,
+    ...(config.s3.bucketName && { [BACKEND_ENV.s3BucketName]: config.s3.bucketName }),
+    ...(config.s3.bucketArn && { [BACKEND_ENV.s3BucketArn]: config.s3.bucketArn }),
+    ...(config.s3.roleArn && { [BACKEND_ENV.s3RoleArn]: config.s3.roleArn }),
   };
 }
 
@@ -118,7 +125,8 @@ export function envBackendConfig(
     [BACKEND_ENV.databasePath]: config.database.path,
     [BACKEND_ENV.clusterHost]: config.cluster.name,
     [BACKEND_ENV.clusterPort]: config.cluster.port.toString(),
-    [BACKEND_ENV.s3BucketArn]: config.s3.bucketArn,
-    [BACKEND_ENV.s3RoleArn]: config.s3.roleArn,
+    ...(config.s3.bucketName && { [BACKEND_ENV.s3BucketName]: config.s3.bucketName }),
+    ...(config.s3.bucketArn && { [BACKEND_ENV.s3BucketArn]: config.s3.bucketArn }),
+    ...(config.s3.roleArn && { [BACKEND_ENV.s3RoleArn]: config.s3.roleArn }),
   };
 }

@@ -4,7 +4,7 @@ set -e
 # Configure AWS CLI to use LocalStack environment
 export AWS_ACCESS_KEY_ID=test
 export AWS_SECRET_ACCESS_KEY=test
-export AWS_DEFAULT_REGION=us-east-1
+export AWS_DEFAULT_REGION=ca-central-1
 export AWS_DEFAULT_OUTPUT=json
 export ENDPOINT_URL=http://localhost:4566
 
@@ -19,9 +19,6 @@ for i in {1..30}; do
     sleep 1
 done
 
-# Create S3 buckets
-echo "Creating S3 buckets..."
-aws --endpoint-url=http://localstack:4566 s3 mb s3://crackosaurus-wordlists || true
-aws --endpoint-url=http://localstack:4566 s3 mb s3://crackosaurus-instances || true
+echo "LocalStack S3 is ready. Buckets will be created by the application on startup."
 
 # No DynamoDB tables needed - using PostgreSQL with Prisma for data storage
