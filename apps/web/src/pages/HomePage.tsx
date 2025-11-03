@@ -1,9 +1,6 @@
-import { useTranslation } from "react-i18next";
 import { Button } from "@repo/shadcn/components/ui/button";
 
 export const HomePage = () => {
-  const { t } = useTranslation();
-
   return (
     <div className="p-6">
       {/* Hero */}
@@ -14,8 +11,9 @@ export const HomePage = () => {
               Crackosaurus 🦖
             </h1>
             <p className="text-muted-foreground">
-              Password recovery built for practitioners. Organize targets, add hashes,
-              upload big wordlists, and run cracking jobs with a clean, simple workflow.
+              Password recovery built for practitioners. Organize targets, add
+              hashes, upload big wordlists, and run cracking jobs with a clean,
+              simple workflow.
             </p>
             <div className="flex gap-3">
               <a href="/projects">
@@ -26,27 +24,33 @@ export const HomePage = () => {
               </a>
             </div>
           </div>
-          <div className="rounded-lg border bg-card p-6 shadow-sm">
+          <div className="bg-card rounded-lg border p-6 shadow-sm">
             <ul className="grid gap-3 text-sm">
               <li className="flex items-start gap-3">
                 <span className="mt-1 h-2 w-2 rounded-full bg-green-500" />
                 <div>
                   <div className="font-medium">Prepare</div>
-                  <div className="text-muted-foreground">Create a project, add hashes, and upload your wordlists.</div>
+                  <div className="text-muted-foreground">
+                    Create a project, add hashes, and upload your wordlists.
+                  </div>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <span className="mt-1 h-2 w-2 rounded-full bg-blue-500" />
                 <div>
                   <div className="font-medium">Deploy</div>
-                  <div className="text-muted-foreground">Pick an instance, queue jobs, and assign members.</div>
+                  <div className="text-muted-foreground">
+                    Pick an instance, queue jobs, and assign members.
+                  </div>
                 </div>
               </li>
               <li className="flex items-start gap-3">
                 <span className="mt-1 h-2 w-2 rounded-full bg-amber-500" />
                 <div>
                   <div className="font-medium">Launch</div>
-                  <div className="text-muted-foreground">Start cracking and watch results update live.</div>
+                  <div className="text-muted-foreground">
+                    Start cracking and watch results update live.
+                  </div>
                 </div>
               </li>
             </ul>

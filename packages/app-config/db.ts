@@ -21,7 +21,8 @@ export type DatabaseConfig = z.infer<typeof DATABASE_CONFIG>;
 
 export function loadDatabaseConfig() {
   if (!process.env[DATABASE_ENV.databasePath])
-    process.env[DATABASE_ENV.databasePath] = "postgresql://postgres:postgres@localhost:5432/crackosaurus?schema=public";
+    process.env[DATABASE_ENV.databasePath] =
+      "postgresql://postgres:postgres@localhost:5432/crackosaurus?schema=public";
 
   return DATABASE_CONFIG.parse({
     provider: (process.env[DATABASE_ENV.databaseProvider] ??

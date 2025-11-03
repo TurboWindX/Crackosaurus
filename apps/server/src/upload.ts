@@ -8,12 +8,11 @@ import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 
-import { getInitializedBucketName } from "./plugins/s3Init";
-import { createS3Client } from "./utils/s3";
-
 import { PermissionType, hasPermission } from "@repo/api";
 
 import config from "./config";
+import { getInitializedBucketName } from "./plugins/s3Init";
+import { createS3Client } from "./utils/s3";
 
 type PrismaTransaction = Omit<
   PrismaClient,
@@ -204,7 +203,8 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
       }
 
       // Extract checksum from S3 object metadata (set during upload request)
-      const checksum = (response.Metadata?.checksum as string | undefined) ?? "";
+      const checksum =
+        (response.Metadata?.checksum as string | undefined) ?? "";
 
       // Check file size and decide approach
       const contentLength = response.ContentLength || 0;

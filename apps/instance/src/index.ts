@@ -1,6 +1,6 @@
+import * as AWS from "aws-sdk";
 import { type ChildProcess } from "child_process";
 import process from "process";
-import * as AWS from "aws-sdk";
 
 import { STATUS } from "@repo/api";
 import {
@@ -33,7 +33,9 @@ async function innerMain(): Promise<ExitCase> {
       config.instanceRoot,
       config.instanceID
     );
-    console.log(`[DEBUG] Initial instance metadata status: ${instanceMetadata.status}`);
+    console.log(
+      `[DEBUG] Initial instance metadata status: ${instanceMetadata.status}`
+    );
 
     if (instanceMetadata.status === STATUS.Stopped) resolve(EXIT_CASE.Stop);
     else if (instanceMetadata.status === STATUS.Pending) {
@@ -44,7 +46,7 @@ async function innerMain(): Promise<ExitCase> {
       try {
         const ec2Metadata = new AWS.MetadataService();
         const ec2InstanceId = await new Promise<string>((resolve, reject) => {
-          ec2Metadata.request('/latest/meta-data/instance-id', (err, data) => {
+          ec2Metadata.request("/latest/meta-data/instance-id", (err, data) => {
             if (err) reject(err);
             else resolve(data);
           });
@@ -71,80 +73,106 @@ async function innerMain(): Promise<ExitCase> {
         config.instanceRoot,
         config.instanceID
       );
-      console.log(`[DEBUG] New instance metadata status: ${instanceMetadata.status}`);
+      console.log(
+        `[DEBUG] New instance metadata status: ${instanceMetadata.status}`
+      );
     }
 
     let jobID: string | null = null;
     let jobProcess: ChildProcess | null = null;
-    let jobQueue: string[] = [];
-    
+    const jobQueue: string[] = [];
+
     // Initialize SQS client for receiving job notifications
-    const sqs = new AWS.SQS({ region: 'ca-central-1' });
-    console.log(`[Instance ${config.instanceID}] SQS queue URL: ${config.jobQueueUrl}`);
+    const sqs = new AWS.SQS({ region: "ca-central-1" });
+    console.log(
+      `[Instance ${config.instanceID}] SQS queue URL: ${config.jobQueueUrl}`
+    );
 
     // SQS polling function
     const pollSQS = async () => {
       if (!config.jobQueueUrl) {
-        console.log(`[Instance ${config.instanceID}] No SQS queue URL configured, skipping poll`);
+        console.log(
+          `[Instance ${config.instanceID}] No SQS queue URL configured, skipping poll`
+        );
         return;
       }
 
       try {
-        const result = await sqs.receiveMessage({
-          QueueUrl: config.jobQueueUrl,
-          MaxNumberOfMessages: 10, // Process up to 10 jobs at once
-          WaitTimeSeconds: 20, // Long polling
-          VisibilityTimeout: 900, // 15 minutes (matches queue config)
-        }).promise();
+        const result = await sqs
+          .receiveMessage({
+            QueueUrl: config.jobQueueUrl,
+            MaxNumberOfMessages: 10, // Process up to 10 jobs at once
+            WaitTimeSeconds: 20, // Long polling
+            VisibilityTimeout: 900, // 15 minutes (matches queue config)
+          })
+          .promise();
 
         if (result.Messages && result.Messages.length > 0) {
-          console.log(`[Instance ${config.instanceID}] Received ${result.Messages.length} SQS messages`);
-          
+          console.log(
+            `[Instance ${config.instanceID}] Received ${result.Messages.length} SQS messages`
+          );
+
           for (const message of result.Messages) {
             try {
-              const body = JSON.parse(message.Body || '{}');
+              const body = JSON.parse(message.Body || "{}");
               const messageInstanceID = body.instanceID;
               const messageJobID = body.jobID;
 
               // Only process messages for this instance
               if (messageInstanceID === config.instanceID) {
-                console.log(`[Instance ${config.instanceID}] Adding job ${messageJobID} to queue from SQS`);
-                
+                console.log(
+                  `[Instance ${config.instanceID}] Adding job ${messageJobID} to queue from SQS`
+                );
+
                 // Add to job queue if not already present
                 if (!jobQueue.includes(messageJobID)) {
                   jobQueue.push(messageJobID);
                 }
 
                 // Delete message from queue since we're processing it
-                await sqs.deleteMessage({
-                  QueueUrl: config.jobQueueUrl,
-                  ReceiptHandle: message.ReceiptHandle!,
-                }).promise();
-                
-                console.log(`[Instance ${config.instanceID}] Deleted SQS message for job ${messageJobID}`);
+                await sqs
+                  .deleteMessage({
+                    QueueUrl: config.jobQueueUrl,
+                    ReceiptHandle: message.ReceiptHandle!,
+                  })
+                  .promise();
+
+                console.log(
+                  `[Instance ${config.instanceID}] Deleted SQS message for job ${messageJobID}`
+                );
               } else {
-                console.log(`[Instance ${config.instanceID}] Ignoring job ${messageJobID} for different instance ${messageInstanceID}, making visible immediately`);
-                
+                console.log(
+                  `[Instance ${config.instanceID}] Ignoring job ${messageJobID} for different instance ${messageInstanceID}, making visible immediately`
+                );
+
                 // Make message immediately visible again so the correct instance can pick it up
-                await sqs.changeMessageVisibility({
-                  QueueUrl: config.jobQueueUrl,
-                  ReceiptHandle: message.ReceiptHandle!,
-                  VisibilityTimeout: 0,
-                }).promise();
+                await sqs
+                  .changeMessageVisibility({
+                    QueueUrl: config.jobQueueUrl,
+                    ReceiptHandle: message.ReceiptHandle!,
+                    VisibilityTimeout: 0,
+                  })
+                  .promise();
               }
             } catch (err) {
-              console.error(`[Instance ${config.instanceID}] Error processing SQS message:`, err);
+              console.error(
+                `[Instance ${config.instanceID}] Error processing SQS message:`,
+                err
+              );
             }
           }
         }
       } catch (err) {
-        console.error(`[Instance ${config.instanceID}] Error polling SQS:`, err);
+        console.error(
+          `[Instance ${config.instanceID}] Error polling SQS:`,
+          err
+        );
       }
     };
 
     let lastRun = new Date().getTime();
     let hasProcessedAnyJob = false; // Track if we've ever processed a job
-    
+
     const interval = setInterval(async () => {
       // Poll SQS for new job notifications
       await pollSQS();
@@ -167,10 +195,10 @@ async function innerMain(): Promise<ExitCase> {
           // Use different cooldown periods based on whether we've processed jobs
           // If we've never processed a job, wait 5 minutes for initial job creation
           // If we have processed jobs, use the configured cooldown (default 60s)
-          const effectiveCooldown = hasProcessedAnyJob 
-            ? config.instanceCooldown 
+          const effectiveCooldown = hasProcessedAnyJob
+            ? config.instanceCooldown
             : 300; // 5 minutes for initial wait
-          
+
           if (
             effectiveCooldown >= 0 &&
             new Date().getTime() - lastRun > effectiveCooldown * 1000
@@ -183,7 +211,9 @@ async function innerMain(): Promise<ExitCase> {
               instanceMetadata
             );
 
-            console.log(`[Instance ${config.instanceID}] Cooldown (waited ${effectiveCooldown}s, hasProcessedAnyJob: ${hasProcessedAnyJob})`);
+            console.log(
+              `[Instance ${config.instanceID}] Cooldown (waited ${effectiveCooldown}s, hasProcessedAnyJob: ${hasProcessedAnyJob})`
+            );
 
             clearInterval(interval);
             resolve(EXIT_CASE.Cooldown);
@@ -198,32 +228,48 @@ async function innerMain(): Promise<ExitCase> {
         jobID = nextJobID;
       }
 
-      console.log(`[Instance ${config.instanceID}] [DEBUG] jobID=${jobID}, jobProcess=${jobProcess ? 'exists' : 'null'}`);
+      console.log(
+        `[Instance ${config.instanceID}] [DEBUG] jobID=${jobID}, jobProcess=${jobProcess ? "exists" : "null"}`
+      );
 
       if (jobID && jobProcess === null) {
-        console.log(`[Instance ${config.instanceID}] [DEBUG] Starting to process job ${jobID}`);
-        console.log(`[Instance ${config.instanceID}] [DEBUG] Instance root: ${config.instanceRoot}`);
-        console.log(`[Instance ${config.instanceID}] [DEBUG] Looking for job at: ${config.instanceRoot}/${config.instanceID}/jobs/${jobID}/metadata.json`);
+        console.log(
+          `[Instance ${config.instanceID}] [DEBUG] Starting to process job ${jobID}`
+        );
+        console.log(
+          `[Instance ${config.instanceID}] [DEBUG] Instance root: ${config.instanceRoot}`
+        );
+        console.log(
+          `[Instance ${config.instanceID}] [DEBUG] Looking for job at: ${config.instanceRoot}/${config.instanceID}/jobs/${jobID}/metadata.json`
+        );
         const jobMetadata = await getJobMetadata(
           config.instanceRoot,
           config.instanceID,
           jobID
         );
 
-        console.log(`[Instance ${config.instanceID}] [DEBUG] Job metadata: ${JSON.stringify(jobMetadata)}`);
-        console.log(`[Instance ${config.instanceID}] [DEBUG] Job metadata status: ${jobMetadata.status}, STATUS.Pending=${STATUS.Pending}`);
+        console.log(
+          `[Instance ${config.instanceID}] [DEBUG] Job metadata: ${JSON.stringify(jobMetadata)}`
+        );
+        console.log(
+          `[Instance ${config.instanceID}] [DEBUG] Job metadata status: ${jobMetadata.status}, STATUS.Pending=${STATUS.Pending}`
+        );
 
         // If status is UNKNOWN, the job folder might not be visible yet (EFS propagation delay)
         // Put job back in queue and try again next interval
         if (jobMetadata.status === STATUS.Unknown) {
-          console.log(`[Instance ${config.instanceID}] [DEBUG] Job metadata not ready yet, putting back in queue`);
+          console.log(
+            `[Instance ${config.instanceID}] [DEBUG] Job metadata not ready yet, putting back in queue`
+          );
           jobQueue.unshift(jobID); // Put back at front of queue
           jobID = null;
           return;
         }
 
         if (jobMetadata.status !== STATUS.Pending) {
-          console.log(`[Instance ${config.instanceID}] [DEBUG] Skipping job - status is ${jobMetadata.status}`);
+          console.log(
+            `[Instance ${config.instanceID}] [DEBUG] Skipping job - status is ${jobMetadata.status}`
+          );
           jobID = null;
           return;
         }

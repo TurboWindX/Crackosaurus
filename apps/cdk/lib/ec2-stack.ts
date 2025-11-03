@@ -1,15 +1,14 @@
 import * as cdk from "aws-cdk-lib";
 import * as autoscaling from "aws-cdk-lib/aws-autoscaling";
-import * as cloudmap from "aws-cdk-lib/aws-servicediscovery";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as efs from "aws-cdk-lib/aws-efs";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
-import * as elbv2_targets from "aws-cdk-lib/aws-elasticloadbalancingv2-targets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as cloudmap from "aws-cdk-lib/aws-servicediscovery";
 import { Construct } from "constructs";
-import { Fn } from "aws-cdk-lib";
+
 import { InstanceStack } from "./instance-stack";
 
 export interface CrackosaurusEC2StackProps extends cdk.StackProps {
@@ -47,10 +46,14 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     });
 
     // Service Discovery Namespace
-    const namespace = new cloudmap.PrivateDnsNamespace(this, "ServiceNamespace", {
-      name: "crackosaurus.local",
-      vpc,
-    });
+    const namespace = new cloudmap.PrivateDnsNamespace(
+      this,
+      "ServiceNamespace",
+      {
+        name: "crackosaurus.local",
+        vpc,
+      }
+    );
 
     // ===========================================
     // Security Groups
@@ -136,7 +139,9 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
         retention: cdk.Duration.days(isProduction ? 7 : 1),
         preferredWindow: "03:00-04:00",
       },
-      removalPolicy: isProduction ? cdk.RemovalPolicy.SNAPSHOT : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: isProduction
+        ? cdk.RemovalPolicy.SNAPSHOT
+        : cdk.RemovalPolicy.DESTROY,
       deletionProtection: isProduction,
     });
 
@@ -149,11 +154,13 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
       throughputMode: efs.ThroughputMode.BURSTING,
-      removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: isProduction
+        ? cdk.RemovalPolicy.RETAIN
+        : cdk.RemovalPolicy.DESTROY,
       securityGroup: ec2SecurityGroup,
     });
 
-    const accessPoint = new efs.AccessPoint(this, "AccessPoint", {
+    new efs.AccessPoint(this, "AccessPoint", {
       fileSystem,
       path: "/data",
       createAcl: {
@@ -173,11 +180,11 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     const instanceStack = new InstanceStack(this, {
       prefix: environmentName,
       vpc,
-      subnet: vpc.privateSubnets[0]!,  // Use first private subnet for GPU instances
+      subnet: vpc.privateSubnets[0]!, // Use first private subnet for GPU instances
       fileSystem,
       fileSystemPath: "/data",
-      cooldown: 60,  // seconds to wait before checking job status
-      interval: 10,  // seconds between checks
+      cooldown: 60, // seconds to wait before checking job status
+      interval: 10, // seconds between checks
     });
 
     // ===========================================
@@ -186,8 +193,12 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     const ec2Role = new iam.Role(this, "EC2Role", {
       assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMManagedInstanceCore"),
-        iam.ManagedPolicy.fromAwsManagedPolicyName("CloudWatchAgentServerPolicy"),
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "AmazonSSMManagedInstanceCore"
+        ),
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "CloudWatchAgentServerPolicy"
+        ),
       ],
     });
 
@@ -195,19 +206,22 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     dbCredentials.grantRead(ec2Role);
 
     // Allow EFS access - including root access for mounting
-    fileSystem.grant(ec2Role, "elasticfilesystem:ClientRootAccess", "elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite");
+    fileSystem.grant(
+      ec2Role,
+      "elasticfilesystem:ClientRootAccess",
+      "elasticfilesystem:ClientMount",
+      "elasticfilesystem:ClientWrite"
+    );
 
     // Allow ECR access
     ec2Role.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "ecr:GetAuthorizationToken",
-        ],
+        actions: ["ecr:GetAuthorizationToken"],
         resources: ["*"], // GetAuthorizationToken doesn't support resource-level permissions
       })
     );
-    
+
     ec2Role.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -253,7 +267,10 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
           "s3:PutBucketCors",
           "s3:GetBucketCors",
         ],
-        resources: ["arn:aws:s3:::crackosaurus-*", "arn:aws:s3:::crackosaurus-*/*"],
+        resources: [
+          "arn:aws:s3:::crackosaurus-*",
+          "arn:aws:s3:::crackosaurus-*/*",
+        ],
       })
     );
 
@@ -261,13 +278,11 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     ec2Role.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "servicediscovery:ListServices",
-        ],
+        actions: ["servicediscovery:ListServices"],
         resources: ["*"], // ListServices doesn't support resource-level permissions
       })
     );
-    
+
     ec2Role.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -287,27 +302,23 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
 
     // Allow Step Functions execution for GPU instance deployment
     instanceStack.stepFunction.grantStartExecution(ec2Role);
-    
+
     // Allow SQS send messages for job notifications
     instanceStack.jobQueue.grantSendMessages(ec2Role);
-    
+
     // Allow EC2 terminate for cluster to delete GPU instances
     ec2Role.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "ec2:DescribeInstances",
-        ],
+        actions: ["ec2:DescribeInstances"],
         resources: ["*"], // DescribeInstances doesn't support resource-level permissions
       })
     );
-    
+
     ec2Role.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "ec2:TerminateInstances",
-        ],
+        actions: ["ec2:TerminateInstances"],
         resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/*`],
         conditions: {
           StringEquals: {
@@ -316,24 +327,20 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
         },
       })
     );
-    
+
     // Allow EC2 operations for instance management (needed by Step Functions role)
     instanceStack.instanceRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "ec2:DescribeInstances",
-        ],
+        actions: ["ec2:DescribeInstances"],
         resources: ["*"], // DescribeInstances doesn't support resource-level permissions
       })
     );
-    
+
     instanceStack.instanceRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "ec2:RunInstances",
-        ],
+        actions: ["ec2:RunInstances"],
         resources: [
           `arn:aws:ec2:${this.region}:${this.account}:instance/*`,
           `arn:aws:ec2:${this.region}:${this.account}:volume/*`,
@@ -349,13 +356,11 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
         },
       })
     );
-    
+
     instanceStack.instanceRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "ec2:CreateTags",
-        ],
+        actions: ["ec2:CreateTags"],
         resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/*`],
         conditions: {
           StringEquals: {
@@ -364,13 +369,11 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
         },
       })
     );
-    
+
     instanceStack.instanceRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "ec2:TerminateInstances",
-        ],
+        actions: ["ec2:TerminateInstances"],
         resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/*`],
         conditions: {
           StringEquals: {
@@ -390,22 +393,26 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
     });
 
-    const targetGroup = new elbv2.ApplicationTargetGroup(this, "ServerTargetGroup", {
-      vpc,
-      port: 8080,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      targetType: elbv2.TargetType.INSTANCE,
-      healthCheck: {
-        path: "/api/health",
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        healthyThresholdCount: 2,
-        unhealthyThresholdCount: 3,
-      },
-      deregistrationDelay: cdk.Duration.seconds(30),
-    });
+    const targetGroup = new elbv2.ApplicationTargetGroup(
+      this,
+      "ServerTargetGroup",
+      {
+        vpc,
+        port: 8080,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        targetType: elbv2.TargetType.INSTANCE,
+        healthCheck: {
+          path: "/api/health",
+          interval: cdk.Duration.seconds(30),
+          timeout: cdk.Duration.seconds(5),
+          healthyThresholdCount: 2,
+          unhealthyThresholdCount: 3,
+        },
+        deregistrationDelay: cdk.Duration.seconds(30),
+      }
+    );
 
-    const listener = alb.addListener("HttpListener", {
+    alb.addListener("HttpListener", {
       port: 80,
       protocol: elbv2.ApplicationProtocol.HTTP,
       defaultAction: elbv2.ListenerAction.forward([targetGroup]),
@@ -427,7 +434,7 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       "",
       "# Mount EFS using token substitution"
     );
-    
+
     // Mount EFS - use cfn-init style with metadata or direct script
     // Write mount script to file and execute it
     userData.addCommands(
@@ -435,16 +442,16 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       "",
       "# Create mount script to avoid token substitution issues"
     );
-    
+
     userData.addCommands(
       cdk.Fn.sub(
-        'cat > /tmp/mount-efs.sh << \'EOFSCRIPT\'\n#!/bin/bash\nset -e\nmount -t efs -o tls,iam ${FileSystemId}:/ /mnt/efs\necho "${FileSystemId}:/ /mnt/efs efs _netdev,tls,iam 0 0" >> /etc/fstab\nEOFSCRIPT',
+        "cat > /tmp/mount-efs.sh << 'EOFSCRIPT'\n#!/bin/bash\nset -e\nmount -t efs -o tls,iam ${FileSystemId}:/ /mnt/efs\necho \"${FileSystemId}:/ /mnt/efs efs _netdev,tls,iam 0 0\" >> /etc/fstab\nEOFSCRIPT",
         {
-          FileSystemId: fileSystem.fileSystemId
+          FileSystemId: fileSystem.fileSystemId,
         }
       )
     );
-    
+
     userData.addCommands(
       "chmod +x /tmp/mount-efs.sh",
       "/tmp/mount-efs.sh",
@@ -456,22 +463,22 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       "chown -R 1001:1001 /mnt/efs",
       ""
     );
-    
+
     userData.addCommands(
       "# Get database credentials from Secrets Manager",
       `DB_SECRET_ARN=${dbCredentials.secretArn}`,
       `AWS_REGION=${this.region}`,
-      'DB_SECRET=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN --region $AWS_REGION --query SecretString --output text)',
-      'DB_PASSWORD=$(echo $DB_SECRET | jq -r .password)',
+      "DB_SECRET=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN --region $AWS_REGION --query SecretString --output text)",
+      "DB_PASSWORD=$(echo $DB_SECRET | jq -r .password)",
       `DB_HOST=${dbCluster.clusterEndpoint.hostname}`,
       "",
       "# ECR Login",
       `ECR_REGISTRY=${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
-      'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY',
+      "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
       "",
       "# Pull server and prisma images",
-      'docker pull $ECR_REGISTRY/crackosaurus/server:latest',
-      'docker pull $ECR_REGISTRY/crackosaurus/prisma:latest',
+      "docker pull $ECR_REGISTRY/crackosaurus/server:latest",
+      "docker pull $ECR_REGISTRY/crackosaurus/prisma:latest",
       "",
       "# Run Prisma migrations",
       'echo "Running Prisma migrations..."',
@@ -480,7 +487,7 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       'echo "Prisma migrations complete"',
       "",
       "# Run server container",
-      'docker run -d --name crackosaurus-server --restart unless-stopped -p 8080:8080 -v /mnt/efs:/data -e NODE_ENV=production -e DATABASE_PROVIDER=postgresql -e DATABASE_HOST=${DB_HOST} -e DATABASE_PORT=5432 -e DATABASE_NAME=crackosaurus -e DATABASE_USER=crackosaurus -e DATABASE_PASSWORD=${DB_PASSWORD} -e STORAGE_TYPE=filesystem -e STORAGE_PATH=/data -e CLUSTER_TYPE=external -e CLUSTER_DISCOVERY_TYPE=cloud_map -e CLUSTER_DISCOVERY_NAMESPACE=crackosaurus.local -e CLUSTER_DISCOVERY_SERVICE=cluster -e CLUSTER_DISCOVERY_REGION=${AWS_REGION} -e CLUSTER_HOST=cluster.crackosaurus.local -e CLUSTER_PORT=13337 -e USE_WEB_HOST=true $ECR_REGISTRY/crackosaurus/server:latest',
+      "docker run -d --name crackosaurus-server --restart unless-stopped -p 8080:8080 -v /mnt/efs:/data -e NODE_ENV=production -e DATABASE_PROVIDER=postgresql -e DATABASE_HOST=${DB_HOST} -e DATABASE_PORT=5432 -e DATABASE_NAME=crackosaurus -e DATABASE_USER=crackosaurus -e DATABASE_PASSWORD=${DB_PASSWORD} -e STORAGE_TYPE=filesystem -e STORAGE_PATH=/data -e CLUSTER_TYPE=external -e CLUSTER_DISCOVERY_TYPE=cloud_map -e CLUSTER_DISCOVERY_NAMESPACE=crackosaurus.local -e CLUSTER_DISCOVERY_SERVICE=cluster -e CLUSTER_DISCOVERY_REGION=${AWS_REGION} -e CLUSTER_HOST=cluster.crackosaurus.local -e CLUSTER_PORT=13337 -e USE_WEB_HOST=true $ECR_REGISTRY/crackosaurus/server:latest",
       "",
       "echo 'EC2 instance setup complete'"
     );
@@ -489,7 +496,10 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     // Launch Template with Encrypted EBS
     // ===========================================
     const launchTemplate = new ec2.LaunchTemplate(this, "LaunchTemplate", {
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
+      instanceType: ec2.InstanceType.of(
+        ec2.InstanceClass.T3,
+        ec2.InstanceSize.SMALL
+      ),
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
       securityGroup: ec2SecurityGroup,
       role: ec2Role,
@@ -546,23 +556,23 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       "",
       "# Mount EFS using token substitution"
     );
-    
+
     // Mount EFS for cluster
     clusterUserData.addCommands(
       "mkdir -p /mnt/efs",
       "",
       "# Create mount script"
     );
-    
+
     clusterUserData.addCommands(
       cdk.Fn.sub(
-        'cat > /tmp/mount-efs.sh << \'EOFSCRIPT\'\n#!/bin/bash\nset -e\nmount -t efs -o tls,iam ${FileSystemId}:/ /mnt/efs\necho "${FileSystemId}:/ /mnt/efs efs _netdev,tls,iam 0 0" >> /etc/fstab\nEOFSCRIPT',
+        "cat > /tmp/mount-efs.sh << 'EOFSCRIPT'\n#!/bin/bash\nset -e\nmount -t efs -o tls,iam ${FileSystemId}:/ /mnt/efs\necho \"${FileSystemId}:/ /mnt/efs efs _netdev,tls,iam 0 0\" >> /etc/fstab\nEOFSCRIPT",
         {
-          FileSystemId: fileSystem.fileSystemId
+          FileSystemId: fileSystem.fileSystemId,
         }
       )
     );
-    
+
     clusterUserData.addCommands(
       "chmod +x /tmp/mount-efs.sh",
       "/tmp/mount-efs.sh",
@@ -576,21 +586,21 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       "chown -R 1001:1001 /mnt/efs",
       ""
     );
-    
+
     clusterUserData.addCommands(
       "# Get database credentials from Secrets Manager",
       `DB_SECRET_ARN=${dbCredentials.secretArn}`,
       `AWS_REGION=${this.region}`,
-      'DB_SECRET=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN --region $AWS_REGION --query SecretString --output text)',
-      'DB_PASSWORD=$(echo $DB_SECRET | jq -r .password)',
+      "DB_SECRET=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN --region $AWS_REGION --query SecretString --output text)",
+      "DB_PASSWORD=$(echo $DB_SECRET | jq -r .password)",
       `DB_HOST=${dbCluster.clusterEndpoint.hostname}`,
       "",
       "# ECR Login",
       `ECR_REGISTRY=${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
-      'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY',
+      "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
       "",
       "# Pull and run cluster container",
-      'docker pull $ECR_REGISTRY/crackosaurus/cluster:latest',
+      "docker pull $ECR_REGISTRY/crackosaurus/cluster:latest",
       "docker run -d \\",
       "  --name crackosaurus-cluster \\",
       "  --restart unless-stopped \\",
@@ -617,111 +627,52 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       '  -e CLUSTER_DISCOVERY_NAMESPACE="crackosaurus.local" \\',
       '  -e CLUSTER_DISCOVERY_SERVICE="cluster" \\',
       '  -e CLUSTER_DISCOVERY_REGION="$AWS_REGION" \\',
-      '  $ECR_REGISTRY/crackosaurus/cluster:latest',
+      "  $ECR_REGISTRY/crackosaurus/cluster:latest",
       "",
       "# Register with Cloud Map",
       "INSTANCE_ID=$(ec2-metadata --instance-id | cut -d ' ' -f 2)",
       "PRIVATE_IP=$(ec2-metadata --local-ipv4 | cut -d ' ' -f 2)",
-      'SERVICE_ID=$(aws servicediscovery list-services --region $AWS_REGION --query "Services[?Name==\'cluster\'].Id" --output text)',
-      'aws servicediscovery register-instance --region $AWS_REGION \\',
+      "SERVICE_ID=$(aws servicediscovery list-services --region $AWS_REGION --query \"Services[?Name=='cluster'].Id\" --output text)",
+      "aws servicediscovery register-instance --region $AWS_REGION \\",
       "  --service-id $SERVICE_ID \\",
       "  --instance-id $INSTANCE_ID \\",
-      '  --attributes AWS_INSTANCE_IPV4=$PRIVATE_IP,AWS_INSTANCE_PORT=13337',
+      "  --attributes AWS_INSTANCE_IPV4=$PRIVATE_IP,AWS_INSTANCE_PORT=13337",
       "",
       "echo 'Cluster worker setup complete'"
     );
 
-    const clusterLaunchTemplate = new ec2.LaunchTemplate(this, "ClusterLaunchTemplate", {
-      instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.SMALL),
-      machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-      securityGroup: ec2SecurityGroup,
-      role: ec2Role,
-      userData: clusterUserData,
-      blockDevices: [
-        {
-          deviceName: "/dev/xvda",
-          volume: ec2.BlockDeviceVolume.ebs(30, {
-            volumeType: ec2.EbsDeviceVolumeType.GP3,
-            encrypted: true, // CRITICAL: Required by SCP
-            deleteOnTermination: true,
-          }),
-        },
-      ],
-      requireImdsv2: true,
-    });
+    const clusterLaunchTemplate = new ec2.LaunchTemplate(
+      this,
+      "ClusterLaunchTemplate",
+      {
+        instanceType: ec2.InstanceType.of(
+          ec2.InstanceClass.T3,
+          ec2.InstanceSize.SMALL
+        ),
+        machineImage: ec2.MachineImage.latestAmazonLinux2023(),
+        securityGroup: ec2SecurityGroup,
+        role: ec2Role,
+        userData: clusterUserData,
+        blockDevices: [
+          {
+            deviceName: "/dev/xvda",
+            volume: ec2.BlockDeviceVolume.ebs(30, {
+              volumeType: ec2.EbsDeviceVolumeType.GP3,
+              encrypted: true, // CRITICAL: Required by SCP
+              deleteOnTermination: true,
+            }),
+          },
+        ],
+        requireImdsv2: true,
+      }
+    );
 
     // Register cluster service with Cloud Map
-    const clusterService = namespace.createService("ClusterService", {
+    namespace.createService("ClusterService", {
       name: "cluster",
       dnsRecordType: cloudmap.DnsRecordType.A,
       dnsTtl: cdk.Duration.seconds(30),
     });
-
-    // Custom resource to deregister instances before service deletion
-    const deregisterLambda = new cdk.aws_lambda.Function(this, "DeregisterInstancesFunction", {
-      runtime: cdk.aws_lambda.Runtime.PYTHON_3_11,
-      handler: "index.handler",
-      timeout: cdk.Duration.minutes(5),
-      code: cdk.aws_lambda.Code.fromInline(`
-import boto3
-import json
-import cfnresponse
-
-servicediscovery = boto3.client('servicediscovery')
-
-def handler(event, context):
-    try:
-        service_id = event['ResourceProperties']['ServiceId']
-        
-        if event['RequestType'] == 'Delete':
-            print(f"Deregistering all instances from service {service_id}")
-            
-            # List all instances
-            paginator = servicediscovery.get_paginator('list_instances')
-            for page in paginator.paginate(ServiceId=service_id):
-                for instance in page.get('Instances', []):
-                    instance_id = instance['Id']
-                    print(f"Deregistering instance {instance_id}")
-                    try:
-                        servicediscovery.deregister_instance(
-                            ServiceId=service_id,
-                            InstanceId=instance_id
-                        )
-                    except Exception as e:
-                        print(f"Error deregistering {instance_id}: {str(e)}")
-            
-            print("All instances deregistered")
-        
-        cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        cfnresponse.send(event, context, cfnresponse.FAILED, {}, str(e))
-`),
-    });
-
-    deregisterLambda.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: [
-          "servicediscovery:ListInstances",
-          "servicediscovery:DeregisterInstance"
-        ],
-        resources: [clusterService.serviceArn],
-      })
-    );
-
-    const deregisterProvider = new cdk.custom_resources.Provider(this, "DeregisterProvider", {
-      onEventHandler: deregisterLambda,
-    });
-
-    const deregisterResource = new cdk.CustomResource(this, "DeregisterInstances", {
-      serviceToken: deregisterProvider.serviceToken,
-      properties: {
-        ServiceId: clusterService.serviceId,
-      },
-    });
-
-    // Ensure the custom resource is deleted BEFORE the service
-    deregisterResource.node.addDependency(clusterService);
 
     // ===========================================
     // Auto Scaling Group for Cluster Workers (Spot)
@@ -732,8 +683,9 @@ def handler(event, context):
       mixedInstancesPolicy: {
         launchTemplate: clusterLaunchTemplate,
         instancesDistribution: {
-          onDemandPercentageAboveBaseCapacity: 0, // 100% spot instances
-          spotAllocationStrategy: autoscaling.SpotAllocationStrategy.PRICE_CAPACITY_OPTIMIZED,
+          onDemandPercentageAboveBaseCapacity: 100, // 100% spot instances
+          spotAllocationStrategy:
+            autoscaling.SpotAllocationStrategy.PRICE_CAPACITY_OPTIMIZED,
         },
       },
       minCapacity: 0,

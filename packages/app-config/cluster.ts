@@ -157,11 +157,11 @@ function envFileSystemClusterConfig(config: FileSystemClusterConfig) {
     [CLUSTER_ENV.instanceRoot]: config.instanceRoot,
     [CLUSTER_ENV.wordlistRoot]: config.wordlistRoot,
   };
-  
+
   if (config.jobQueueUrl) {
     env[CLUSTER_ENV.jobQueueUrl] = config.jobQueueUrl;
   }
-  
+
   return env;
 }
 

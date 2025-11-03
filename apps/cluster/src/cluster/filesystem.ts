@@ -126,13 +126,18 @@ export abstract class FileSystemCluster<
       hashes,
       hashType,
     });
-    console.log(`[Cluster] Job ${jobID} created in ${this.config.instanceRoot}/${instanceID}/jobs/`);
+    console.log(
+      `[Cluster] Job ${jobID} created in ${this.config.instanceRoot}/${instanceID}/jobs/`
+    );
 
     const instanceMetadata = await getInstanceMetadata(
       this.config.instanceRoot,
       instanceID
     );
-    console.log(`[Cluster] Instance ${instanceID} metadata:`, JSON.stringify(instanceMetadata));
+    console.log(
+      `[Cluster] Instance ${instanceID} metadata:`,
+      JSON.stringify(instanceMetadata)
+    );
 
     // Launch GPU worker if instance is not currently running
     // This allows re-launching workers for instances that completed/stopped
@@ -140,7 +145,9 @@ export abstract class FileSystemCluster<
       instanceMetadata.status !== STATUS.Running &&
       instanceMetadata.status !== STATUS.Error
     ) {
-      console.log(`[Cluster] Auto-launching GPU worker for instance ${instanceID} (status: ${instanceMetadata.status}, type: ${instanceMetadata.type})`);
+      console.log(
+        `[Cluster] Auto-launching GPU worker for instance ${instanceID} (status: ${instanceMetadata.status}, type: ${instanceMetadata.type})`
+      );
       await this.run(instanceID);
     }
 

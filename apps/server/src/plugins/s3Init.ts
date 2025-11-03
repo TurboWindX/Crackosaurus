@@ -41,7 +41,7 @@ async function s3InitPlugin(fastify: FastifyInstance) {
   try {
     // Get or generate bucket name
     let bucketName: string;
-    
+
     if (config.s3.bucketName) {
       bucketName = config.s3.bucketName;
       fastify.log.info(`[S3 Init] Using configured bucket: ${bucketName}`);
@@ -62,7 +62,9 @@ async function s3InitPlugin(fastify: FastifyInstance) {
     // Store globally
     globalBucketName = bucketName;
 
-    fastify.log.info(`[S3 Init] S3 storage initialized with bucket: ${bucketName}`);
+    fastify.log.info(
+      `[S3 Init] S3 storage initialized with bucket: ${bucketName}`
+    );
   } catch (error) {
     fastify.log.error("[S3 Init] Failed to initialize S3 storage:", error);
     throw error;

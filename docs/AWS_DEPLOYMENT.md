@@ -173,6 +173,7 @@ aws rds create-db-instance \
 Set these environment variables for your production deployment:
 
 ### Server Container
+
 ```bash
 NODE_ENV=production
 DATABASE_PROVIDER=postgresql
@@ -187,6 +188,7 @@ S3_ROLE_ARN=arn:aws:iam::ACCOUNT_ID:role/CrackosaurusServerRole
 ```
 
 ### Cluster Container
+
 ```bash
 NODE_ENV=production
 CLUSTER_TYPE=external
@@ -318,7 +320,7 @@ docker run -d \
 
 ## 7. Using CDK (Automated Deployment)
 
-The repository includes AWS CDK infrastructure code in `apps/cdk/`. 
+The repository includes AWS CDK infrastructure code in `apps/cdk/`.
 
 ```bash
 cd apps/cdk
@@ -373,12 +375,14 @@ curl http://your-alb-or-instance-url:8080/health
 ### CloudWatch Logs
 
 All container logs are sent to CloudWatch Logs:
+
 - Log Group: `/ecs/crackosaurus` or `/ec2/crackosaurus`
 - Streams: One per container/task
 
 ### CloudWatch Metrics
 
 Monitor:
+
 - S3 bucket metrics (requests, bytes)
 - RDS metrics (connections, CPU, memory)
 - ECS/EC2 metrics (CPU, memory, network)

@@ -52,10 +52,10 @@ export function envInstanceConfig(
     [INSTANCE_ENV.instanceInterval]: config.instanceInterval.toString(),
     [INSTANCE_ENV.instanceCooldown]: config.instanceCooldown.toString(),
   };
-  
+
   if (config.jobQueueUrl) {
     env[INSTANCE_ENV.jobQueueUrl] = config.jobQueueUrl;
   }
-  
+
   return env;
 }

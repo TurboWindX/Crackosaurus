@@ -214,7 +214,7 @@ export function watchInstanceFolder(
 
   const interval = setInterval(async () => {
     console.log(`[Watcher] Polling ${instancePath}`);
-    
+
     if (fs.existsSync(instanceMetadata)) {
       const instanceStat = fs.statSync(instanceMetadata);
       if (instanceStat.mtimeMs >= lastModified) {
@@ -225,7 +225,9 @@ export function watchInstanceFolder(
         });
       }
     } else {
-      console.log(`[Watcher] Instance metadata not found at ${instanceMetadata}`);
+      console.log(
+        `[Watcher] Instance metadata not found at ${instanceMetadata}`
+      );
     }
 
     const jobsPath = path.join(instancePath, JOBS_FOLDER);

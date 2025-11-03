@@ -6,22 +6,23 @@ import {
   S3Client,
   S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import type { BackendConfig } from "@repo/app-config/server";
 import crypto from "crypto";
+
+import type { BackendConfig } from "@repo/app-config/server";
 
 /**
  * Creates an S3 client configured for either production (AWS) or development (LocalStack)
- * 
+ *
  * In production:
  * - Uses standard AWS S3 endpoints
  * - Credentials come from IAM role (EC2/ECS instance profile)
  * - No need for explicit credentials or custom endpoints
- * 
+ *
  * In development:
  * - Uses LocalStack endpoint (http://localstack:4566)
  * - Uses test credentials
  * - Uses path-style bucket access (required for LocalStack)
- * 
+ *
  * @param config - Backend configuration
  * @param options - Additional S3 client options
  * @returns Configured S3Client instance
@@ -41,7 +42,7 @@ export function createS3Client(
 
   if (!isProduction) {
     // Development: Use LocalStack
-    const endpoint = options?.usePublicEndpoint 
+    const endpoint = options?.usePublicEndpoint
       ? config.s3.publicEndpoint || process.env.AWS_ENDPOINT_URL
       : process.env.AWS_ENDPOINT_URL;
 
@@ -81,12 +82,12 @@ export function getBucketName(config: BackendConfig): string {
   if (config.s3.bucketName) {
     return config.s3.bucketName;
   }
-  
+
   // Fallback to extracting from ARN (for backward compatibility)
   if (config.s3.bucketArn) {
     return getBucketNameFromArn(config.s3.bucketArn);
   }
-  
+
   // If neither provided, generate one
   return generateBucketName();
 }
@@ -110,14 +111,22 @@ export async function ensureBucketExists(
   s3Client: S3Client,
   bucketName: string
 ): Promise<void> {
-  let bucketCreated = false;
-  
   try {
     // Check if bucket exists
     await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
     console.log(`[S3] Bucket ${bucketName} already exists`);
-  } catch (error: any) {
-    if (error.name === "NotFound" || error.$metadata?.httpStatusCode === 404) {
+  } catch (error: unknown) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "name" in error &&
+      (error.name === "NotFound" ||
+        ("$metadata" in error &&
+          error.$metadata &&
+          typeof error.$metadata === "object" &&
+          "httpStatusCode" in error.$metadata &&
+          error.$metadata.httpStatusCode === 404))
+    ) {
       // Bucket doesn't exist, create it
       console.log(`[S3] Creating bucket ${bucketName}...`);
       try {
@@ -127,14 +136,18 @@ export async function ensureBucketExists(
           })
         );
         console.log(`[S3] Bucket ${bucketName} created successfully`);
-        bucketCreated = true;
-      } catch (createError: any) {
+      } catch (createError: unknown) {
         // Handle race condition where bucket was created between check and create
         if (
-          createError.name === "BucketAlreadyOwnedByYou" ||
-          createError.name === "BucketAlreadyExists"
+          createError &&
+          typeof createError === "object" &&
+          "name" in createError &&
+          (createError.name === "BucketAlreadyOwnedByYou" ||
+            createError.name === "BucketAlreadyExists")
         ) {
-          console.log(`[S3] Bucket ${bucketName} already exists (race condition)`);
+          console.log(
+            `[S3] Bucket ${bucketName} already exists (race condition)`
+          );
         } else {
           throw createError;
         }
@@ -151,8 +164,13 @@ export async function ensureBucketExists(
     try {
       await s3Client.send(new GetBucketCorsCommand({ Bucket: bucketName }));
       console.log(`[S3] CORS already configured for bucket ${bucketName}`);
-    } catch (corsError: any) {
-      if (corsError.name === "NoSuchCORSConfiguration") {
+    } catch (corsError: unknown) {
+      if (
+        corsError &&
+        typeof corsError === "object" &&
+        "name" in corsError &&
+        corsError.name === "NoSuchCORSConfiguration"
+      ) {
         // CORS not configured, set it up
         console.log(`[S3] Configuring CORS for bucket ${bucketName}...`);
         await s3Client.send(
@@ -171,14 +189,30 @@ export async function ensureBucketExists(
             },
           })
         );
-        console.log(`[S3] CORS configured successfully for bucket ${bucketName}`);
+        console.log(
+          `[S3] CORS configured successfully for bucket ${bucketName}`
+        );
       } else {
         // Some other CORS-related error
-        console.warn(`[S3] Could not check/configure CORS: ${corsError.message}`);
+        console.warn(
+          `[S3] Could not check/configure CORS: ${
+            corsError && typeof corsError === "object" && "message" in corsError
+              ? String(corsError.message)
+              : "Unknown error"
+          }`
+        );
       }
     }
-  } catch (corsConfigError: any) {
-    console.warn(`[S3] Failed to configure CORS: ${corsConfigError.message}`);
+  } catch (corsConfigError: unknown) {
+    console.warn(
+      `[S3] Failed to configure CORS: ${
+        corsConfigError &&
+        typeof corsConfigError === "object" &&
+        "message" in corsConfigError
+          ? String(corsConfigError.message)
+          : "Unknown error"
+      }`
+    );
     // Don't fail the entire operation if CORS configuration fails
   }
 }

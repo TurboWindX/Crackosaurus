@@ -8,7 +8,7 @@ import { Button } from "@repo/shadcn/components/ui/button";
 import { FilePicker } from "@repo/shadcn/components/ui/file-picker";
 import { useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
-import { DataTable, AddDialog } from "@repo/ui/data";
+import { DataTable } from "@repo/ui/data";
 import { useErrors } from "@repo/ui/errors";
 import { RelativeTime } from "@repo/ui/time";
 import { useUpload } from "@repo/ui/upload";
@@ -25,7 +25,8 @@ export const WordlistsPage = () => {
 
   const [progress, setProgress] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [abortController, setAbortController] = useState<AbortController | null>(null);
+  const [abortController, setAbortController] =
+    useState<AbortController | null>(null);
 
   const queryKeys = useMemo(
     () => [
@@ -36,24 +37,6 @@ export const WordlistsPage = () => {
   );
 
   const [file, setFile] = useState<File | null>(null);
-  const [addDialogOpen, setAddDialogOpen] = useState(false);
-
-  // Prevent closing dialog during upload
-  const handleDialogOpenChange = (open: boolean) => {
-    if (!open && isUploading) {
-      // Don't allow closing during upload
-      return;
-    }
-    setAddDialogOpen(open);
-    
-    // Reset states when dialog closes
-    if (!open) {
-      setFile(null);
-      setProgress(null);
-      setIsUploading(false);
-      setAbortController(null);
-    }
-  };
 
   // Cancel upload function
   const handleCancelUpload = () => {
@@ -62,7 +45,6 @@ export const WordlistsPage = () => {
       setAbortController(null);
       setIsUploading(false);
       setProgress(null);
-      setAddDialogOpen(false);
     }
   };
 
@@ -89,7 +71,11 @@ export const WordlistsPage = () => {
   const { mutateAsync: uploadWordlist } = useMutation<
     void,
     Error,
-    { file: File; onProgress?: (percent: number) => void; abortSignal?: AbortSignal }
+    {
+      file: File;
+      onProgress?: (percent: number) => void;
+      abortSignal?: AbortSignal;
+    }
   >({
     mutationFn: async ({ file, onProgress, abortSignal }) => {
       await upload.wordlist(file, onProgress, abortSignal);
@@ -185,10 +171,10 @@ export const WordlistsPage = () => {
           setIsUploading(true);
           setProgress(0);
           try {
-            await uploadWordlist({ 
-              file: file!, 
+            await uploadWordlist({
+              file: file!,
               onProgress: setProgress,
-              abortSignal: controller.signal
+              abortSignal: controller.signal,
             });
             return true;
           } catch (error) {

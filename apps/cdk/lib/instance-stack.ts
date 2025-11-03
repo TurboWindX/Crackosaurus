@@ -105,7 +105,7 @@ export class InstanceStack extends Construct {
     );
 
     props.fileSystem.grantReadWrite(this.instanceRole);
-    
+
     // Grant SQS permissions to instance role
     this.jobQueue.grantConsumeMessages(this.instanceRole);
     this.jobQueue.grantSendMessages(this.instanceRole);

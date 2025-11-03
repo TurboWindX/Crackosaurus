@@ -27,6 +27,7 @@ AWS CDK deployment provides a complete, production-ready infrastructure with:
 See [apps/cdk/DEPLOYMENT.md](apps/cdk/DEPLOYMENT.md) for comprehensive instructions.
 
 **Prerequisites:**
+
 - AWS CLI configured with credentials
 - Docker running locally
 - Node.js 18+
@@ -46,6 +47,7 @@ npx cdk bootstrap
 ```
 
 **Environment Options:**
+
 - `dev`: Cost-optimized (db.t3.micro, 1 task) - ~$100/month
 - `prod`: Production-ready (db.t3.medium, auto-scaling) - ~$350+/month
 

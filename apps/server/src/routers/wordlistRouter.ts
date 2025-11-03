@@ -221,7 +221,9 @@ export const wordlistRouter = t.router({
 
       // Create S3 clients for internal operations and presigned URLs
       const s3Client = createS3Client(config);
-      const s3ClientForPresign = createS3Client(config, { usePublicEndpoint: true });
+      const s3ClientForPresign = createS3Client(config, {
+        usePublicEndpoint: true,
+      });
 
       // Note: Do not create a DB record here. We will only create it after
       // the upload is completed successfully in the server complete handler.
@@ -259,9 +261,13 @@ export const wordlistRouter = t.router({
             UploadId: uploadId,
           });
 
-          const partUrl = await getSignedUrl(s3ClientForPresign, uploadPartCommand, {
-            expiresIn: 3600, // 1 hour
-          });
+          const partUrl = await getSignedUrl(
+            s3ClientForPresign,
+            uploadPartCommand,
+            {
+              expiresIn: 3600, // 1 hour
+            }
+          );
 
           partUrls.push({ partNumber, url: partUrl });
         }
