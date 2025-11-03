@@ -33,6 +33,21 @@ export const projectRouter = t.router({
               .object({
                 JID: z.string(),
                 status: z.string(),
+                approvalStatus: z.string(),
+                submittedById: z.string().nullable(),
+                submittedBy: z
+                  .object({
+                    ID: z.string(),
+                    username: z.string(),
+                  })
+                  .nullable(),
+                wordlistId: z.string().nullable(),
+                wordlist: z
+                  .object({
+                    WID: z.string(),
+                    name: z.string().nullable(),
+                  })
+                  .nullable(),
                 updatedAt: z.date(),
                 instance: z.object({
                   IID: z.string(),
@@ -79,6 +94,21 @@ export const projectRouter = t.router({
                           select: {
                             JID: true,
                             status: true,
+                            approvalStatus: true,
+                            submittedById: true,
+                            submittedBy: {
+                              select: {
+                                ID: true,
+                                username: true,
+                              },
+                            },
+                            wordlistId: true,
+                            wordlist: {
+                              select: {
+                                WID: true,
+                                name: true,
+                              },
+                            },
                             updatedAt: true,
                             instance: {
                               select: {
@@ -113,6 +143,7 @@ export const projectRouter = t.router({
           PID: z.string(),
           name: z.string(),
           updatedAt: z.date(),
+          pendingJobsCount: z.number().int().optional(),
           members: z
             .object({
               ID: z.string(),
@@ -127,7 +158,7 @@ export const projectRouter = t.router({
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
       return await prisma.$transaction(async (tx) => {
-        return await tx.project.findMany({
+        const projects = await tx.project.findMany({
           select: {
             PID: true,
             name: true,
@@ -140,6 +171,19 @@ export const projectRouter = t.router({
                   },
                 }
               : undefined,
+            hashes: {
+              select: {
+                jobs: {
+                  select: {
+                    JID: true,
+                    approvalStatus: true,
+                  },
+                  where: {
+                    approvalStatus: "PENDING",
+                  },
+                },
+              },
+            },
           },
           where: hasPermission("root")
             ? undefined
@@ -151,6 +195,17 @@ export const projectRouter = t.router({
                 },
               },
         });
+
+        // Calculate pending jobs count per project
+        return projects.map((project) => ({
+          PID: project.PID,
+          name: project.name,
+          updatedAt: project.updatedAt,
+          pendingJobsCount: project.hashes
+            .flatMap((hash) => hash.jobs)
+            .filter((job) => job.approvalStatus === "PENDING").length,
+          members: project.members,
+        }));
       });
     }),
   getList: permissionProcedure(["auth"])

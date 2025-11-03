@@ -12,7 +12,7 @@ Write-Host "Environment: $Environment" -ForegroundColor Yellow
 
 # Step 1: Build and push Docker images
 Write-Host "`n[1/2] Building and pushing Docker images..." -ForegroundColor Yellow
-& "$PSScriptRoot\push-images.ps1"
+& "$PSScriptRoot\push-images.ps1" -Environment $Environment -ImageTag $Environment
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Failed to build/push Docker images" -ForegroundColor Red
@@ -23,6 +23,10 @@ Write-Host "Docker images built and pushed successfully" -ForegroundColor Green
 # Step 2: Deploy CDK stack
 Write-Host "`n[2/2] Deploying CDK stack..." -ForegroundColor Yellow
 Set-Location "$PSScriptRoot\..\apps\cdk"
+
+# Set environment variable for CDK to pick up
+$env:ENVIRONMENT = $Environment
+$env:IMAGE_TAG = $Environment
 
 npx cdk deploy "Crackosaurus-$Environment" --require-approval never
 

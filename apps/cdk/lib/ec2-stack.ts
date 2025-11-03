@@ -13,6 +13,7 @@ import { InstanceStack } from "./instance-stack";
 
 export interface CrackosaurusEC2StackProps extends cdk.StackProps {
   environmentName: string;
+  imageTag?: string;  // Docker image tag to use (defaults to environmentName)
   domainName?: string;
   certificateArn?: string;
   hostedZoneId?: string;
@@ -23,6 +24,7 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     super(scope, id, props);
 
     const { environmentName } = props;
+    const imageTag = props.imageTag || environmentName;  // Use environmentName if imageTag not specified
     const isProduction = environmentName === "prod";
 
     // ===========================================
@@ -50,14 +52,16 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       this,
       "ServiceNamespace",
       {
-        name: "crackosaurus.local",
+        name: `${environmentName}.crackosaurus.local`,
         vpc,
       }
     );
 
     // ===========================================
-    // Security Groups
+    // Security Groups - Separated by tier for defense in depth
     // ===========================================
+    
+    // ALB Security Group - Internet facing
     const albSecurityGroup = new ec2.SecurityGroup(this, "ALBSecurityGroup", {
       vpc,
       description: "Security group for Application Load Balancer",
@@ -66,44 +70,95 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     albSecurityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(80),
-      "Allow HTTP traffic"
+      "Allow HTTP traffic from internet"
     );
     albSecurityGroup.addIngressRule(
       ec2.Peer.anyIpv4(),
       ec2.Port.tcp(443),
-      "Allow HTTPS traffic"
+      "Allow HTTPS traffic from internet"
     );
 
-    const ec2SecurityGroup = new ec2.SecurityGroup(this, "EC2SecurityGroup", {
-      vpc,
-      description: "Security group for EC2 instances",
-      allowAllOutbound: true,
-    });
-    ec2SecurityGroup.addIngressRule(
+    // Server Security Group - For web/API servers
+    const serverSecurityGroup = new ec2.SecurityGroup(
+      this,
+      "ServerSecurityGroup",
+      {
+        vpc,
+        description: "Security group for server instances",
+        allowAllOutbound: true,
+      }
+    );
+    serverSecurityGroup.addIngressRule(
       albSecurityGroup,
       ec2.Port.tcp(8080),
       "Allow traffic from ALB to server"
     );
-    ec2SecurityGroup.addIngressRule(
-      ec2SecurityGroup,
-      ec2.Port.tcp(13337),
-      "Allow cluster communication"
+
+    // Cluster Security Group - For cluster worker nodes
+    const clusterSecurityGroup = new ec2.SecurityGroup(
+      this,
+      "ClusterSecurityGroup",
+      {
+        vpc,
+        description: "Security group for cluster worker instances",
+        allowAllOutbound: true,
+      }
     );
-    ec2SecurityGroup.addIngressRule(
-      ec2SecurityGroup,
-      ec2.Port.tcp(2049),
-      "Allow NFS traffic for EFS"
+    clusterSecurityGroup.addIngressRule(
+      serverSecurityGroup,
+      ec2.Port.tcp(13337),
+      "Allow cluster API access from server only"
+    );
+    clusterSecurityGroup.addIngressRule(
+      clusterSecurityGroup,
+      ec2.Port.tcp(13337),
+      "Allow cluster-to-cluster communication"
     );
 
+    // EFS Security Group - For shared file system
+    const efsSecurityGroup = new ec2.SecurityGroup(this, "EFSSecurityGroup", {
+      vpc,
+      description: "Security group for EFS file system",
+      allowAllOutbound: false,
+    });
+    efsSecurityGroup.addIngressRule(
+      serverSecurityGroup,
+      ec2.Port.tcp(2049),
+      "Allow NFS from server instances"
+    );
+    efsSecurityGroup.addIngressRule(
+      clusterSecurityGroup,
+      ec2.Port.tcp(2049),
+      "Allow NFS from cluster instances"
+    );
+
+    // GPU Instance Security Group - For Step Functions managed instances
+    const gpuSecurityGroup = new ec2.SecurityGroup(
+      this,
+      "GpuSecurityGroup",
+      {
+        vpc,
+        description: "Security group for GPU instances",
+        allowAllOutbound: true,
+      }
+    );
+    // GPU instances don't need inbound access - they pull jobs from SQS
+
+    // RDS Security Group - For database
     const dbSecurityGroup = new ec2.SecurityGroup(this, "DBSecurityGroup", {
       vpc,
       description: "Security group for RDS database",
       allowAllOutbound: false,
     });
     dbSecurityGroup.addIngressRule(
-      ec2SecurityGroup,
+      serverSecurityGroup,
       ec2.Port.tcp(5432),
-      "Allow PostgreSQL traffic from EC2"
+      "Allow PostgreSQL traffic from server"
+    );
+    dbSecurityGroup.addIngressRule(
+      clusterSecurityGroup,
+      ec2.Port.tcp(5432),
+      "Allow PostgreSQL traffic from cluster"
     );
 
     // ===========================================
@@ -150,14 +205,14 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     // ===========================================
     const fileSystem = new efs.FileSystem(this, "FileSystem", {
       vpc,
-      encrypted: true, // Encrypt EFS as well
+      encrypted: true, // Encrypt EFS at rest
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
       throughputMode: efs.ThroughputMode.BURSTING,
       removalPolicy: isProduction
         ? cdk.RemovalPolicy.RETAIN
         : cdk.RemovalPolicy.DESTROY,
-      securityGroup: ec2SecurityGroup,
+      securityGroup: efsSecurityGroup, // Dedicated security group for EFS
     });
 
     new efs.AccessPoint(this, "AccessPoint", {
@@ -183,15 +238,33 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       subnet: vpc.privateSubnets[0]!, // Use first private subnet for GPU instances
       fileSystem,
       fileSystemPath: "/data",
+      securityGroup: gpuSecurityGroup, // Pass GPU security group
       cooldown: 60, // seconds to wait before checking job status
       interval: 10, // seconds between checks
     });
 
     // ===========================================
-    // IAM Role for EC2 Instances
+    // IAM Roles - Separated by function for least privilege
     // ===========================================
-    const ec2Role = new iam.Role(this, "EC2Role", {
+    
+    // Server Role - For web/API server instances
+    const serverRole = new iam.Role(this, "ServerRole", {
       assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
+      description: "IAM role for Crackosaurus server instances",
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "AmazonSSMManagedInstanceCore"
+        ),
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "CloudWatchAgentServerPolicy"
+        ),
+      ],
+    });
+
+    // Cluster Role - For cluster worker instances
+    const clusterRole = new iam.Role(this, "ClusterRole", {
+      assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
+      description: "IAM role for Crackosaurus cluster worker instances",
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
           "AmazonSSMManagedInstanceCore"
@@ -203,18 +276,27 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     });
 
     // Allow reading database credentials
-    dbCredentials.grantRead(ec2Role);
+    dbCredentials.grantRead(serverRole);
+    dbCredentials.grantRead(clusterRole);
 
-    // Allow EFS access - including root access for mounting
+    // Allow EFS access for server (mount and write)
     fileSystem.grant(
-      ec2Role,
+      serverRole,
       "elasticfilesystem:ClientRootAccess",
       "elasticfilesystem:ClientMount",
       "elasticfilesystem:ClientWrite"
     );
 
-    // Allow ECR access
-    ec2Role.addToPolicy(
+    // Allow EFS access for cluster (mount and write)
+    fileSystem.grant(
+      clusterRole,
+      "elasticfilesystem:ClientRootAccess",
+      "elasticfilesystem:ClientMount",
+      "elasticfilesystem:ClientWrite"
+    );
+
+    // Allow ECR access for server
+    serverRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["ecr:GetAuthorizationToken"],
@@ -222,7 +304,7 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       })
     );
 
-    ec2Role.addToPolicy(
+    serverRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
@@ -231,13 +313,37 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
           "ecr:BatchGetImage",
         ],
         resources: [
-          `arn:aws:ecr:${this.region}:${this.account}:repository/crackosaurus/*`,
+          `arn:aws:ecr:${this.region}:${this.account}:repository/crackosaurus/server`,
+          `arn:aws:ecr:${this.region}:${this.account}:repository/crackosaurus/prisma`,
         ],
       })
     );
 
-    // Allow CloudWatch Logs
-    ec2Role.addToPolicy(
+    // Allow ECR access for cluster
+    clusterRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["ecr:GetAuthorizationToken"],
+        resources: ["*"], // GetAuthorizationToken doesn't support resource-level permissions
+      })
+    );
+
+    clusterRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+        ],
+        resources: [
+          `arn:aws:ecr:${this.region}:${this.account}:repository/crackosaurus/cluster`,
+        ],
+      })
+    );
+
+    // Allow CloudWatch Logs for server
+    serverRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
@@ -247,25 +353,57 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
           "logs:DescribeLogStreams",
         ],
         resources: [
-          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/crackosaurus/*`,
-          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/crackosaurus/*:log-stream:*`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/crackosaurus/server/*`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/crackosaurus/server/*:log-stream:*`,
         ],
       })
     );
 
-    // Allow S3 access for uploads/downloads
-    ec2Role.addToPolicy(
+    // Allow CloudWatch Logs for cluster
+    clusterRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogStreams",
+        ],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/crackosaurus/cluster/*`,
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/crackosaurus/cluster/*:log-stream:*`,
+        ],
+      })
+    );
+
+    // Allow S3 access for server (restricted to tagged buckets)
+    serverRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
           "s3:CreateBucket",
+          "s3:PutBucketTagging",
+          "s3:PutBucketCors",
+          "s3:GetBucketCors",
+        ],
+        resources: ["arn:aws:s3:::crackosaurus-*"],
+        conditions: {
+          StringEquals: {
+            "aws:RequestedRegion": this.region,
+          },
+        },
+      })
+    );
+
+    serverRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
           "s3:ListBucket",
           "s3:GetObject",
           "s3:PutObject",
           "s3:DeleteObject",
           "s3:GetBucketLocation",
-          "s3:PutBucketCors",
-          "s3:GetBucketCors",
         ],
         resources: [
           "arn:aws:s3:::crackosaurus-*",
@@ -274,16 +412,46 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       })
     );
 
-    // Allow Service Discovery for Cloud Map registration
-    ec2Role.addToPolicy(
+    // Allow S3 access for cluster (restricted to tagged buckets)
+    clusterRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ["servicediscovery:ListServices"],
-        resources: ["*"], // ListServices doesn't support resource-level permissions
+        actions: [
+          "s3:ListBucket",
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:GetBucketLocation",
+        ],
+        resources: [
+          "arn:aws:s3:::crackosaurus-*",
+          "arn:aws:s3:::crackosaurus-*/*",
+        ],
       })
     );
 
-    ec2Role.addToPolicy(
+    // Allow Service Discovery for server (to discover cluster nodes)
+    serverRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["servicediscovery:DiscoverInstances"],
+        resources: [`arn:aws:servicediscovery:${this.region}:${this.account}:namespace/${namespace.namespaceId}`],
+      })
+    );
+
+    // Allow Service Discovery for cluster (to register itself)
+    clusterRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "servicediscovery:ListNamespaces",
+          "servicediscovery:ListServices",
+        ],
+        resources: ["*"], // ListNamespaces and ListServices don't support resource-level permissions
+      })
+    );
+
+    clusterRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
@@ -294,20 +462,24 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
           "servicediscovery:ListInstances",
         ],
         resources: [
-          `arn:aws:servicediscovery:${this.region}:${this.account}:namespace/*`,
+          `arn:aws:servicediscovery:${this.region}:${this.account}:namespace/${namespace.namespaceId}`,
           `arn:aws:servicediscovery:${this.region}:${this.account}:service/*`,
         ],
       })
     );
 
-    // Allow Step Functions execution for GPU instance deployment
-    instanceStack.stepFunction.grantStartExecution(ec2Role);
+    // Allow Step Functions execution for cluster (to start GPU instances)
+    instanceStack.stepFunction.grantStartExecution(clusterRole);
 
-    // Allow SQS send messages for job notifications
-    instanceStack.jobQueue.grantSendMessages(ec2Role);
+    // Allow SQS for server (to send jobs)
+    instanceStack.jobQueue.grantSendMessages(serverRole);
 
-    // Allow EC2 terminate for cluster to delete GPU instances
-    ec2Role.addToPolicy(
+    // Allow SQS for cluster (to send and receive jobs)
+    instanceStack.jobQueue.grantSendMessages(clusterRole);
+    instanceStack.jobQueue.grantConsumeMessages(clusterRole);
+
+    // Allow EC2 terminate for cluster only (to delete GPU instances)
+    clusterRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["ec2:DescribeInstances"],
@@ -315,7 +487,7 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       })
     );
 
-    ec2Role.addToPolicy(
+    clusterRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: ["ec2:TerminateInstances"],
@@ -323,6 +495,7 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
         conditions: {
           StringEquals: {
             "ec2:ResourceTag/ManagedBy": "Crackosaurus",
+            "ec2:ResourceTag/Type": "GPU",
           },
         },
       })
@@ -474,33 +647,34 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       "",
       "# ECR Login and pull images",
       `ECR_REGISTRY=${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
+      `IMAGE_TAG=${imageTag}`,
       "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
-      "docker pull $ECR_REGISTRY/crackosaurus/server:latest",
-      "docker pull $ECR_REGISTRY/crackosaurus/prisma:latest",
+      "docker pull $ECR_REGISTRY/crackosaurus/server:$IMAGE_TAG",
+      "docker pull $ECR_REGISTRY/crackosaurus/prisma:$IMAGE_TAG",
       "",
       "# Run Prisma migrations",
       'echo "Running Prisma migrations..."',
       'DATABASE_URL="postgresql://crackosaurus:${DB_PASSWORD}@${DB_HOST}:5432/crackosaurus?schema=public"',
-      'docker run --rm -e DATABASE_PROVIDER=postgresql -e DATABASE_PATH="${DATABASE_URL}" $ECR_REGISTRY/crackosaurus/prisma:latest || echo "WARNING: Prisma migration failed, continuing..."',
+      'docker run --rm -e DATABASE_PROVIDER=postgresql -e DATABASE_PATH="${DATABASE_URL}" $ECR_REGISTRY/crackosaurus/prisma:$IMAGE_TAG || echo "WARNING: Prisma migration failed, continuing..."',
       'echo "Prisma migrations complete"',
       "",
       "# Run server container",
-      'docker run -d --name crackosaurus-server --restart unless-stopped -p 8080:8080 -v /mnt/efs:/data -e NODE_ENV=production -e DATABASE_PROVIDER=postgresql -e DATABASE_PATH="${DATABASE_URL}" -e STORAGE_TYPE=filesystem -e STORAGE_PATH=/data -e CLUSTER_TYPE=external -e CLUSTER_DISCOVERY_TYPE=cloud_map -e CLUSTER_DISCOVERY_NAMESPACE=crackosaurus.local -e CLUSTER_DISCOVERY_SERVICE=cluster -e CLUSTER_DISCOVERY_REGION=${AWS_REGION} -e CLUSTER_HOST=cluster.crackosaurus.local -e CLUSTER_PORT=13337 -e USE_WEB_HOST=true -e AWS_REGION=${AWS_REGION} $ECR_REGISTRY/crackosaurus/server:latest',
+      `docker run -d --name crackosaurus-server --restart unless-stopped -p 8080:8080 -v /mnt/efs:/data -e NODE_ENV=production -e DATABASE_PROVIDER=postgresql -e DATABASE_PATH="\${DATABASE_URL}" -e STORAGE_TYPE=filesystem -e STORAGE_PATH=/data -e CLUSTER_TYPE=external -e CLUSTER_DISCOVERY_TYPE=cloud_map -e CLUSTER_DISCOVERY_NAMESPACE=${environmentName}.crackosaurus.local -e CLUSTER_DISCOVERY_SERVICE=cluster -e CLUSTER_DISCOVERY_REGION=\${AWS_REGION} -e CLUSTER_HOST=cluster.${environmentName}.crackosaurus.local -e CLUSTER_PORT=13337 -e USE_WEB_HOST=true -e AWS_REGION=\${AWS_REGION} $ECR_REGISTRY/crackosaurus/server:$IMAGE_TAG`,
       "",
       "echo 'EC2 instance setup complete'"
     );
 
     // ===========================================
-    // Launch Template with Encrypted EBS
+    // Launch Template for Server Instances
     // ===========================================
-    const launchTemplate = new ec2.LaunchTemplate(this, "LaunchTemplate", {
+    const serverLaunchTemplate = new ec2.LaunchTemplate(this, "ServerLaunchTemplate", {
       instanceType: ec2.InstanceType.of(
         ec2.InstanceClass.T3,
         ec2.InstanceSize.SMALL
       ),
       machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-      securityGroup: ec2SecurityGroup,
-      role: ec2Role,
+      securityGroup: serverSecurityGroup, // Server security group
+      role: serverRole, // Server IAM role
       userData,
       blockDevices: [
         {
@@ -521,12 +695,12 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     const serverAsg = new autoscaling.AutoScalingGroup(this, "ServerASG", {
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      launchTemplate,
+      launchTemplate: serverLaunchTemplate,
       minCapacity: 1,
       maxCapacity: isProduction ? 3 : 1,
       desiredCapacity: 1,
       healthCheck: autoscaling.HealthCheck.elb({
-        grace: cdk.Duration.minutes(30), // Extended to debug EFS mount issues
+        grace: cdk.Duration.minutes(30),
       }),
       updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
         maxBatchSize: 1,
@@ -595,8 +769,9 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       "",
       "# ECR Login and pull cluster image",
       `ECR_REGISTRY=${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
+      `IMAGE_TAG=${imageTag}`,
       "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
-      "docker pull $ECR_REGISTRY/crackosaurus/cluster:latest",
+      "docker pull $ECR_REGISTRY/crackosaurus/cluster:$IMAGE_TAG",
       'DATABASE_URL="postgresql://crackosaurus:${DB_PASSWORD}@${DB_HOST}:5432/crackosaurus?schema=public"',
       "docker run -d \\",
       "  --name crackosaurus-cluster \\",
@@ -617,15 +792,16 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       '  -e CLUSTER_INSTANCE_ROOT="/data/instances" \\',
       '  -e CLUSTER_WORDLIST_ROOT="/data/wordlists" \\',
       '  -e CLUSTER_DISCOVERY_TYPE="cloud_map" \\',
-      '  -e CLUSTER_DISCOVERY_NAMESPACE="crackosaurus.local" \\',
+      `  -e CLUSTER_DISCOVERY_NAMESPACE="${environmentName}.crackosaurus.local" \\`,
       '  -e CLUSTER_DISCOVERY_SERVICE="cluster" \\',
       '  -e CLUSTER_DISCOVERY_REGION="$AWS_REGION" \\',
-      "  $ECR_REGISTRY/crackosaurus/cluster:latest",
+      "  $ECR_REGISTRY/crackosaurus/cluster:$IMAGE_TAG",
       "",
       "# Register with Cloud Map",
       "INSTANCE_ID=$(ec2-metadata --instance-id | cut -d ' ' -f 2)",
       "PRIVATE_IP=$(ec2-metadata --local-ipv4 | cut -d ' ' -f 2)",
-      "SERVICE_ID=$(aws servicediscovery list-services --region $AWS_REGION --query \"Services[?Name=='cluster'].Id\" --output text)",
+      `NAMESPACE_ID=$(aws servicediscovery list-namespaces --region $AWS_REGION --query "Namespaces[?Name=='${environmentName}.crackosaurus.local'].Id" --output text)`,
+      `SERVICE_ID=$(aws servicediscovery list-services --region $AWS_REGION --filters Name=NAMESPACE_ID,Values=$NAMESPACE_ID,Condition=EQ --query "Services[?Name=='cluster'].Id" --output text)`,
       "aws servicediscovery register-instance --region $AWS_REGION \\",
       "  --service-id $SERVICE_ID \\",
       "  --instance-id $INSTANCE_ID \\",
@@ -643,8 +819,8 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
           ec2.InstanceSize.SMALL
         ),
         machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-        securityGroup: ec2SecurityGroup,
-        role: ec2Role,
+        securityGroup: clusterSecurityGroup, // Cluster security group
+        role: clusterRole, // Cluster IAM role
         userData: clusterUserData,
         blockDevices: [
           {

@@ -1,11 +1,13 @@
 model User {
-  ID          String    @id @default(uuid())
-  username    String    @unique
-  password    String
-  permissions String    @default("")
-  projects    Project[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @default(now()) @updatedAt
+  ID            String    @id @default(uuid())
+  username      String    @unique
+  password      String
+  permissions   String    @default("")
+  projects      Project[]
+  submittedJobs Job[]
+  approvedJobs  Job[]     @relation("ApprovedJobs")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt
 }
 
 model Project {
@@ -52,13 +54,20 @@ model Instance {
 }
 
 model Job {
-  JID        String    @id @default(uuid())
-  instanceId String
-  instance   Instance  @relation(fields: [instanceId], references: [IID])
-  wordlistId String?
-  wordlist   Wordlist? @relation(fields: [wordlistId], references: [WID])
-  hashes     Hash[]
-  status     String    @default("PENDING")
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @default(now()) @updatedAt
+  JID            String    @id @default(uuid())
+  instanceId     String
+  instance       Instance  @relation(fields: [instanceId], references: [IID])
+  wordlistId     String?
+  wordlist       Wordlist? @relation(fields: [wordlistId], references: [WID])
+  hashes         Hash[]
+  status         String    @default("PENDING")
+  approvalStatus String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  submittedById  String?
+  submittedBy    User?     @relation(fields: [submittedById], references: [ID])
+  approvedById   String?
+  approvedBy     User?     @relation("ApprovedJobs", fields: [approvedById], references: [ID])
+  approvedAt     DateTime?
+  rejectionNote  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @default(now()) @updatedAt
 }

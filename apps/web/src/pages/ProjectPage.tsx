@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { TRPCClientError } from "@trpc/client";
 import { getQueryKey } from "@trpc/react-query";
-import { PlayIcon, TrashIcon } from "lucide-react";
+import { CheckIcon, PlayIcon, TrashIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -12,6 +12,7 @@ import { HASH_TYPES, getHashName } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { Separator } from "@repo/shadcn/components/ui/separator";
+import { useToast } from "@repo/shadcn/components/ui/use-toast";
 import { tRPCInput, tRPCOutput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
 import { InstanceSelect } from "@repo/ui/clusters";
@@ -203,6 +204,170 @@ const HashDataTable = ({
   );
 };
 
+interface PendingJobsSectionProps {
+  projectID: string;
+  jobs: (ProjectJobWithType & {
+    approvalStatus?: string;
+    submittedBy?: { ID: string; username: string } | null;
+    wordlist?: { WID: string; name: string | null } | null;
+  })[];
+}
+
+const PendingJobsSection = ({
+  projectID,
+  jobs,
+}: PendingJobsSectionProps) => {
+  const { t } = useTranslation();
+  const { hasPermission, uid } = useAuth();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+  const { toast } = useToast();
+
+  const pendingJobs = useMemo(
+    () => jobs.filter((job) => job.approvalStatus === "PENDING"),
+    [jobs]
+  );
+
+  const myPendingJobs = useMemo(
+    () =>
+      pendingJobs.filter((job) => job.submittedBy?.ID === uid),
+    [pendingJobs, uid]
+  );
+
+  const queryKeys = useMemo(
+    () => [
+      getQueryKey(trpc.project.get, { projectID }, "any"),
+      getQueryKey(trpc.project.getMany, undefined, "any"),
+    ],
+    [projectID]
+  );
+
+  const { mutateAsync: approveOne } = trpc.job.approve.useMutation({
+    onSuccess() {
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      toast({
+        title: t("message.job.approved", { defaultValue: "Job Approved" }),
+        description: t("message.job.approved.description", {
+          defaultValue: "The job has been approved and sent to the cluster.",
+        }),
+      });
+    },
+    onError: handleError,
+  });
+
+  const { mutateAsync: approveMany } = trpc.job.approveMany.useMutation({
+    onSuccess(count) {
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      toast({
+        title: t("message.jobs.approved", { defaultValue: "Jobs Approved" }),
+        description: t("message.jobs.approved.description", {
+          defaultValue: `${count} job(s) have been approved and sent to the cluster.`,
+          count,
+        }),
+      });
+    },
+    onError: handleError,
+  });
+
+  const handleApproveAll = async () => {
+    if (pendingJobs.length === 0) return;
+    await approveMany({ jobIDs: pendingJobs.map((j) => j.JID) });
+  };
+
+  // If user is admin, show all pending jobs with approve buttons
+  if (hasPermission("jobs:approve") && pendingJobs.length > 0) {
+    return (
+      <div className="rounded-lg border border-yellow-500 bg-yellow-50 p-4 dark:bg-yellow-950/20">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold flex items-center gap-2">
+            ⏳{" "}
+            {t("message.pending.jobs.title", {
+              defaultValue: "Pending Approval",
+            })}{" "}
+            ({pendingJobs.length})
+          </h3>
+          <Button size="sm" onClick={handleApproveAll}>
+            {t("action.approve.all", { defaultValue: "Approve All Jobs" })}
+          </Button>
+        </div>
+        <div className="space-y-2">
+          {pendingJobs.map((job) => (
+            <div
+              key={job.JID}
+              className="flex items-center justify-between bg-white dark:bg-gray-900 p-3 rounded border"
+            >
+              <div className="flex-1">
+                <div className="font-medium">
+                  {t("field.job.id", { defaultValue: "Job" })}: {job.JID.slice(0, 8)}...
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  {t("field.submitted.by", { defaultValue: "Submitted by" })}:{" "}
+                  <span className="font-medium">
+                    {job.submittedBy?.username || "Unknown"}
+                  </span>{" "}
+                  •{" "}
+                  {t("field.wordlist", { defaultValue: "Wordlist" })}:{" "}
+                  {job.wordlist?.name || "Unknown"} •{" "}
+                  {t("field.instance", { defaultValue: "Instance" })}:{" "}
+                  {job.instance.name || job.instance.IID}
+                </div>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => approveOne({ jobID: job.JID })}
+                className="ml-4"
+              >
+                <CheckIcon className="h-4 w-4 mr-1" />
+                {t("action.approve", { defaultValue: "Approve" })}
+              </Button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // If user is contributor, show only their pending jobs (info only, no approve buttons)
+  if (myPendingJobs.length > 0) {
+    return (
+      <div className="rounded-lg border border-blue-500 bg-blue-50 p-4 dark:bg-blue-950/20">
+        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+          ⏳{" "}
+          {t("message.your.pending.jobs", {
+            defaultValue: "Your Pending Jobs",
+          })}{" "}
+          ({myPendingJobs.length})
+        </h3>
+        <div className="space-y-2">
+          {myPendingJobs.map((job) => (
+            <div
+              key={job.JID}
+              className="bg-white dark:bg-gray-900 p-3 rounded border"
+            >
+              <div className="font-medium">
+                {t("field.job.id", { defaultValue: "Job" })}: {job.JID.slice(0, 8)}...
+              </div>
+              <div className="text-sm text-muted-foreground">
+                {t("message.waiting.approval", {
+                  defaultValue:
+                    "Waiting for admin approval. You'll be notified when it's approved.",
+                })}{" "}
+                • {t("field.wordlist", { defaultValue: "Wordlist" })}:{" "}
+                {job.wordlist?.name || "Unknown"} •{" "}
+                {t("field.instance", { defaultValue: "Instance" })}:{" "}
+                {job.instance.name || job.instance.IID}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 interface JobDataTableProps {
   values: ProjectJobWithType[];
   isLoading?: boolean;
@@ -362,6 +527,7 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
 
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
+  const { toast } = useToast();
 
   const queryKeys = useMemo(
     () => [
@@ -418,6 +584,16 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
               hashType,
               projectIDs: [projectID],
             })),
+          });
+
+          toast({
+            title: t("message.job.submitted.title", {
+              defaultValue: "Job Submitted",
+            }),
+            description: t("message.job.submitted.description", {
+              defaultValue:
+                "Your job has been submitted and is pending admin approval. You can view its status in the Jobs page.",
+            }),
           });
 
           setInstanceID("");
@@ -606,6 +782,8 @@ export const ProjectPage = () => {
           />
         </div>
       </div>
+      {/* Pending Jobs Section */}
+      <PendingJobsSection projectID={projectID!} jobs={jobs} />
       {separatedTables}
     </div>
   );

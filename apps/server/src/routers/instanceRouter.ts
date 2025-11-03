@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -255,6 +257,7 @@ export const instanceRouter = t.router({
         });
         const wordlistIDSet = new Set(wordlists.map(({ WID }) => WID));
 
+        // Prepare job data without sending to cluster yet (will be sent on approval)
         const result = await Promise.allSettled(
           data.map(async (job) => {
             if (!wordlistIDSet.has(job.wordlistID)) return null;
@@ -273,16 +276,10 @@ export const instanceRouter = t.router({
 
             if (jobHashes.length === 0) return null;
 
-            return [
-              job,
-              jobHashes,
-              await cluster.instance.createJob.mutate({
-                instanceID: instance.tag,
-                wordlistID: job.wordlistID,
-                hashType: job.hashType,
-                hashes: jobHashes.map(({ hash }) => hash),
-              }),
-            ] as const;
+            // Generate job ID locally - don't send to cluster until approved
+            const JID = crypto.randomUUID();
+
+            return [job, jobHashes, JID] as const;
           })
         );
 
@@ -310,6 +307,8 @@ export const instanceRouter = t.router({
                 hashes: {
                   connect: hashes.map(({ HID }) => ({ HID })),
                 },
+                approvalStatus: "PENDING", // Jobs start as pending approval
+                submittedById: currentUserID,
               },
             })
           )

@@ -5,6 +5,7 @@ import { publicProcedure, t } from "../plugins/trpc";
 import { authRouter, hashPassword } from "./authRouter";
 import { hashRouter } from "./hashRouter";
 import { instanceRouter } from "./instanceRouter";
+import { jobRouter } from "./jobRouter";
 import { projectRouter } from "./projectRouter";
 import { userRouter } from "./userRouter";
 import { wordlistRouter } from "./wordlistRouter";
@@ -49,6 +50,7 @@ export const appRouter = t.router({
   auth: authRouter,
   hash: hashRouter,
   instance: instanceRouter,
+  job: jobRouter,
   project: projectRouter,
   user: userRouter,
   wordlist: wordlistRouter,

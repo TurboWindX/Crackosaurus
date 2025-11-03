@@ -16,6 +16,9 @@ export const PERMISSIONS = [
   "instances:jobs:get",
   "instances:jobs:add",
   "instances:jobs:remove",
+  "jobs:*",
+  "jobs:view",
+  "jobs:approve",
   "projects:*",
   "projects:get",
   "projects:add",
@@ -38,13 +41,21 @@ export const PERMISSIONS = [
 ] as const;
 export type PermissionType = (typeof PERMISSIONS)[number];
 
+//Roles mapped to permissions
+// Use "*" to indicate all permissions
+//Admin has all permissions
+//Contributor has permissions to contribute to instances/projects, but can't launch project.  Only admin can.
+//Viewer has read-only access to hashes and auth
 export const PERMISSION_PROFILES = {
   admin: ["*"],
   contributor: [
     "auth",
     "hashes:*",
     "instances:get",
-    "instances:jobs:*",
+    "instances:add",
+    "instances:jobs:get",
+    "instances:jobs:add",
+    "jobs:view",
     "projects:add",
     "projects:remove",
     "projects:users:*",

@@ -40,6 +40,7 @@ export interface InstanceStackProps extends InstanceStackConfig {
   subnet: ISubnet;
   fileSystem: IFileSystem;
   fileSystemPath: string;
+  securityGroup?: SecurityGroup; // Optional: security group for GPU instances
 }
 
 interface UserDataTemplateProps {
@@ -77,27 +78,31 @@ export class InstanceStack extends Construct {
       receiveMessageWaitTime: Duration.seconds(20), // Long polling
     });
 
-    this.instanceSG = new SecurityGroup(this, "security-group", {
+    // Use provided security group or create a new one
+    this.instanceSG = props.securityGroup ?? new SecurityGroup(this, "security-group", {
       securityGroupName: tag("security-group"),
       vpc: props.vpc,
+      description: "Security group for GPU instances",
     });
 
     if (props.sshKey) {
-      this.instanceSG.connections.allowFromAnyIpv4(Port.SSH, "SSH");
+      this.instanceSG.connections.allowFromAnyIpv4(Port.SSH, "SSH for debugging");
     }
 
-    // Allow instance to access EFS
+    // Allow GPU instances to access EFS
     props.fileSystem.connections.allowDefaultPortFrom(this.instanceSG);
 
+    // GPU Instance Role - LEAST PRIVILEGE (no EC2 management permissions)
     this.instanceRole = new Role(this, "role", {
       roleName: tag("role"),
       assumedBy: new ServicePrincipal("ec2.amazonaws.com"),
+      description: "IAM role for GPU instances - least privilege access",
     });
 
-    this.instanceRole.addManagedPolicy(
-      ManagedPolicy.fromAwsManagedPolicyName("AmazonEC2FullAccess")
-    );
-
+    // Remove AmazonEC2FullAccess - CRITICAL SECURITY FIX
+    // GPU instances should NOT be able to create/modify/delete EC2 resources
+    
+    // Allow EFS access for reading wordlists and writing results
     this.instanceRole.addManagedPolicy(
       ManagedPolicy.fromAwsManagedPolicyName(
         "AmazonElasticFileSystemClientReadWriteAccess"
@@ -190,6 +195,10 @@ export class InstanceStack extends Construct {
               {
                 Key: "ManagedBy",
                 Value: "Crackosaurus",
+              },
+              {
+                Key: "Type",
+                Value: "GPU", // Required for terminate permission condition
               },
             ],
           },

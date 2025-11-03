@@ -85,8 +85,15 @@ export const ProjectsPage = () => {
         sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
         isLoading={isLoading}
         rowClick={({ PID }) => navigate(`/projects/${PID}`)}
-        row={({ name, members, updatedAt }) => [
-          name,
+        row={({ name, members, updatedAt, pendingJobsCount }) => [
+          <div className="flex items-center gap-2">
+            <span>{name}</span>
+            {pendingJobsCount && pendingJobsCount > 0 ? (
+              <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100">
+                ⏳ {pendingJobsCount} pending
+              </Badge>
+            ) : null}
+          </div>,
           hasCollaborators ? (
             <div className="flex flex-wrap gap-2">
               {(members ?? []).map((member) => (

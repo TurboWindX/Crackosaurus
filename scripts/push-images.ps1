@@ -1,8 +1,20 @@
 # Script to build and push Docker images to ECR
 # Auto-detects AWS account, region, and configuration from environment
+
+param(
+    [string]$Environment = "dev",
+    [string]$ImageTag = "latest"
+)
+
 $ErrorActionPreference = "Stop"
 
+# Change to repository root (parent of scripts directory)
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $RepoRoot
+
 Write-Host "=== Crackosaurus Docker Image Build and Push ===" -ForegroundColor Cyan
+Write-Host "Environment: $Environment" -ForegroundColor Yellow
+Write-Host "Image Tag: $ImageTag" -ForegroundColor Yellow
 
 # Auto-detect AWS account and region from AWS CLI/CDK
 Write-Host "`nDetecting AWS environment..." -ForegroundColor Yellow
@@ -55,20 +67,20 @@ foreach ($repo in $repos) {
 
 # Build and push server image
 Write-Host "`nBuilding server image..." -ForegroundColor Yellow
-docker build --build-arg DATABASE_PROVIDER=$DatabaseProvider --build-arg BACKEND_HOST=$BackendHost --build-arg BACKEND_PORT=$BackendPort -t $REGISTRY/crackosaurus/server:latest -f packages/container/server/Containerfile .
+docker build --build-arg DATABASE_PROVIDER=$DatabaseProvider --build-arg BACKEND_HOST=$BackendHost --build-arg BACKEND_PORT=$BackendPort -t $REGISTRY/crackosaurus/server:$ImageTag -f packages/container/server/Containerfile .
 Write-Host "Pushing server image..." -ForegroundColor Yellow
-docker push $REGISTRY/crackosaurus/server:latest
+docker push $REGISTRY/crackosaurus/server:$ImageTag
 
 # Build and push cluster image
 Write-Host "`nBuilding cluster image..." -ForegroundColor Yellow
-docker build --build-arg DATABASE_PROVIDER=$DatabaseProvider -t $REGISTRY/crackosaurus/cluster:latest -f packages/container/cluster/Containerfile .
+docker build --build-arg DATABASE_PROVIDER=$DatabaseProvider -t $REGISTRY/crackosaurus/cluster:$ImageTag -f packages/container/cluster/Containerfile .
 Write-Host "Pushing cluster image..." -ForegroundColor Yellow
-docker push $REGISTRY/crackosaurus/cluster:latest
+docker push $REGISTRY/crackosaurus/cluster:$ImageTag
 
 # Build and push prisma image
 Write-Host "`nBuilding prisma image..." -ForegroundColor Yellow
-docker build --build-arg DATABASE_PROVIDER=$DatabaseProvider -t $REGISTRY/crackosaurus/prisma:latest -f packages/container/prisma/Containerfile .
+docker build --build-arg DATABASE_PROVIDER=$DatabaseProvider -t $REGISTRY/crackosaurus/prisma:$ImageTag -f packages/container/prisma/Containerfile .
 Write-Host "Pushing prisma image..." -ForegroundColor Yellow
-docker push $REGISTRY/crackosaurus/prisma:latest
+docker push $REGISTRY/crackosaurus/prisma:$ImageTag
 
 Write-Host "`n=== All images built and pushed successfully! ===" -ForegroundColor Green

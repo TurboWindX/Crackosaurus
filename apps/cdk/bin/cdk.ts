@@ -20,6 +20,9 @@ const app = new cdk.App();
 const config = {
   environmentName:
     app.node.tryGetContext("environment") || process.env.ENVIRONMENT || "dev",
+  imageTag:
+    app.node.tryGetContext("imageTag") || process.env.IMAGE_TAG || 
+    (app.node.tryGetContext("environment") || process.env.ENVIRONMENT || "dev"),
   domainName: app.node.tryGetContext("domainName") || process.env.DOMAIN_NAME,
   certificateArn:
     app.node.tryGetContext("certificateArn") || process.env.CERTIFICATE_ARN,
