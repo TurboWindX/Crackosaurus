@@ -33,7 +33,7 @@ export interface ServiceStackProps extends ServerStackConfig {
   cluster: ICluster;
   serviceSubnets: ISubnet[];
   loadBalancerSubnets: ISubnet[];
-  clusterLoaderBalancer: ILoadBalancerV2;
+  clusterLoaderBalancer?: ILoadBalancerV2;
   databaseUrl: string;
   uploadsBucketArn: string;
   s3PresignedUrlRoleArn: string;
@@ -79,15 +79,21 @@ export class ServerStack extends Construct {
         provider: "postgresql",
         path: props.databaseUrl,
       },
-      cluster: {
-        name: props.clusterLoaderBalancer.loadBalancerDnsName,
-        port: 80,
-      },
+      cluster: props.clusterLoaderBalancer
+        ? {
+            name: props.clusterLoaderBalancer.loadBalancerDnsName,
+            port: 80,
+          }
+        : {
+            name: "cluster.crackosaurus.local", // Service Discovery via Cloud Map
+            port: 13337,
+          },
       secret: secret.secretValueFromJson("secret").unsafeUnwrap(),
       s3: {
         bucketArn: props.uploadsBucketArn,
         roleArn: props.s3PresignedUrlRoleArn,
       },
+      environment: "production",
     };
 
     // Separate build-time args from runtime environment variables

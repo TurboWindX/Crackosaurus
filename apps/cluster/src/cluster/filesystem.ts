@@ -118,6 +118,7 @@ export abstract class FileSystemCluster<
     hashType: number,
     hashes: string[]
   ): Promise<string | null> {
+    console.log(`[Cluster] createJob called with instanceID: ${instanceID}`);
     const jobID = crypto.randomUUID();
 
     await createJobFolder(this.config.instanceRoot, instanceID, jobID, {
@@ -125,13 +126,23 @@ export abstract class FileSystemCluster<
       hashes,
       hashType,
     });
+    console.log(`[Cluster] Job ${jobID} created in ${this.config.instanceRoot}/${instanceID}/jobs/`);
 
     const instanceMetadata = await getInstanceMetadata(
       this.config.instanceRoot,
       instanceID
     );
+    console.log(`[Cluster] Instance ${instanceID} metadata:`, JSON.stringify(instanceMetadata));
 
-    if (instanceMetadata.status === STATUS.Pending) await this.run(instanceID);
+    // Launch GPU worker if instance is not currently running
+    // This allows re-launching workers for instances that completed/stopped
+    if (
+      instanceMetadata.status !== STATUS.Running &&
+      instanceMetadata.status !== STATUS.Error
+    ) {
+      console.log(`[Cluster] Auto-launching GPU worker for instance ${instanceID} (status: ${instanceMetadata.status}, type: ${instanceMetadata.type})`);
+      await this.run(instanceID);
+    }
 
     return jobID;
   }

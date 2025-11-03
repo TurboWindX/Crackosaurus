@@ -15,6 +15,7 @@ export const INSTANCE_METADATA = z.object({
     STATUS.Unknown,
   ]),
   type: z.string(),
+  ec2InstanceId: z.string().optional(), // AWS EC2 instance ID for termination
 });
 export type InstanceMetadata = z.infer<typeof INSTANCE_METADATA>;
 
@@ -212,29 +213,43 @@ export function watchInstanceFolder(
   let lastModified = Date.now();
 
   const interval = setInterval(async () => {
+    console.log(`[Watcher] Polling ${instancePath}`);
+    
     if (fs.existsSync(instanceMetadata)) {
       const instanceStat = fs.statSync(instanceMetadata);
       if (instanceStat.mtimeMs >= lastModified) {
+        console.log(`[Watcher] Instance metadata changed`);
         callback({
           type: CLUSTER_FILESYSTEM_TYPE.InstanceUpdate,
           instanceID,
         });
       }
+    } else {
+      console.log(`[Watcher] Instance metadata not found at ${instanceMetadata}`);
     }
 
     const jobsPath = path.join(instancePath, JOBS_FOLDER);
+    console.log(`[Watcher] Checking jobs path: ${jobsPath}`);
     if (fs.existsSync(jobsPath)) {
-      for (const jobID of fs.readdirSync(jobsPath)) {
+      const jobs = fs.readdirSync(jobsPath);
+      console.log(`[Watcher] Found ${jobs.length} job folders:`, jobs);
+      for (const jobID of jobs) {
         const jobMetadata = path.join(jobsPath, jobID, METADATA_FILE);
 
-        if (!fs.existsSync(jobMetadata)) continue;
+        if (!fs.existsSync(jobMetadata)) {
+          console.log(`[Watcher] Job ${jobID} metadata not found, skipping`);
+          continue;
+        }
 
+        console.log(`[Watcher] Sending JobUpdate for ${jobID}`);
         callback({
           type: CLUSTER_FILESYSTEM_TYPE.JobUpdate,
           instanceID,
           jobID,
         });
       }
+    } else {
+      console.log(`[Watcher] Jobs path does not exist: ${jobsPath}`);
     }
 
     lastModified = Date.now();

@@ -10,6 +10,7 @@ const bundle: RollupOptions = {
     dir: "dist",
     format: "cjs",
   },
+  external: ["aws-sdk"], // Don't bundle aws-sdk, it will be installed on EC2
   plugins: [
     nodeResolve({
       extensions: [".ts"],

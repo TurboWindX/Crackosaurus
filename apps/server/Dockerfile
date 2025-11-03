@@ -12,8 +12,8 @@ RUN npm ci
 # Copy db files for Prisma generation
 COPY apps/db ./apps/db
 
-# Generate Prisma schema by merging common + sqlite schemas in the app directory
-RUN cat apps/db/schemas/sqlite.prisma > schema.prisma && \
+# Generate Prisma schema by merging common + postgresql schemas in the app directory
+RUN cat apps/db/schemas/postgresql.prisma > schema.prisma && \
     echo "" >> schema.prisma && \
     echo "// Common models" >> schema.prisma && \
     cat apps/db/schemas/common.prisma >> schema.prisma && \
@@ -55,13 +55,15 @@ COPY --from=builder /app/apps/server/dist ./apps/server/dist
 # Copy built web frontend to public folder
 COPY --from=builder /app/apps/web/dist ./public
 
-# Copy database migrations and schema for SQLite
-COPY --from=builder /app/apps/db/providers/sqlite/migrations ./migrations
+# Copy database migrations and schema for PostgreSQL
+COPY --from=builder /app/apps/db/providers/postgresql/migrations ./migrations
 COPY --from=builder /app/schema.prisma ./schema.prisma
 
-# Create entrypoint script to run migrations before starting server
+# Create entrypoint script to construct DATABASE_PATH and run migrations
 RUN echo '#!/bin/sh' > /entrypoint.sh && \
     echo 'set -e' >> /entrypoint.sh && \
+    echo '# Construct DATABASE_PATH from environment variables' >> /entrypoint.sh && \
+    echo 'export DATABASE_PATH="postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?schema=public"' >> /entrypoint.sh && \
     echo 'echo "Running database migrations..."' >> /entrypoint.sh && \
     echo 'npx prisma migrate deploy --schema=/app/schema.prisma' >> /entrypoint.sh && \
     echo 'echo "Starting server..."' >> /entrypoint.sh && \

@@ -34,9 +34,32 @@ export function hashcat({
     wordlistFile,
   ];
 
+  console.log("[Hashcat] Spawning hashcat process");
+  console.log("[Hashcat] Executable:", exePath);
+  console.log("[Hashcat] Args:", args.join(" "));
+  console.log("[Hashcat] Working directory:", cwd);
+
   const process = childProcess.spawn(exePath, args, {
     cwd,
     stdio,
+  });
+
+  process.on("error", (err) => {
+    console.error("[Hashcat] Failed to start hashcat process:", err.message);
+    console.error("[Hashcat] Error details:", err);
+  });
+
+  process.on("spawn", () => {
+    console.log("[Hashcat] Process spawned successfully, PID:", process.pid);
+  });
+
+  process.on("exit", (code, signal) => {
+    if (code !== null) {
+      console.log(`[Hashcat] Process exited with code: ${code}`);
+    }
+    if (signal !== null) {
+      console.log(`[Hashcat] Process killed with signal: ${signal}`);
+    }
   });
 
   return process;

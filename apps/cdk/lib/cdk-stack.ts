@@ -14,7 +14,6 @@ export class CdkStack extends Stack {
       databaseType: "postgresql",
       databaseCreditals: "secret",
       database: {},
-      cluster: {},
       prisma: {},
       server: {
         internet: true,

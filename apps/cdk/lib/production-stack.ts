@@ -6,8 +6,10 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as efs from "aws-cdk-lib/aws-efs";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as rds from "aws-cdk-lib/aws-rds";
 import * as route53 from "aws-cdk-lib/aws-route53";
 import * as route53Targets from "aws-cdk-lib/aws-route53-targets";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
 export interface CrackosaurusStackProps extends cdk.StackProps {
@@ -93,9 +95,63 @@ export class CrackosaurusStack extends cdk.Stack {
     );
 
     // ===========================================
-    // Database: SQLite on EFS (persistent storage)
+    // Database: RDS Aurora Serverless v2 PostgreSQL
     // ===========================================
-    // EFS filesystem to store SQLite database - survives task restarts
+    
+    // Database credentials stored in Secrets Manager
+    const dbCredentials = new secretsmanager.Secret(this, "DBCredentials", {
+      generateSecretString: {
+        secretStringTemplate: JSON.stringify({ username: "crackosaurus" }),
+        generateStringKey: "password",
+        excludePunctuation: true,
+        includeSpace: false,
+        passwordLength: 32,
+      },
+    });
+
+    // Database security group
+    const dbSecurityGroup = new ec2.SecurityGroup(this, "DBSecurityGroup", {
+      vpc,
+      description: "Security group for RDS database",
+      allowAllOutbound: false,
+    });
+
+    // Allow ECS tasks to connect to database
+    dbSecurityGroup.addIngressRule(
+      ecsSecurityGroup,
+      ec2.Port.tcp(5432),
+      "Allow PostgreSQL access from ECS tasks"
+    );
+
+    // Aurora Serverless v2 cluster with encryption (required by SCP)
+    const dbCluster = new rds.DatabaseCluster(this, "Database", {
+      engine: rds.DatabaseClusterEngine.auroraPostgres({
+        version: rds.AuroraPostgresEngineVersion.VER_15_6,
+      }),
+      credentials: rds.Credentials.fromSecret(dbCredentials),
+      writer: rds.ClusterInstance.serverlessV2("writer", {
+        autoMinorVersionUpgrade: true,
+      }),
+      readers: [], // No readers for dev/demo - can add for production
+      vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+      securityGroups: [dbSecurityGroup],
+      defaultDatabaseName: "crackosaurus",
+      serverlessV2MinCapacity: 0.5, // 0.5 ACU minimum (scales to zero cost when idle)
+      serverlessV2MaxCapacity: 2, // 2 ACU maximum (can increase for production)
+      storageEncrypted: true, // Required by SCP - encrypt data at rest
+      backup: {
+        retention: cdk.Duration.days(isProduction ? 7 : 1),
+        preferredWindow: "03:00-04:00",
+      },
+      removalPolicy: isProduction ? cdk.RemovalPolicy.SNAPSHOT : cdk.RemovalPolicy.DESTROY,
+      deletionProtection: isProduction,
+    });
+
+    // ===========================================
+    // EFS for shared storage (wordlists, job files)
+    // ===========================================
+    // EFS filesystem for wordlists and job data - survives task restarts
     const fileSystem = new efs.FileSystem(this, "FileSystem", {
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
@@ -103,10 +159,10 @@ export class CrackosaurusStack extends cdk.Stack {
       encrypted: true,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
       throughputMode: efs.ThroughputMode.BURSTING,
-      removalPolicy: cdk.RemovalPolicy.RETAIN, // EFS doesn't support SNAPSHOT
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // Access point for the database directory
+    // Access point for the data directory
     const accessPoint = new efs.AccessPoint(this, "AccessPoint", {
       fileSystem,
       path: "/data",
@@ -227,18 +283,7 @@ export class CrackosaurusStack extends cdk.Stack {
       taskRole: taskRole,
     });
 
-    // Mount EFS for SQLite database
-    serverTaskDefinition.addVolume({
-      name: "data",
-      efsVolumeConfiguration: {
-        fileSystemId: fileSystem.fileSystemId,
-        transitEncryption: "ENABLED",
-        authorizationConfig: {
-          accessPointId: accessPoint.accessPointId,
-          iam: "ENABLED",
-        },
-      },
-    });
+    // Server doesn't need EFS - it uses RDS for database
 
     const serverContainer = serverTaskDefinition.addContainer("server", {
       containerName: "server",
@@ -254,8 +299,12 @@ export class CrackosaurusStack extends cdk.Stack {
       }),
       environment: {
         NODE_ENV: "production",
-        DATABASE_PROVIDER: "sqlite",
-        DATABASE_PATH: "file:///data/crackosaurus.db", // Stored on EFS with file:// protocol (absolute path)
+        DATABASE_PROVIDER: "postgresql",
+        // DATABASE_PATH is constructed at runtime by entrypoint script using DATABASE_PASSWORD secret
+        DATABASE_HOST: dbCluster.clusterEndpoint.hostname,
+        DATABASE_PORT: "5432",
+        DATABASE_NAME: "crackosaurus",
+        DATABASE_USER: "crackosaurus",
         BACKEND_HOST: "0.0.0.0",
         BACKEND_PORT: "8080",
         WEB_HOST: domainName || alb.loadBalancerDnsName,
@@ -264,17 +313,12 @@ export class CrackosaurusStack extends cdk.Stack {
         CLUSTER_PORT: "13337",
         AWS_REGION: this.region,
       },
+      secrets: {
+        DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbCredentials, "password"),
+      },
     });
 
-    // Mount the EFS volume to the container
-    serverContainer.addMountPoints({
-      sourceVolume: "data",
-      containerPath: "/data",
-      readOnly: false,
-    });
-
-    // Grant EFS access to the task role
-    fileSystem.grant(taskRole, "elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite");
+    // Server doesn't need EFS mount - only cluster needs it for wordlists/jobs
 
     const serverService = new ecs.FargateService(this, "ServerService", {
       cluster: ecsCluster,
@@ -324,6 +368,19 @@ export class CrackosaurusStack extends cdk.Stack {
       taskRole: taskRole,
     });
 
+    // Add EFS volume for cluster (wordlists and job files)
+    clusterTaskDefinition.addVolume({
+      name: "data",
+      efsVolumeConfiguration: {
+        fileSystemId: fileSystem.fileSystemId,
+        transitEncryption: "ENABLED",
+        authorizationConfig: {
+          accessPointId: accessPoint.accessPointId,
+          iam: "ENABLED",
+        },
+      },
+    });
+
     const clusterContainer = clusterTaskDefinition.addContainer("cluster", {
       containerName: "cluster",
       image: ecs.ContainerImage.fromEcrRepository(clusterRepository, "latest"),
@@ -337,12 +394,34 @@ export class CrackosaurusStack extends cdk.Stack {
         streamPrefix: "cluster",
       }),
       environment: {
+        NODE_ENV: "production",
+        DATABASE_PROVIDER: "postgresql",
+        // DATABASE_PATH is constructed at runtime by entrypoint script using DATABASE_PASSWORD secret
+        DATABASE_HOST: dbCluster.clusterEndpoint.hostname,
+        DATABASE_PORT: "5432",
+        DATABASE_NAME: "crackosaurus",
+        DATABASE_USER: "crackosaurus",
         CLUSTER_HOST: "0.0.0.0",
         CLUSTER_PORT: "13337",
         CLUSTER_TYPE: "external",
+        CLUSTER_INSTANCE_ROOT: "/data/instances",
+        CLUSTER_WORDLIST_ROOT: "/data/wordlists",
         AWS_REGION: this.region,
       },
+      secrets: {
+        DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbCredentials, "password"),
+      },
     });
+
+    // Mount EFS for wordlists and job files
+    clusterContainer.addMountPoints({
+      sourceVolume: "data",
+      containerPath: "/data",
+      readOnly: false,
+    });
+
+    // Grant EFS access to the task role
+    fileSystem.grant(taskRole, "elasticfilesystem:ClientMount", "elasticfilesystem:ClientWrite");
 
     new ecs.FargateService(this, "ClusterService", {
       cluster: ecsCluster,
@@ -397,10 +476,16 @@ export class CrackosaurusStack extends cdk.Stack {
       exportName: `${id}-LoadBalancerDNS`,
     });
 
-    new cdk.CfnOutput(this, "DatabaseInfo", {
-      value: "SQLite database at /data/crackosaurus.db on EFS",
-      description: "Database configuration",
-      exportName: `${id}-DatabaseInfo`,
+    new cdk.CfnOutput(this, "DatabaseEndpoint", {
+      value: dbCluster.clusterEndpoint.hostname,
+      description: "RDS Aurora PostgreSQL endpoint",
+      exportName: `${id}-DatabaseEndpoint`,
+    });
+
+    new cdk.CfnOutput(this, "DatabaseSecretArn", {
+      value: dbCredentials.secretArn,
+      description: "ARN of the database credentials secret",
+      exportName: `${id}-DatabaseSecretArn`,
     });
 
     new cdk.CfnOutput(this, "FileSystemId", {

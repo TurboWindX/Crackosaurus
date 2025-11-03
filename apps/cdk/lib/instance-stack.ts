@@ -1,4 +1,4 @@
-import { DockerImage } from "aws-cdk-lib";
+import { DockerImage, Duration } from "aws-cdk-lib";
 import {
   ISubnet,
   IVpc,
@@ -15,6 +15,7 @@ import {
   ServicePrincipal,
 } from "aws-cdk-lib/aws-iam";
 import { Asset } from "aws-cdk-lib/aws-s3-assets";
+import { Queue } from "aws-cdk-lib/aws-sqs";
 import {
   DefinitionBody,
   JsonPath,
@@ -45,8 +46,10 @@ interface UserDataTemplateProps {
   s3ObjectUrl: string;
   hashcatPath: string;
   fileSystemId: string;
+  fileSystemPath: string;
   instanceEnvString: string;
   scriptPath: string;
+  queueUrl: string;
 }
 
 export class InstanceStack extends Construct {
@@ -54,6 +57,7 @@ export class InstanceStack extends Construct {
   public readonly instanceRole: Role;
   public readonly instanceSG: SecurityGroup;
   public readonly asset: Asset;
+  public readonly jobQueue: Queue;
 
   public static readonly NAME = "instance";
 
@@ -66,6 +70,13 @@ export class InstanceStack extends Construct {
     const tag = (v: string) =>
       prefix !== undefined ? `${prefix}-${v}` : undefined;
 
+    // Create SQS queue for job notifications
+    this.jobQueue = new Queue(this, "job-queue", {
+      queueName: tag("job-queue"),
+      visibilityTimeout: Duration.minutes(15), // Time worker has to process job
+      receiveMessageWaitTime: Duration.seconds(20), // Long polling
+    });
+
     this.instanceSG = new SecurityGroup(this, "security-group", {
       securityGroupName: tag("security-group"),
       vpc: props.vpc,
@@ -74,6 +85,9 @@ export class InstanceStack extends Construct {
     if (props.sshKey) {
       this.instanceSG.connections.allowFromAnyIpv4(Port.SSH, "SSH");
     }
+
+    // Allow instance to access EFS
+    props.fileSystem.connections.allowDefaultPortFrom(this.instanceSG);
 
     this.instanceRole = new Role(this, "role", {
       roleName: tag("role"),
@@ -91,6 +105,10 @@ export class InstanceStack extends Construct {
     );
 
     props.fileSystem.grantReadWrite(this.instanceRole);
+    
+    // Grant SQS permissions to instance role
+    this.jobQueue.grantConsumeMessages(this.instanceRole);
+    this.jobQueue.grantSendMessages(this.instanceRole);
 
     this.asset = new Asset(this, "package", {
       path: __dirname,
@@ -169,6 +187,10 @@ export class InstanceStack extends Construct {
                   JsonPath.stringAt("$.instanceID")
                 ),
               },
+              {
+                Key: "ManagedBy",
+                Value: "Crackosaurus",
+              },
             ],
           },
         ],
@@ -202,8 +224,8 @@ export class InstanceStack extends Construct {
     const instanceEnv = envInstanceConfig({
       instanceID: formatTag,
       hashcatPath: hashcatPath,
-      instanceRoot: path.join("efs", props.fileSystemPath, "instances"),
-      wordlistRoot: path.join("efs", props.fileSystemPath, "wordlists"),
+      instanceRoot: path.posix.join("/mnt/efs", "instances"),
+      wordlistRoot: path.posix.join("/mnt/efs", "wordlists"),
       instanceCooldown: props.cooldown ?? 60,
       instanceInterval: props.interval ?? 10,
     });
@@ -219,8 +241,10 @@ export class InstanceStack extends Construct {
       s3ObjectUrl: this.asset.s3ObjectUrl,
       hashcatPath,
       fileSystemId: props.fileSystem.fileSystemId,
+      fileSystemPath: props.fileSystemPath,
       instanceEnvString,
       scriptPath,
+      queueUrl: this.jobQueue.queueUrl,
     };
 
     return this.getUserDataTemplateAmazonLinux(templateProps);
@@ -234,6 +258,7 @@ export class InstanceStack extends Construct {
     # Instance Info
     TOKEN=$(curl -s --request PUT "http://169.254.169.254/latest/api/token" --header "X-aws-ec2-metadata-token-ttl-seconds: 3600")
     EC2_INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id --header "X-aws-ec2-metadata-token: $TOKEN")
+    AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region --header "X-aws-ec2-metadata-token: $TOKEN")
 
     # Install Packages
     yum update -y
@@ -252,18 +277,36 @@ export class InstanceStack extends Construct {
     dnf install nodejs -y
 
     # Mount EFS
-    mkdir /efs
-    mount -t efs -o tls ${props.fileSystemId}:/ /efs
+    mkdir -p /mnt/efs
+    mount -t efs -o tls,iam ${props.fileSystemId}:/ /mnt/efs
+    
+    # Create worker user with same UID/GID as cluster container (1001:1001)
+    groupadd -g 1001 worker || true
+    useradd -u 1001 -g 1001 -m worker || true
+    
+    # Create and set permissions for app directories
+    mkdir -p /mnt/efs/instances /mnt/efs/wordlists
+    chown 1001:1001 -R /mnt/efs/instances /mnt/efs/wordlists
 
     # Install App
     aws s3 cp ${props.s3ObjectUrl} /tmp/package.zip
     unzip /tmp/package.zip -d /
     rm -f /tmp/package.zip
-    chown 1000:1000 -R /app
+    
+    # Install aws-sdk in app directory
+    cd /app
+    npm init -y
+    npm install aws-sdk
+    
+    chown 1001:1001 -R /app
     chmod a+x ${props.hashcatPath}
 
-    # Run App
-    su ec2-user -c '${props.instanceEnvString} node ${props.scriptPath} 2>&1 > /tmp/session.log'
+    # Run App (output to both console and log file)
+    echo "=== Starting Instance Application ==="
+    INSTANCE_ID="{}"
+    echo "Instance ID: $INSTANCE_ID"
+    su worker -c 'INSTANCE_ID='$INSTANCE_ID' JOB_QUEUE_URL="${props.queueUrl}" HASHCAT_PATH="${props.hashcatPath}" INSTANCE_ROOT="/mnt/efs/instances" WORDLIST_ROOT="/mnt/efs/wordlists" INSTANCE_INTERVAL="10" INSTANCE_COOLDOWN="60" node ${props.scriptPath} 2>&1 | tee /tmp/session.log'
+    echo "=== Instance Application Exited with code: $? ==="
 
     # Stop Instance
     aws ec2 terminate-instances --instance-ids $EC2_INSTANCE_ID

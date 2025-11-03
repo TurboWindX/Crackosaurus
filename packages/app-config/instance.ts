@@ -9,6 +9,7 @@ const INSTANCE_ENV = {
   wordlistRoot: "WORDLIST_ROOT",
   instanceInterval: "INSTANCE_INTERVAL",
   instanceCooldown: "INSTANCE_COOLDOWN",
+  jobQueueUrl: "JOB_QUEUE_URL",
 } as const;
 
 export const INSTANCE_CONFIG = z.object({
@@ -18,6 +19,7 @@ export const INSTANCE_CONFIG = z.object({
   wordlistRoot: z.string(),
   instanceInterval: z.number().int().min(0),
   instanceCooldown: z.number().int(),
+  jobQueueUrl: z.string().optional(),
 });
 export type InstanceConfig = z.infer<typeof INSTANCE_CONFIG>;
 
@@ -35,13 +37,14 @@ export function loadInstanceConfig() {
     instanceCooldown: parseInt(
       process.env[INSTANCE_ENV.instanceCooldown] ?? "-1"
     ),
+    jobQueueUrl: process.env[INSTANCE_ENV.jobQueueUrl],
   } satisfies InstanceConfig);
 }
 
 export function envInstanceConfig(
   config: InstanceConfig
 ): Record<string, string> {
-  return {
+  const env: Record<string, string> = {
     [INSTANCE_ENV.instanceID]: config.instanceID,
     [INSTANCE_ENV.hashcatPath]: config.hashcatPath,
     [INSTANCE_ENV.instanceRoot]: config.instanceRoot,
@@ -49,4 +52,10 @@ export function envInstanceConfig(
     [INSTANCE_ENV.instanceInterval]: config.instanceInterval.toString(),
     [INSTANCE_ENV.instanceCooldown]: config.instanceCooldown.toString(),
   };
+  
+  if (config.jobQueueUrl) {
+    env[INSTANCE_ENV.jobQueueUrl] = config.jobQueueUrl;
+  }
+  
+  return env;
 }

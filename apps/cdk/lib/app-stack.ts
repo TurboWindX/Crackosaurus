@@ -5,7 +5,6 @@ import { IDatabaseInstance } from "aws-cdk-lib/aws-rds";
 import { ISecret, Secret } from "aws-cdk-lib/aws-secretsmanager";
 import { Construct } from "constructs";
 
-import { ClusterStack, ClusterStackConfig } from "./cluster-stack";
 import { DatabaseStack, DatabaseStackConfig } from "./database-stack";
 import { InstanceStack, InstanceStackConfig } from "./instance-stack";
 import { PrismaStack, PrismaStackConfig } from "./prisma-stack";
@@ -18,7 +17,6 @@ interface AppStackRequiredConfig {
   databasePort?: number;
   prisma: PrismaStackConfig;
   server: ServerStackConfig;
-  cluster: ClusterStackConfig;
   instance: InstanceStackConfig;
 }
 
@@ -79,7 +77,6 @@ export class AppStack extends Construct {
 
   public readonly appCluster: Cluster;
 
-  public readonly cluster: ClusterStack;
   public readonly instance: InstanceStack;
   public readonly server: ServerStack;
   public readonly storage: StorageStack;
@@ -226,17 +223,6 @@ export class AppStack extends Construct {
       fileSystemPath: this.storage.fileSystemPath,
     });
 
-    this.cluster = new ClusterStack(this, {
-      ...props.cluster,
-      prefix,
-      cluster: this.appCluster,
-      subnets: subnets.app,
-      fileSystem: this.storage.fileSystem,
-      fileSystemPath: this.storage.fileSystemPath,
-      accessPoint: this.storage.accessPoint,
-      stepFunction: this.instance.stepFunction,
-    });
-
     this.prisma = new PrismaStack(this, {
       prefix,
       databaseUrl,
@@ -251,7 +237,7 @@ export class AppStack extends Construct {
       cluster: this.appCluster,
       serviceSubnets: subnets.app,
       loadBalancerSubnets: subnets.internet,
-      clusterLoaderBalancer: this.cluster.loadBalancer,
+      // No clusterLoaderBalancer - using Service Discovery (Cloud Map) in EC2 deployment
       databaseUrl,
       uploadsBucketArn: this.s3.uploadsBucketArn,
       s3PresignedUrlRoleArn: this.s3.s3PresignedUrlRoleArn,
@@ -278,23 +264,12 @@ export class AppStack extends Construct {
       "Server to Database"
     );
 
-    const clusterPort = Port.tcp(80);
-
-    this.cluster.loadBalancer.connections.allowFrom(
-      this.server.service.connections,
-      clusterPort,
-      "Server to Cluster"
-    );
-
     const fileSystemPort =
       this.storage.fileSystem.connections.defaultPort ??
       Port.tcp(FileSystem.DEFAULT_PORT);
 
-    this.storage.fileSystem.connections.allowFrom(
-      this.cluster.service.connections,
-      fileSystemPort,
-      "Cluster to FileSystem"
-    );
+    // Note: Cluster and Server connections are handled in EC2Stack
+    // since they're deployed via EC2 Auto Scaling Groups, not Fargate
 
     this.storage.fileSystem.connections.allowFrom(
       this.instance.instanceSG,

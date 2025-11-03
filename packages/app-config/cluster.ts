@@ -15,6 +15,7 @@ const CLUSTER_ENV = {
   instanceInterval: "CLUSTER_INSTANCE_INTERVAL",
   instanceCooldown: "CLUSTER_INSTANCE_COOLDOWN",
   stepFunctionArn: "CLUSTER_STEP_FUNCTION",
+  jobQueueUrl: "CLUSTER_JOB_QUEUE_URL",
 } as const;
 
 export const CLUSTER_TYPES = ["aws", "debug", "external", "node"] as const;
@@ -30,6 +31,7 @@ export const CLUSTER_TYPE = {
 const FILESYSTEM_CLUSTER_CONFIG = z.object({
   instanceRoot: z.string(),
   wordlistRoot: z.string(),
+  jobQueueUrl: z.string().optional(),
 });
 export type FileSystemClusterConfig = z.infer<typeof FILESYSTEM_CLUSTER_CONFIG>;
 
@@ -84,6 +86,7 @@ function loadFileSystemConfig(): FileSystemClusterConfig {
       process.env[CLUSTER_ENV.instanceRoot] ?? DEFAULT_INSTANCE_ROOT,
     wordlistRoot:
       process.env[CLUSTER_ENV.wordlistRoot] ?? DEFAULT_WORDLIST_ROOT,
+    jobQueueUrl: process.env[CLUSTER_ENV.jobQueueUrl],
   };
 }
 
@@ -150,10 +153,16 @@ export function argsClusterConfig(
 }
 
 function envFileSystemClusterConfig(config: FileSystemClusterConfig) {
-  return {
+  const env: Record<string, string> = {
     [CLUSTER_ENV.instanceRoot]: config.instanceRoot,
     [CLUSTER_ENV.wordlistRoot]: config.wordlistRoot,
   };
+  
+  if (config.jobQueueUrl) {
+    env[CLUSTER_ENV.jobQueueUrl] = config.jobQueueUrl;
+  }
+  
+  return env;
 }
 
 function envClusterTypeConfig(config: ClusterTypeConfig) {

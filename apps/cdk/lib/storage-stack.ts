@@ -42,22 +42,26 @@ export class StorageStack extends Construct {
       removalPolicy: props.removalPolicy ?? RemovalPolicy.DESTROY,
     });
 
-    this.accessPoint = this.fileSystem.addAccessPoint("access-point", {
+    this.accessPoint = this.fileSystem.addAccessPoint("access-point-v2", {
       path: this.fileSystemPath,
       posixUser: {
-        gid: "1000",
-        uid: "1000",
+        gid: "1001",
+        uid: "1001",
       },
       createAcl: {
-        ownerGid: "1000",
-        ownerUid: "1000",
+        ownerGid: "1001",
+        ownerUid: "1001",
         permissions: "777",
       },
     });
 
     this.fileSystem.addToResourcePolicy(
       new PolicyStatement({
-        actions: ["elasticfilesystem:ClientMount"],
+        actions: [
+          "elasticfilesystem:ClientMount",
+          "elasticfilesystem:ClientRootAccess",
+          "elasticfilesystem:ClientWrite"
+        ],
         principals: [new AnyPrincipal()],
         conditions: {
           Bool: {
