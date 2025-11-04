@@ -33,14 +33,15 @@ export const projectRouter = t.router({
               .object({
                 JID: z.string(),
                 status: z.string(),
-                approvalStatus: z.string(),
-                submittedById: z.string().nullable(),
+                approvalStatus: z.string().nullable().optional(),
+                submittedById: z.string().nullable().optional(),
                 submittedBy: z
                   .object({
                     ID: z.string(),
                     username: z.string(),
                   })
-                  .nullable(),
+                  .nullable()
+                  .optional(),
                 wordlistId: z.string().nullable(),
                 wordlist: z
                   .object({
@@ -49,10 +50,11 @@ export const projectRouter = t.router({
                   })
                   .nullable(),
                 updatedAt: z.date(),
+                instanceType: z.string().nullable().optional(), // Requested instance type
                 instance: z.object({
                   IID: z.string(),
                   name: z.string().nullable(),
-                }),
+                }).nullable().optional(), // Nullable until instance is created
               })
               .array()
               .optional(),
@@ -89,36 +91,42 @@ export const projectRouter = t.router({
                     value: hasPermission("hashes:view"),
                     status: true,
                     updatedAt: true,
-                    jobs: hasPermission("instances:jobs:get")
-                      ? {
-                          select: {
-                            JID: true,
-                            status: true,
-                            approvalStatus: true,
-                            submittedById: true,
-                            submittedBy: {
-                              select: {
-                                ID: true,
-                                username: true,
-                              },
-                            },
-                            wordlistId: true,
-                            wordlist: {
-                              select: {
-                                WID: true,
-                                name: true,
-                              },
-                            },
-                            updatedAt: true,
-                            instance: {
-                              select: {
-                                IID: true,
-                                name: true,
-                              },
-                            },
+                    jobs: {
+                      // If the current user lacks instances:jobs:get, only include jobs
+                      // that the current user submitted. Admins see all jobs.
+                      where: hasPermission("instances:jobs:get")
+                        ? undefined
+                        : {
+                            submittedById: currentUserID,
                           },
-                        }
-                      : undefined,
+                      select: {
+                        JID: true,
+                        status: true,
+                        approvalStatus: true,
+                        submittedById: true,
+                        submittedBy: {
+                          select: {
+                            ID: true,
+                            username: true,
+                          },
+                        },
+                        wordlistId: true,
+                        wordlist: {
+                          select: {
+                            WID: true,
+                            name: true,
+                          },
+                        },
+                        updatedAt: true,
+                        instanceType: true, // Include requested instance type
+                        instance: {
+                          select: {
+                            IID: true,
+                            name: true,
+                          },
+                        },
+                      },
+                    },
                   },
                 }
               : undefined,

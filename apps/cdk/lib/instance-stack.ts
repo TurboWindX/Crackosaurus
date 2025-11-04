@@ -37,7 +37,7 @@ export interface InstanceStackConfig {
 export interface InstanceStackProps extends InstanceStackConfig {
   prefix?: string;
   vpc: IVpc;
-  subnet: ISubnet;
+  subnets: ISubnet[]; // Changed from subnet to subnets array for multi-AZ support
   fileSystem: IFileSystem;
   fileSystemPath: string;
   securityGroup?: SecurityGroup; // Optional: security group for GPU instances
@@ -136,76 +136,107 @@ export class InstanceStack extends Construct {
       role: this.instanceRole,
     });
 
-    const runInstance = new CallAwsService(this, "run-instance", {
-      service: "ec2",
-      action: "runInstances",
-      parameters: {
-        ImageId:
-          props.imageId ??
-          MachineImage.latestAmazonLinux2023().getImage(this).imageId,
-        InstanceType: JsonPath.stringAt("$.instanceType"),
-        MinCount: 1,
-        MaxCount: 1,
-        KeyName: props.sshKey,
-        IamInstanceProfile: {
-          Arn: instanceProfile.instanceProfileArn,
-        },
-        UserData: JsonPath.base64Encode(
-          JsonPath.format(
-            this.getUserDataTemplate(props),
-            JsonPath.stringAt("$.instanceID")
-          )
-        ),
-        EbsOptimized: false,
-        BlockDeviceMappings: [
-          {
-            DeviceName: "/dev/xvda",
-            Ebs: {
-              VolumeType: "gp2",
-              VolumeSize: 16,
-              DeleteOnTermination: true,
-              Encrypted: true,
+    // Helper function to create runInstance task for a specific subnet
+    const createRunInstanceTask = (subnetIndex: number) => {
+      const subnet = props.subnets[subnetIndex];
+      if (!subnet) {
+        throw new Error(`Subnet at index ${subnetIndex} is undefined`);
+      }
+
+      return new CallAwsService(this, `run-instance-az-${subnetIndex}`, {
+        service: "ec2",
+        action: "runInstances",
+        parameters: {
+          ImageId:
+            props.imageId ??
+            MachineImage.latestAmazonLinux2023().getImage(this).imageId,
+          InstanceType: JsonPath.stringAt("$.instanceType"),
+          MinCount: 1,
+          MaxCount: 1,
+          KeyName: props.sshKey,
+          IamInstanceProfile: {
+            Arn: instanceProfile.instanceProfileArn,
+          },
+          UserData: JsonPath.base64Encode(
+            JsonPath.format(
+              this.getUserDataTemplate(props),
+              JsonPath.stringAt("$.instanceID")
+            )
+          ),
+          EbsOptimized: false,
+          BlockDeviceMappings: [
+            {
+              DeviceName: "/dev/xvda",
+              Ebs: {
+                VolumeType: "gp2",
+                VolumeSize: 16,
+                DeleteOnTermination: true,
+                Encrypted: true,
+              },
             },
+          ],
+          NetworkInterfaces: [
+            {
+              SubnetId: subnet.subnetId,
+              AssociatePublicIpAddress: false,
+              DeviceIndex: 0,
+              Groups: [this.instanceSG.securityGroupId],
+            },
+          ],
+          PrivateDnsNameOptions: {
+            HostnameType: "ip-name",
+            EnableResourceNameDnsARecord: false,
+            EnableResourceNameDnsAAAARecord: false,
           },
-        ],
-        NetworkInterfaces: [
-          {
-            SubnetId: props.subnet.subnetId,
-            AssociatePublicIpAddress: false,
-            DeviceIndex: 0,
-            Groups: [this.instanceSG.securityGroupId],
-          },
-        ],
-        PrivateDnsNameOptions: {
-          HostnameType: "ip-name",
-          EnableResourceNameDnsARecord: false,
-          EnableResourceNameDnsAAAARecord: false,
+          TagSpecifications: [
+            {
+              ResourceType: "instance",
+              Tags: [
+                {
+                  Key: "Name",
+                  Value: JsonPath.format(
+                    tag("{}") ?? "{}",
+                    JsonPath.stringAt("$.instanceID")
+                  ),
+                },
+                {
+                  Key: "ManagedBy",
+                  Value: "Crackosaurus",
+                },
+                {
+                  Key: "Type",
+                  Value: "GPU", // Required for terminate permission condition
+                },
+                {
+                  Key: "AvailabilityZone",
+                  Value: subnet.availabilityZone,
+                },
+              ],
+            },
+          ],
         },
-        TagSpecifications: [
-          {
-            ResourceType: "instance",
-            Tags: [
-              {
-                Key: "Name",
-                Value: JsonPath.format(
-                  tag("{}") ?? "{}",
-                  JsonPath.stringAt("$.instanceID")
-                ),
-              },
-              {
-                Key: "ManagedBy",
-                Value: "Crackosaurus",
-              },
-              {
-                Key: "Type",
-                Value: "GPU", // Required for terminate permission condition
-              },
-            ],
-          },
+        iamResources: ["*"],
+      });
+    };
+
+    // Create primary runInstance task (first AZ)
+    const runInstance = createRunInstanceTask(0);
+
+    // If multiple subnets are provided, add error handling to retry in other AZs
+    if (props.subnets.length > 1) {
+      // Create fallback task for second AZ
+      const runInstanceFallback = createRunInstanceTask(1);
+
+      // Configure primary task to catch InsufficientInstanceCapacity errors and retry in second AZ
+      runInstance.addCatch(runInstanceFallback, {
+        errors: [
+          "States.TaskFailed", // Generic task failure
+          "Ec2.InsufficientInstanceCapacity", // Specific capacity error
+          "Ec2.Client.InsufficientInstanceCapacity",
         ],
-      },
-      iamResources: ["*"],
-    });
+        resultPath: "$.error",
+      });
+    }
 
     this.stepFunction = new StateMachine(this, "state-machine", {
       stateMachineName: tag("run-instance"),

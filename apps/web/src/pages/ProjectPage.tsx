@@ -207,9 +207,11 @@ const HashDataTable = ({
 interface PendingJobsSectionProps {
   projectID: string;
   jobs: (ProjectJobWithType & {
-    approvalStatus?: string;
+    approvalStatus?: string | null;
     submittedBy?: { ID: string; username: string } | null;
     wordlist?: { WID: string; name: string | null } | null;
+    instanceType?: string | null;
+    instance?: { IID: string; name: string | null } | null;
   })[];
 }
 
@@ -309,8 +311,10 @@ const PendingJobsSection = ({
                   •{" "}
                   {t("field.wordlist", { defaultValue: "Wordlist" })}:{" "}
                   {job.wordlist?.name || "Unknown"} •{" "}
-                  {t("field.instance", { defaultValue: "Instance" })}:{" "}
-                  {job.instance.name || job.instance.IID}
+                  {t("field.instance.type", { defaultValue: "Instance Type" })}:{" "}
+                  <span className="font-mono font-semibold">
+                    {job.instanceType || (job.instance ? (job.instance.name || job.instance.IID) : "Unknown")}
+                  </span>
                 </div>
               </div>
               <Button
@@ -355,8 +359,10 @@ const PendingJobsSection = ({
                 })}{" "}
                 • {t("field.wordlist", { defaultValue: "Wordlist" })}:{" "}
                 {job.wordlist?.name || "Unknown"} •{" "}
-                {t("field.instance", { defaultValue: "Instance" })}:{" "}
-                {job.instance.name || job.instance.IID}
+                {t("field.instance.type", { defaultValue: "Instance Type" })}:{" "}
+                <span className="font-mono font-semibold">
+                  {job.instanceType || (job.instance ? (job.instance.name || job.instance.IID) : "Unknown")}
+                </span>
               </div>
             </div>
           ))}
@@ -390,13 +396,13 @@ const JobDataTable = ({ values, isLoading }: JobDataTableProps) => {
         t("item.time.update"),
       ]}
       valueKey={({ JID }) => JID}
-      rowClick={({ instance }) => navigate(`/instances/${instance.IID}`)}
+      rowClick={({ instance }) => instance && navigate(`/instances/${instance.IID}`)}
       isLoading={isLoading}
       sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
-      row={({ JID, type, status, updatedAt, instance }) => [
+      row={({ JID, type, status, updatedAt, instance, instanceType }) => [
         JID,
         getHashName(type),
-        instance.name || instance.IID,
+        instance ? (instance.name || instance.IID) : (instanceType || "Pending"),
         <StatusBadge status={status as Status} />,
         <RelativeTime time={updatedAt} />,
       ]}
@@ -501,15 +507,17 @@ interface LaunchButtonProps {
   projectID: string;
   hashes: tRPCOutput["project"]["get"]["hashes"];
   isLoading: boolean;
+  // callback to inform parent that N job requests were submitted
+  onRequestsSubmitted?: (count: number) => void;
 }
 
-const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
+const LaunchButton = ({ projectID, isLoading, hashes, onRequestsSubmitted }: LaunchButtonProps) => {
   const { t } = useTranslation();
   const trpc = useTRPC();
 
   const [open, setOpen] = useState(false);
 
-  const [instanceID, setInstanceID] = useState("");
+  const [instanceType, setInstanceType] = useState("");
   const [wordlistID, setWordlistID] = useState("");
 
   const todoHashes = useMemo(
@@ -519,8 +527,8 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
   const hasTodoHashes = useMemo(() => todoHashes.length > 0, [todoHashes]);
 
   const isValid = useMemo(
-    () => instanceID.length > 0 && wordlistID.length > 0 && hasTodoHashes,
-    [instanceID, wordlistID, hasTodoHashes]
+    () => instanceType.length > 0 && wordlistID.length > 0 && hasTodoHashes,
+    [instanceType, wordlistID, hasTodoHashes]
   );
 
   const { hasPermission } = useAuth();
@@ -538,19 +546,64 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
     []
   );
 
-  const { mutateAsync: createJobs } = trpc.instance.createJobs.useMutation({
-    onSuccess(_, { instanceID }) {
-      const instanceQueryKeys = [
-        getQueryKey(trpc.instance.get, { instanceID }, "any"),
-        getQueryKey(trpc.instance.getList, undefined, "any"),
-      ];
-
-      [...queryKeys, ...instanceQueryKeys].forEach((key) =>
-        queryClient.invalidateQueries(key)
-      );
+  const { mutateAsync: requestJobs } = trpc.job.requestJobs.useMutation({
+    onSuccess(data) {
+      // Invalidate server caches so data will refresh
+      queryKeys.forEach((key) => queryClient.invalidateQueries(key));
+      // Inform parent (if provided) how many job requests were created
+      try {
+        if (onRequestsSubmitted) onRequestsSubmitted(data.length);
+      } catch (e) {
+        /* ignore */
+      }
     },
     onError: handleError,
   });
+
+  // Available GPU instance types (organized by family)
+  const instanceTypes = [
+    // G6 - Latest generation NVIDIA L4 GPUs (DEFAULT and pretty much the best in terms of cost/performance)
+    // especially the 12xlarge which is 1/3 price of 48xlarge but 50% performance of it)
+    { value: "g6.xlarge", label: "g6.xlarge (1x NVIDIA L4, 4 vCPU, 16GB RAM)" },
+    { value: "g6.2xlarge", label: "g6.2xlarge (1x NVIDIA L4, 8 vCPU, 32GB RAM)" },
+    { value: "g6.4xlarge", label: "g6.4xlarge (1x NVIDIA L4, 16 vCPU, 64GB RAM)" },
+    { value: "g6.8xlarge", label: "g6.8xlarge (1x NVIDIA L4, 32 vCPU, 128GB RAM)" },
+    { value: "g6.12xlarge", label: "g6.12xlarge (4x NVIDIA L4, 48 vCPU, 192GB RAM)" },
+    { value: "g6.16xlarge", label: "g6.16xlarge (1x NVIDIA L4, 64 vCPU, 256GB RAM)" },
+    { value: "g6.24xlarge", label: "g6.24xlarge (4x NVIDIA L4, 96 vCPU, 384GB RAM)" },
+    { value: "g6.48xlarge", label: "g6.48xlarge (8x NVIDIA L4, 192 vCPU, 768GB RAM) - RECOMMENDED" },
+    
+    // G5 - NVIDIA A10G GPUs
+    { value: "g5.xlarge", label: "g5.xlarge (1x NVIDIA A10G, 4 vCPU, 16GB RAM)" },
+    { value: "g5.2xlarge", label: "g5.2xlarge (1x NVIDIA A10G, 8 vCPU, 32GB RAM)" },
+    { value: "g5.4xlarge", label: "g5.4xlarge (1x NVIDIA A10G, 16 vCPU, 64GB RAM)" },
+    { value: "g5.8xlarge", label: "g5.8xlarge (1x NVIDIA A10G, 32 vCPU, 128GB RAM)" },
+    { value: "g5.12xlarge", label: "g5.12xlarge (4x NVIDIA A10G, 48 vCPU, 192GB RAM)" },
+    { value: "g5.16xlarge", label: "g5.16xlarge (1x NVIDIA A10G, 64 vCPU, 256GB RAM)" },
+    { value: "g5.24xlarge", label: "g5.24xlarge (4x NVIDIA A10G, 96 vCPU, 384GB RAM)" },
+    { value: "g5.48xlarge", label: "g5.48xlarge (8x NVIDIA A10G, 192 vCPU, 768GB RAM)" },
+    
+    // G4dn - NVIDIA T4 GPUs (Cost-effective but older)
+    { value: "g4dn.xlarge", label: "g4dn.xlarge (1x NVIDIA T4, 4 vCPU, 16GB RAM)" },
+    { value: "g4dn.2xlarge", label: "g4dn.2xlarge (1x NVIDIA T4, 8 vCPU, 32GB RAM)" },
+    { value: "g4dn.4xlarge", label: "g4dn.4xlarge (1x NVIDIA T4, 16 vCPU, 64GB RAM)" },
+    { value: "g4dn.8xlarge", label: "g4dn.8xlarge (1x NVIDIA T4, 32 vCPU, 128GB RAM)" },
+    { value: "g4dn.12xlarge", label: "g4dn.12xlarge (4x NVIDIA T4, 48 vCPU, 192GB RAM)" },
+    { value: "g4dn.16xlarge", label: "g4dn.16xlarge (1x NVIDIA T4, 64 vCPU, 256GB RAM)" },
+    
+    // P3 - NVIDIA V100 GPUs (High performance)
+    { value: "p3.2xlarge", label: "p3.2xlarge (1x NVIDIA V100, 8 vCPU, 61GB RAM)" },
+    { value: "p3.8xlarge", label: "p3.8xlarge (4x NVIDIA V100, 32 vCPU, 244GB RAM)" },
+    { value: "p3.16xlarge", label: "p3.16xlarge (8x NVIDIA V100, 64 vCPU, 488GB RAM)" },
+    
+    // P5 - NVIDIA H100 GPUs (Latest, most powerful but really expensive and not efficient really)
+    { value: "p5.48xlarge", label: "p5.48xlarge (8x NVIDIA H100, 192 vCPU, 2TB RAM) - ULTIMATE" },
+  ];
+
+  // Set default instance type to g6.48xlarge
+  if (!instanceType && open) {
+    setInstanceType("g6.48xlarge");
+  }
 
   if (!hasPermission("instances:jobs:add")) return <></>;
 
@@ -577,8 +630,8 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
             ...new Set(todoHashes.map(({ hashType }) => hashType)),
           ];
 
-          await createJobs({
-            instanceID,
+          const created = await requestJobs({
+            instanceType,
             data: hashTypes.map((hashType) => ({
               wordlistID,
               hashType,
@@ -588,20 +641,41 @@ const LaunchButton = ({ projectID, isLoading, hashes }: LaunchButtonProps) => {
 
           toast({
             title: t("message.job.submitted.title", {
-              defaultValue: "Job Submitted",
+              defaultValue: "Job Submitted for Approval",
             }),
             description: t("message.job.submitted.description", {
               defaultValue:
-                "Your job has been submitted and is pending admin approval. You can view its status in the Jobs page.",
+                "Your job request has been submitted. An admin will review and approve it, then a GPU instance will be launched automatically.",
             }),
           });
 
-          setInstanceID("");
+          setInstanceType("");
           setWordlistID("");
           setOpen(false);
         }}
       >
-        <InstanceSelect value={instanceID} onValueChange={setInstanceID} />
+        <div className="grid gap-2">
+          <label className="text-sm font-medium">
+            GPU Instance Type
+            <span className="ml-2 text-xs text-muted-foreground font-normal">
+              (g6.48xlarge recommended)
+            </span>
+          </label>
+          <select
+            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            value={instanceType}
+            onChange={(e) => setInstanceType(e.target.value)}
+          >
+            {instanceTypes.map((type) => (
+              <option key={type.value} value={type.value}>
+                {type.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-yellow-600 dark:text-yellow-500">
+            ⚠️ Change instance type at your own risk. Other instances may not be optimally cost-effective for your workload.
+          </p>
+        </div>
         <WordlistSelect value={wordlistID} onValueChange={setWordlistID} />
         <Button disabled={!isValid}>{t("action.launch.text")}</Button>
       </form>
@@ -689,6 +763,9 @@ export const ProjectPage = () => {
 
   const { handleError } = useErrors();
 
+  const { uid } = useAuth();
+  const [pendingRequestsCount, setPendingRequestsCount] = useState<number>(0);
+
   const {
     data: project,
     isLoading,
@@ -710,6 +787,20 @@ export const ProjectPage = () => {
     }
   );
 
+  // Keep local pending request count in sync with server data for this user
+  useEffect(() => {
+    if (!project || !uid) {
+      setPendingRequestsCount(0);
+      return;
+    }
+
+    const jobs = (project.hashes ?? [])
+      .flatMap((h) => h.jobs ?? [])
+      .filter((j) => j.approvalStatus === "PENDING" && j.submittedBy?.ID === uid);
+
+    setPendingRequestsCount(jobs.length);
+  }, [project, uid]);
+
   useEffect(() => {
     if (!isLoadingError && error) handleError(error);
   }, [isLoadingError, error]);
@@ -718,7 +809,8 @@ export const ProjectPage = () => {
 
   const members = useMemo(() => project?.members ?? [], [project]);
 
-  const jobs = useMemo(() => {
+  // All jobs (including pending approval) for PendingJobsSection
+  const allJobs = useMemo(() => {
     const unfilteredJobs = (project?.hashes ?? [])
       .flatMap((hash) =>
         (hash?.jobs ?? []).map((job) => ({ ...job, type: hash.hashType }))
@@ -730,10 +822,14 @@ export const ProjectPage = () => {
     return unfilteredJobs.filter(({ JID }) => {
       if (seenJobs[JID]) return false;
       seenJobs[JID] = true;
-
       return true;
     });
   }, [project]);
+
+  // Only approved jobs for the main jobs table
+  const jobs = useMemo(() => {
+    return allJobs.filter(({ approvalStatus }) => approvalStatus !== "PENDING");
+  }, [allJobs]);
 
   const tables = [
     hasPermission("instances:jobs:get") && jobs.length > 0 && (
@@ -774,6 +870,7 @@ export const ProjectPage = () => {
             projectID={projectID!}
             hashes={project?.hashes}
             isLoading={isLoading}
+            onRequestsSubmitted={(count) => setPendingRequestsCount((c) => c + count)}
           />
           <RemoveButton
             key="remove"
@@ -782,8 +879,31 @@ export const ProjectPage = () => {
           />
         </div>
       </div>
+      {pendingRequestsCount > 0 && (
+        <div className="rounded-lg border border-yellow-500 bg-yellow-50 p-3 dark:bg-yellow-950/20">
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              ⏳ You have {pendingRequestsCount} job{pendingRequestsCount > 1 ? "s" : ""} waiting for approval. You will be notified when an admin approves them.
+            </div>
+            <div>
+              <button
+                className="text-sm text-yellow-700 underline"
+                onClick={() => {
+                  // scroll to pending jobs section
+                  const el = document.querySelector("[data-pending-jobs]");
+                  if (el) el.scrollIntoView({ behavior: "smooth" });
+                }}
+              >
+                View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Pending Jobs Section */}
-      <PendingJobsSection projectID={projectID!} jobs={jobs} />
+      <div data-pending-jobs>
+        <PendingJobsSection projectID={projectID!} jobs={allJobs} />
+      </div>
       {separatedTables}
     </div>
   );

@@ -147,7 +147,7 @@
   },
   "status": {
     "PENDING": "Pending",
-    "RUNNING": "Running",
+    "RUNNING": "Cracking...",
     "STOPPED": "Stopped",
     "COMPLETE": "Complete",
     "ERROR": "Error",

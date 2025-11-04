@@ -215,4 +215,48 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
 
     return jobID;
   }
+
+  public async createJobWithID(
+    instanceID: string,
+    jobID: string,
+    wordlist: string,
+    hashType: number,
+    hashes: string[]
+  ): Promise<boolean> {
+    // Call parent to create job folder and metadata with specified ID
+    const result = await super.createJobWithID(instanceID, jobID, wordlist, hashType, hashes);
+
+    if (!result) {
+      console.log(
+        `[AWS Cluster] Failed to create job ${jobID} for instance ${instanceID}`
+      );
+      return false;
+    }
+
+    // Send SQS notification if queue URL is configured
+    if (this.config.jobQueueUrl) {
+      try {
+        await this.sqs
+          .sendMessage({
+            QueueUrl: this.config.jobQueueUrl,
+            MessageBody: JSON.stringify({
+              instanceID,
+              jobID,
+            }),
+          })
+          .promise();
+        console.log(
+          `[AWS Cluster] Sent SQS notification for job ${jobID} on instance ${instanceID}`
+        );
+      } catch (e) {
+        console.error(`[AWS Cluster] Failed to send SQS message:`, e);
+      }
+    } else {
+      console.log(
+        `[AWS Cluster] No SQS queue URL configured, skipping notification`
+      );
+    }
+
+    return true;
+  }
 }

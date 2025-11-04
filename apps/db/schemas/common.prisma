@@ -55,8 +55,9 @@ model Instance {
 
 model Job {
   JID            String    @id @default(uuid())
-  instanceId     String
-  instance       Instance  @relation(fields: [instanceId], references: [IID])
+  instanceId     String?
+  instance       Instance? @relation(fields: [instanceId], references: [IID])
+  instanceType   String?   // Requested instance type (g5.xlarge, p3.2xlarge, etc.)
   wordlistId     String?
   wordlist       Wordlist? @relation(fields: [wordlistId], references: [WID])
   hashes         Hash[]

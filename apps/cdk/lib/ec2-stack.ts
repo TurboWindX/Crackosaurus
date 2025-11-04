@@ -235,7 +235,7 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     const instanceStack = new InstanceStack(this, {
       prefix: environmentName,
       vpc,
-      subnet: vpc.privateSubnets[0]!, // Use first private subnet for GPU instances
+      subnets: vpc.privateSubnets, // Pass all private subnets for multi-AZ support
       fileSystem,
       fileSystemPath: "/data",
       securityGroup: gpuSecurityGroup, // Pass GPU security group

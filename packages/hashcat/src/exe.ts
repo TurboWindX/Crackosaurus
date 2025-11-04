@@ -44,6 +44,31 @@ export function hashcat({
     stdio,
   });
 
+  // Capture stderr for error logging
+  if (process.stderr) {
+    let stderrBuffer = "";
+    process.stderr.on("data", (data) => {
+      stderrBuffer += data.toString();
+    });
+    
+    process.on("exit", (code) => {
+      if (code !== 0 && stderrBuffer) {
+        console.error("[Hashcat] STDERR output:", stderrBuffer);
+      }
+    });
+  }
+
+  // Capture stdout for status updates
+  if (process.stdout) {
+    process.stdout.on("data", (data) => {
+      const output = data.toString();
+      // Log hashcat status updates
+      if (output.includes("Status") || output.includes("Progress") || output.includes("Recovered")) {
+        console.log("[Hashcat]", output.trim());
+      }
+    });
+  }
+
   process.on("error", (err) => {
     console.error("[Hashcat] Failed to start hashcat process:", err.message);
     console.error("[Hashcat] Error details:", err);
@@ -56,6 +81,15 @@ export function hashcat({
   process.on("exit", (code, signal) => {
     if (code !== null) {
       console.log(`[Hashcat] Process exited with code: ${code}`);
+      if (code === 0) {
+        console.log("[Hashcat] Job completed - all hashes cracked");
+      } else if (code === 1) {
+        console.log("[Hashcat] Job completed - exhausted wordlist (some hashes may remain uncracked)");
+      } else if (code === 2) {
+        console.log("[Hashcat] Job aborted by user");
+      } else {
+        console.error("[Hashcat] Job failed with unexpected error");
+      }
     }
     if (signal !== null) {
       console.log(`[Hashcat] Process killed with signal: ${signal}`);

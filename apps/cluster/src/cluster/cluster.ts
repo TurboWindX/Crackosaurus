@@ -24,6 +24,14 @@ export abstract class Cluster<TConfig = undefined> {
     hashes: string[]
   ): Promise<string | null>;
 
+  public abstract createJobWithID(
+    instanceID: string,
+    jobID: string,
+    wordlist: string,
+    hashType: number,
+    hashes: string[]
+  ): Promise<boolean>;
+
   public abstract deleteJob(
     instanceID: string,
     jobID: string

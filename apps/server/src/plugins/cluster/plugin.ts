@@ -74,6 +74,13 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
         instances.map((instance) => [instance.tag, instance])
       );
 
+      console.log(
+        `[Sync] Processing ${instances.length} instances from database`
+      );
+      console.log(
+        `[Sync] Cluster status has ${Object.keys(clusterStatus.instances).length} instances`
+      );
+
       await Promise.all(
         Object.entries(clusterStatus.instances).map(
           async ([instanceTag, instanceStatus]) => {
@@ -112,15 +119,36 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
               instanceDB.jobs.map((job) => [job.JID, job])
             );
 
+            console.log(
+              `[Sync] Instance ${instanceDB.tag} has ${instanceDB.jobs.length} jobs in database`
+            );
+            console.log(
+              `[Sync] Instance ${instanceDB.tag} has ${Object.keys(instanceStatus.jobs).length} jobs in EFS`
+            );
+            console.log(
+              `[Sync] Database job IDs: ${instanceDB.jobs.map((j: any) => j.JID).join(", ")}`
+            );
+            console.log(
+              `[Sync] EFS job IDs: ${Object.keys(instanceStatus.jobs).join(", ")}`
+            );
+
             await Promise.all(
               Object.entries(instanceStatus.jobs).map(
                 async ([jobID, jobStatus]) => {
                   const jobDB = jobSearch[jobID];
 
                   // Unsupported external jobs.
-                  if (jobDB === undefined) return;
+                  if (jobDB === undefined) {
+                    console.log(
+                      `[Sync] Job ${jobID} from EFS not found in database, skipping`
+                    );
+                    return;
+                  }
 
                   if (jobDB.status !== jobStatus.status) {
+                    console.log(
+                      `[Sync] Updating job ${jobDB.JID} status: ${jobDB.status} → ${jobStatus.status}`
+                    );
                     await tx.job.update({
                       where: {
                         JID: jobDB.JID,
@@ -130,6 +158,10 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
                         updatedAt: new Date(),
                       },
                     });
+                  } else {
+                    console.log(
+                      `[Sync] Job ${jobDB.JID} already has status ${jobDB.status}, no update needed`
+                    );
                   }
 
                   const hashSearch: Record<string, (typeof jobDB)["hashes"]> =

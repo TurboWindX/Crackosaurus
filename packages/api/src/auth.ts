@@ -51,10 +51,9 @@ export const PERMISSION_PROFILES = {
   contributor: [
     "auth",
     "hashes:*",
-    "instances:get",
-    "instances:add",
-    "instances:jobs:get",
-    "instances:jobs:add",
+    // Note: Contributors can no longer view/manage instances directly
+    // They request instance types when creating jobs, which admins approve
+    "instances:jobs:add", // Can request jobs (with instance type)
     "jobs:view",
     "projects:add",
     "projects:remove",

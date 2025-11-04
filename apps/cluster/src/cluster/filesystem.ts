@@ -121,6 +121,18 @@ export abstract class FileSystemCluster<
     console.log(`[Cluster] createJob called with instanceID: ${instanceID}`);
     const jobID = crypto.randomUUID();
 
+    return await this.createJobWithID(instanceID, jobID, wordlist, hashType, hashes) ? jobID : null;
+  }
+
+  public async createJobWithID(
+    instanceID: string,
+    jobID: string,
+    wordlist: string,
+    hashType: number,
+    hashes: string[]
+  ): Promise<boolean> {
+    console.log(`[Cluster] createJobWithID called with instanceID: ${instanceID}, jobID: ${jobID}`);
+
     await createJobFolder(this.config.instanceRoot, instanceID, jobID, {
       wordlist,
       hashes,
@@ -151,7 +163,7 @@ export abstract class FileSystemCluster<
       await this.run(instanceID);
     }
 
-    return jobID;
+    return true;
   }
 
   public async deleteJob(instanceID: string, jobID: string): Promise<boolean> {

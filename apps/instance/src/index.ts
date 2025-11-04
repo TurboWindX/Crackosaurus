@@ -310,18 +310,34 @@ async function innerMain(): Promise<ExitCase> {
           jobID
         );
 
-        if (jobProcess.exitCode !== 255) jobMetadata.status = STATUS.Complete;
-        else jobMetadata.status = STATUS.Error;
+        // Hashcat exit codes:
+        // 0 = All hashes cracked
+        // 1 = Exhausted (completed but not all hashes cracked) - treat as success
+        // 2 = Aborted by user
+        // -1 or other = Error (failed to run)
+        if (jobProcess.exitCode === 0 || jobProcess.exitCode === 1) {
+          jobMetadata.status = STATUS.Complete;
+          console.log(
+            `[Instance ${config.instanceID}] [Job ${jobID}] Completed with exit code ${jobProcess.exitCode}`
+          );
+        } else if (jobProcess.exitCode === 2) {
+          jobMetadata.status = STATUS.Stopped;
+          console.log(
+            `[Instance ${config.instanceID}] [Job ${jobID}] Aborted by user (exit code 2)`
+          );
+        } else {
+          jobMetadata.status = STATUS.Error;
+          console.error(
+            `[Instance ${config.instanceID}] [Job ${jobID}] Hashcat failed with exit code ${jobProcess.exitCode}`
+          );
+          console.error(
+            `[Instance ${config.instanceID}] [Job ${jobID}] Command: "${jobProcess.spawnargs.join(" ")}"`
+          );
+        }
 
         console.log(
           `[Instance ${config.instanceID}] [Job ${jobID}] Exit with code ${jobProcess.exitCode}`
         );
-
-        if (jobProcess.exitCode === 255) {
-          console.error(
-            `[Instance ${config.instanceID}] [Job ${jobID}] Failed to run "${jobProcess.spawnargs.join(" ")}"`
-          );
-        }
 
         await writeJobMetadata(
           config.instanceRoot,
