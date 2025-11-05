@@ -49,6 +49,17 @@ async function s3InitPlugin(fastify: FastifyInstance) {
       bucketName = getBucketName(config);
       fastify.log.info(`[S3 Init] Using bucket from ARN: ${bucketName}`);
     } else {
+      // In production we require an explicit pre-provisioned bucket to avoid
+      // granting the runtime permission to create buckets. This prevents
+      // accidental resource creation and AccessDenied runtime errors.
+      if (config.environment === "production") {
+        const msg =
+          "No S3 bucket configured for production. Please pre-create a bucket and set S3_BUCKET_NAME (or S3_BUCKET_ARN). Example: aws s3 mb s3://crackosaurus-wordlists --region <region>";
+        fastify.log.error(`[S3 Init] ${msg}`);
+        throw new Error(msg);
+      }
+
+      // Non-production (dev/test): generate a bucket name and create it
       bucketName = generateBucketName();
       fastify.log.info(`[S3 Init] Generated new bucket name: ${bucketName}`);
     }

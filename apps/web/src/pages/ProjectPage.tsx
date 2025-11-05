@@ -58,6 +58,8 @@ const HashDataTable = ({
     hashType: HASH_TYPES.plaintext,
   });
 
+  const [importHashType, setImportHashType] = useState(HASH_TYPES.plaintext);
+
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
 
@@ -90,6 +92,21 @@ const HashDataTable = ({
     },
     onError: handleError,
   });
+
+  const parseImportData = (contents: string, file: File) => {
+    try {
+      const data = JSON.parse(contents);
+      if (Array.isArray(data)) return data;
+    } catch {
+      // not JSON, try as text
+    }
+    // Parse as newline-separated hashes, use selected type
+    return contents
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .map((hash) => ({ hash, type: importHashType }));
+  };
 
   return (
     <>
@@ -148,6 +165,14 @@ const HashDataTable = ({
           return true;
         }}
         noImport={!hasPermission("hashes:add")}
+        parseImportData={parseImportData}
+        importAccept={["application/json", ".json", "text/plain", ".txt"]}
+        importChildren={
+          <HashTypeSelect
+            value={importHashType}
+            onValueChange={setImportHashType}
+          />
+        }
         onImport={async (data) => {
           const result = HASH_IMPORT_VALIDATOR.safeParse(data);
           if (result.error) {

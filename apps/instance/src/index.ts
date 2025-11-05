@@ -298,10 +298,10 @@ async function innerMain(): Promise<ExitCase> {
             jobID
           ),
           hashType: jobMetadata.hashType,
-          wordlistFile: getWordlistPath(
-            config.wordlistRoot,
-            jobMetadata.wordlist
-          ),
+          wordlistFile: getWordlistPath(config.wordlistRoot, jobMetadata.wordlist),
+          rulesFile: jobMetadata.rules
+            ? getWordlistPath(config.wordlistRoot, jobMetadata.rules)
+            : undefined,
         });
       } else if (jobProcess && jobProcess.exitCode !== null) {
         const jobMetadata = await getJobMetadata(

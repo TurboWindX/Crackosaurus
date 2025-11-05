@@ -3,7 +3,11 @@ import * as autoscaling from "aws-cdk-lib/aws-autoscaling";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as efs from "aws-cdk-lib/aws-efs";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
+import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as ecs from "aws-cdk-lib/aws-ecs";
+import * as targets from "aws-cdk-lib/aws-elasticloadbalancingv2-targets";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as cloudmap from "aws-cdk-lib/aws-servicediscovery";
@@ -11,7 +15,7 @@ import { Construct } from "constructs";
 
 import { InstanceStack } from "./instance-stack";
 
-export interface CrackosaurusEC2StackProps extends cdk.StackProps {
+export interface CrackosaurusStackProps extends cdk.StackProps {
   environmentName: string;
   imageTag?: string;  // Docker image tag to use (defaults to environmentName)
   domainName?: string;
@@ -19,8 +23,8 @@ export interface CrackosaurusEC2StackProps extends cdk.StackProps {
   hostedZoneId?: string;
 }
 
-export class CrackosaurusEC2Stack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: CrackosaurusEC2StackProps) {
+export class CrackosaurusStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: CrackosaurusStackProps) {
     super(scope, id, props);
 
     const { environmentName } = props;
@@ -56,6 +60,32 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
         vpc,
       }
     );
+
+    // ===========================================
+    // ECR repositories for images (server, prisma runner, cluster)
+    // ===========================================
+    // Import existing ECR repositories by name (push script will create them if missing)
+    const serverRepo = ecr.Repository.fromRepositoryName(
+      this,
+      "ServerRepository",
+      "crackosaurus/server"
+    );
+
+    const prismaRepo = ecr.Repository.fromRepositoryName(
+      this,
+      "PrismaRepository",
+      "crackosaurus/prisma"
+    );
+
+    const clusterRepo = ecr.Repository.fromRepositoryName(
+      this,
+      "ClusterRepository",
+      "crackosaurus/cluster"
+    );
+
+    new cdk.CfnOutput(this, "ServerRepoUri", { value: serverRepo.repositoryUri });
+    new cdk.CfnOutput(this, "PrismaRepoUri", { value: prismaRepo.repositoryUri });
+    new cdk.CfnOutput(this, "ClusterRepoUri", { value: clusterRepo.repositoryUri });
 
     // ===========================================
     // Security Groups - Separated by tier for defense in depth
@@ -279,6 +309,15 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
     dbCredentials.grantRead(serverRole);
     dbCredentials.grantRead(clusterRole);
 
+    // Grant ECR pull permissions to roles for the created repositories
+    try {
+      serverRepo.grantPull(serverRole);
+      prismaRepo.grantPull(serverRole);
+      clusterRepo.grantPull(clusterRole);
+    } catch (e) {
+      // In case grant happens before role creation in some synth contexts, ignore
+    }
+
     // Allow EFS access for server (mount and write)
     fileSystem.grant(
       serverRole,
@@ -376,59 +415,52 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       })
     );
 
-    // Allow S3 access for server (restricted to tagged buckets)
-    serverRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          "s3:CreateBucket",
-          "s3:PutBucketTagging",
-          "s3:PutBucketCors",
-          "s3:GetBucketCors",
-        ],
-        resources: ["arn:aws:s3:::crackosaurus-*"],
-        conditions: {
-          StringEquals: {
-            "aws:RequestedRegion": this.region,
-          },
-        },
-      })
-    );
+    // Create an S3 bucket for wordlists and let CDK manage it. We give
+    // object-level access to the roles that need it (EC2 server role,
+    // Fargate task role, and cluster role). This keeps least-privilege
+    // while allowing CDK to provision the bucket during deploy.
+    const wordlistsBucket = new s3.Bucket(this, "WordlistsBucket", {
+      // Use an environment-scoped, readable name so multiple environments
+      // don't collide (e.g., crackosaurus-bleeding-wordlists)
+      bucketName: `crackosaurus-${environmentName}-wordlists`,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: !isProduction,
+    });
 
-    serverRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          "s3:ListBucket",
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:GetBucketLocation",
-        ],
-        resources: [
-          "arn:aws:s3:::crackosaurus-*",
-          "arn:aws:s3:::crackosaurus-*/*",
-        ],
-      })
-    );
+    new cdk.CfnOutput(this, "WordlistsBucketName", { value: wordlistsBucket.bucketName });
+    new cdk.CfnOutput(this, "WordlistsBucketArn", { value: wordlistsBucket.bucketArn });
 
-    // Allow S3 access for cluster (restricted to tagged buckets)
-    clusterRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          "s3:ListBucket",
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject",
-          "s3:GetBucketLocation",
-        ],
-        resources: [
-          "arn:aws:s3:::crackosaurus-*",
-          "arn:aws:s3:::crackosaurus-*/*",
-        ],
-      })
-    );
+    // Configure CORS at deployment time so runtime tasks don't need s3:PutBucketCORS
+    // This avoids granting the Fargate task permission to modify bucket-level
+    // configuration and ensures the bucket is ready for cross-origin requests.
+    wordlistsBucket.addCorsRule({
+      allowedMethods: [
+        s3.HttpMethods.GET,
+        s3.HttpMethods.PUT,
+        s3.HttpMethods.POST,
+        s3.HttpMethods.DELETE,
+        s3.HttpMethods.HEAD,
+      ],
+      allowedOrigins: ["*"],
+      allowedHeaders: ["*"],
+      exposedHeaders: ["ETag", "x-amz-version-id"],
+      maxAge: 3000,
+    });
+    // Grant object-level access and list permissions to the appropriate roles
+    wordlistsBucket.grantReadWrite(serverRole);
+    wordlistsBucket.grantReadWrite(clusterRole);
+
+    const listPolicy = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ["s3:ListBucket", "s3:GetBucketLocation"],
+      resources: [wordlistsBucket.bucketArn],
+    });
+
+    serverRole.addToPolicy(listPolicy);
+    clusterRole.addToPolicy(listPolicy);
+  // taskRole grants are applied after taskRole is declared below
 
     // Allow Service Discovery for server (to discover cluster nodes)
     serverRole.addToPolicy(
@@ -585,11 +617,128 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       }
     );
 
-    alb.addListener("HttpListener", {
+    const listener = alb.addListener("HttpListener", {
       port: 80,
       protocol: elbv2.ApplicationProtocol.HTTP,
       defaultAction: elbv2.ListenerAction.forward([targetGroup]),
     });
+
+    // ===========================================
+    // ECS Cluster & Fargate Service (optional)
+    // ===========================================
+    const ecsCluster = new ecs.Cluster(this, "EcsCluster", { vpc });
+
+    const taskRole = new iam.Role(this, "FargateTaskRole", {
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+    });
+
+    // Allow task to read DB credentials
+    dbCredentials.grantRead(taskRole);
+
+    // Grant the Fargate task role access to the wordlists bucket (created above).
+    // We do this here because `taskRole` is declared only after the bucket
+    // creation site earlier in this function.
+    wordlistsBucket.grantReadWrite(taskRole);
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["s3:ListBucket", "s3:GetBucketLocation"],
+        resources: [wordlistsBucket.bucketArn],
+      })
+    );
+
+    const executionRole = new iam.Role(this, "FargateExecutionRole", {
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AmazonECSTaskExecutionRolePolicy"
+        ),
+      ],
+    });
+
+    // Allow the execution role to read DB credentials from Secrets Manager
+    // (needed so the task can fetch secrets at startup)
+    dbCredentials.grantRead(executionRole);
+
+    const taskDef = new ecs.FargateTaskDefinition(this, "ServerTaskDef", {
+      cpu: 512,
+      memoryLimitMiB: 1024,
+      executionRole,
+      taskRole,
+    });
+
+    const container = taskDef.addContainer("ServerContainer", {
+      image: ecs.ContainerImage.fromEcrRepository(serverRepo, imageTag),
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: "server" }),
+      environment: {
+        NODE_ENV: "production",
+        // Provide DB host/port/name via env so entrypoint can build DATABASE_PATH
+        DATABASE_HOST: dbCluster.clusterEndpoint.hostname,
+        DATABASE_PORT: '5432',
+        DATABASE_NAME: 'crackosaurus',
+        // DO NOT set DATABASE_URL here; entrypoint will construct it
+  // Provide the S3 bucket name (created by this stack) so the runtime
+  // will not attempt to create buckets.
+  S3_BUCKET_NAME: wordlistsBucket.bucketName,
+      },
+      // Inject DB username/password from Secrets Manager into container env vars
+      secrets: {
+        DATABASE_USER: ecs.Secret.fromSecretsManager(dbCredentials, 'username'),
+        DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbCredentials, 'password'),
+      },
+    });
+
+    // Expose the same port mapping the app expects
+    container.addPortMappings({ containerPort: 8080 });
+
+    const fargateService = new ecs.FargateService(this, "FargateService", {
+      cluster: ecsCluster,
+      taskDefinition: taskDef,
+      desiredCount: 1,
+      assignPublicIp: false,
+      securityGroups: [serverSecurityGroup],
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+    });
+
+    // Ensure the Fargate service doesn't start creating tasks until the
+    // database cluster has been created and is available. This makes
+    // CloudFormation deploys more resilient by ordering resource creation
+    // so tasks won't immediately fail trying to connect to a not-yet-ready DB.
+    // Note: This only enforces CloudFormation resource creation order; the
+    // service tasks still should handle transient DB unavailability at runtime.
+    fargateService.node.addDependency(dbCluster);
+
+    // Create an IP target group for the Fargate service and attach via listener rule
+    const fargateTargetGroup = new elbv2.ApplicationTargetGroup(this, "FargateTargetGroup", {
+      vpc,
+      port: 8080,
+      protocol: elbv2.ApplicationProtocol.HTTP,
+      targetType: elbv2.TargetType.IP,
+      healthCheck: {
+        path: "/api/health",
+        interval: cdk.Duration.seconds(30),
+        timeout: cdk.Duration.seconds(5),
+      },
+    });
+
+    // Attach service tasks to the target group
+    fargateService.attachToApplicationTargetGroup(fargateTargetGroup);
+
+    // Add a listener rule to route all traffic to the Fargate target group (full cutover)
+    listener.addAction("FargateDefaultRule", {
+      priority: 1,
+      conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
+      action: elbv2.ListenerAction.forward([fargateTargetGroup]),
+    });
+
+    // If you still need the EC2 instance target group for static assets, add a rule
+    // with a lower priority number (higher precedence) to route specific paths to the ASG.
+    // Example: route /static/* to the EC2 target group (keep commented unless needed)
+    // listener.addAction("Ec2StaticRule", {
+    //   priority: 5,
+    //   conditions: [elbv2.ListenerCondition.pathPatterns(["/static/*"])],
+    //   action: elbv2.ListenerAction.forward([targetGroup]),
+    // });
 
     // ===========================================
     // User Data Script for EC2 Instances
@@ -696,9 +845,10 @@ export class CrackosaurusEC2Stack extends cdk.Stack {
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       launchTemplate: serverLaunchTemplate,
-      minCapacity: 1,
+      // Full cutover: scale ASG down to zero by default (min/desired set to 0)
+      minCapacity: 0,
       maxCapacity: isProduction ? 3 : 1,
-      desiredCapacity: 1,
+      desiredCapacity: 0,
       healthCheck: autoscaling.HealthCheck.elb({
         grace: cdk.Duration.minutes(30),
       }),

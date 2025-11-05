@@ -41,15 +41,16 @@ export const instanceRouter = t.router({
         wordlistID: z.string(),
         hashType: z.number().int().min(0),
         hashes: z.string().array(),
+        rulesID: z.string().optional(),
       })
     )
     .output(z.string().nullable())
     .mutation(async (opts) => {
-      const { instanceID, wordlistID, hashType, hashes } = opts.input;
+  const { instanceID, wordlistID, hashType, hashes, rulesID } = opts.input;
 
       const { cluster } = opts.ctx;
 
-      return await cluster.createJob(instanceID, wordlistID, hashType, hashes);
+      return await cluster.createJob(instanceID, wordlistID, hashType, hashes, rulesID);
     }),
   createJobWithID: publicProcedure
     .input(
@@ -59,15 +60,16 @@ export const instanceRouter = t.router({
         wordlistID: z.string(),
         hashType: z.number().int().min(0),
         hashes: z.string().array(),
+        rulesID: z.string().optional(),
       })
     )
     .output(z.boolean())
     .mutation(async (opts) => {
-      const { instanceID, jobID, wordlistID, hashType, hashes } = opts.input;
+  const { instanceID, jobID, wordlistID, hashType, hashes, rulesID } = opts.input;
 
       const { cluster } = opts.ctx;
 
-      return await cluster.createJobWithID(instanceID, jobID, wordlistID, hashType, hashes);
+      return await cluster.createJobWithID(instanceID, jobID, wordlistID, hashType, hashes, rulesID);
     }),
   deleteJobs: publicProcedure
     .input(

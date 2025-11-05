@@ -191,6 +191,11 @@ export const jobRouter = t.router({
                 WID: true,
               },
             },
+            rules: {
+              select: {
+                RID: true,
+              },
+            },
             hashes: {
               select: {
                 hash: true,
@@ -276,7 +281,7 @@ export const jobRouter = t.router({
         });
 
         // Create job folder on EFS now that it's approved
-        try {
+          try {
           const hashType = job.hashes[0]?.hashType;
           if (!hashType) {
             throw new Error("Job has no hashes");
@@ -289,6 +294,7 @@ export const jobRouter = t.router({
             wordlistID: job.wordlist!.WID,
             hashType: hashType,
             hashes: job.hashes.map((h: any) => h.hash),
+            rulesID: job.rules?.RID ?? undefined,
           });
         } catch (error) {
           console.error(`Failed to send approved job ${jobID} to cluster:`, error);
@@ -332,6 +338,11 @@ export const jobRouter = t.router({
             wordlist: {
               select: {
                 WID: true,
+              },
+            },
+            rules: {
+              select: {
+                RID: true,
               },
             },
             hashes: {
@@ -418,6 +429,7 @@ export const jobRouter = t.router({
                 wordlistID: job.wordlist!.WID,
                 hashType: hashType,
                 hashes: job.hashes.map((h: any) => h.hash),
+                rulesID: job.rules?.RID ?? undefined,
               });
             } catch (error) {
               console.error(`Failed to send approved job ${job.JID} to cluster:`, error);
@@ -522,6 +534,7 @@ export const jobRouter = t.router({
         data: z
           .object({
             wordlistID: z.string(),
+            rulesID: z.string().optional(),
             hashType: z.number().int().min(0),
             projectIDs: z.string().array(),
           })
@@ -622,11 +635,12 @@ export const jobRouter = t.router({
 
         // Create jobs with instanceType but no instanceId
         await Promise.all(
-          jobData.map(([{ wordlistID }, hashes, JID]) =>
+          jobData.map(([{ wordlistID, rulesID }, hashes, JID]) =>
             tx.job.create({
               data: {
                 JID,
                 wordlistId: wordlistID,
+                rulesId: rulesID ?? undefined,
                 instanceType, // Store the requested instance type
                 // instanceId is null - will be set when admin approves
                 hashes: {

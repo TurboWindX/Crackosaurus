@@ -24,7 +24,7 @@ COPY --from=builder /app/out/full .
 
 RUN NODE_ENV=production turbo run build --filter=@repo/db
 
-ARG DATABASE_PROVIDER
+ARG DATABASE_PROVIDER=postgresql
 
 WORKDIR /app/apps/db
 
@@ -34,8 +34,9 @@ RUN DATABASE_PROVIDER=$DATABASE_PROVIDER node dist/schema.js && \
 
 WORKDIR /app
 
-ARG BACKEND_HOST
-ARG BACKEND_PORT
+# Provide defaults for backend build args so local docker builds work without extra args
+ARG BACKEND_HOST=USE_WEB_HOST
+ARG BACKEND_PORT=80
 
 RUN NODE_ENV=production BACKEND_HOST=$BACKEND_HOST BACKEND_PORT=$BACKEND_PORT turbo run build --filter=@repo/web
 
@@ -48,22 +49,34 @@ RUN adduser --system --uid 1001 server
 
 RUN chown -R server:server /app
 
+# Copy entrypoint from source so image uses the same startup script (must be root to chmod)
+COPY apps/server/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 USER server
 
 COPY --from=installer --chown=server:server /app/node_modules/ ./node_modules/
 COPY --from=installer --chown=server:server /app/apps/db /app/apps/db
-COPY --from=installer --chown=server:server /app/apps/server/dist/index.js .
+# Copy the full server dist directory so the entrypoint can find /app/apps/server/dist/index.js
+COPY --from=installer --chown=server:server /app/apps/server/dist /app/apps/server/dist
 COPY --from=installer --chown=server:server /app/apps/web/dist ./public
+# Ensure the Prisma schema is available at /app/prisma/schema.prisma for the entrypoint migration step.
+# Default provider is postgresql; if you override DATABASE_PROVIDER at build-time, adjust this line.
+COPY --from=installer --chown=server:server /app/apps/db/providers/postgresql/schema.prisma /app/prisma/schema.prisma
+# Ensure the Prisma migrations directory is included in the image
+COPY --from=installer --chown=server:server /app/apps/db/providers/postgresql/migrations /app/prisma/migrations
 
 ARG DATABASE_PROVIDER
 ENV DATABASE_PROVIDER=$DATABASE_PROVIDER
 
-ARG BACKEND_HOST
+ARG BACKEND_HOST=USE_WEB_HOST
 ENV BACKEND_HOST=$BACKEND_HOST
 
-ARG BACKEND_PORT
+ARG BACKEND_PORT=80
 ENV BACKEND_PORT=$BACKEND_PORT
 
 EXPOSE $BACKEND_PORT
 
-CMD ["node", "index.js"]
+# Use entrypoint script which builds DATABASE_URL, runs migrations, then execs node
+ENTRYPOINT ["/entrypoint.sh"]
+

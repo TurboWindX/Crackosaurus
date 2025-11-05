@@ -9,6 +9,7 @@ import { jobRouter } from "./jobRouter";
 import { projectRouter } from "./projectRouter";
 import { userRouter } from "./userRouter";
 import { wordlistRouter } from "./wordlistRouter";
+import { rulesRouter } from "./rulesRouter";
 
 export const appRouter = t.router({
   ping: publicProcedure.query(() => "pong"),
@@ -54,6 +55,7 @@ export const appRouter = t.router({
   project: projectRouter,
   user: userRouter,
   wordlist: wordlistRouter,
+  rules: rulesRouter,
 });
 
 export type AppRouter = typeof appRouter;

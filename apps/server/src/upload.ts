@@ -1,4 +1,4 @@
-import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
@@ -35,12 +35,15 @@ function checkPermission(permission: PermissionType) {
 async function uploadRawToCluster(
   url: string,
   stream: Readable,
-  size?: number
+  size?: number,
+  origin?: { bucket?: string; key?: string }
 ): Promise<string> {
   const headers: Record<string, string> = {
     "Content-Type": "application/octet-stream",
   };
   if (size !== undefined) headers["Content-Length"] = String(size);
+  if (origin?.bucket) headers["x-origin-s3-bucket"] = origin.bucket;
+  if (origin?.key) headers["x-origin-s3-key"] = origin.key;
 
   console.log("[uploadRawToCluster] starting request", {
     url,
@@ -58,7 +61,7 @@ async function uploadRawToCluster(
       signal: AbortSignal.timeout(60 * 60 * 1000),
       // undici/Node fetch requires duplex when streaming a request body
       duplex: "half",
-    } as RequestInit & { duplex: string });
+  } as RequestInit & { duplex: string });
 
     console.log("[uploadRawToCluster] response received", {
       status: res.status,
@@ -264,6 +267,11 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
             },
           });
         });
+
+        // We no longer delete the S3 object here. The cluster (consumer)
+        // will delete the original S3 object after it confirms the file was
+        // written to EFS successfully. To enable that, include origin
+        // headers when streaming the object to the cluster below.
       }
 
       console.log("[upload.complete] processing complete", {

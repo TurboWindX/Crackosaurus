@@ -194,7 +194,8 @@ export abstract class FileSystemCluster<
   }
 
   public async createWordlistFromStream(
-    stream: NodeJS.ReadableStream
+    stream: NodeJS.ReadableStream,
+    _options?: { originBucket?: string; originKey?: string }
   ): Promise<string | null> {
     const wordlistID = crypto.randomUUID();
 

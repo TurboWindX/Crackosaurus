@@ -14,6 +14,7 @@ const DEFAULT_TYPE = "p3.2xlarge";
 export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
   private stepFunctions!: AWS.StepFunctions;
   private sqs!: AWS.SQS;
+  private s3!: AWS.S3;
 
   public getName(): string {
     return "aws";
@@ -77,8 +78,38 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
 
     this.stepFunctions = new AWS.StepFunctions();
     this.sqs = new AWS.SQS();
+    this.s3 = new AWS.S3();
 
     return true;
+  }
+
+  public async createWordlistFromStream(
+    stream: NodeJS.ReadableStream,
+    options?: { originBucket?: string; originKey?: string }
+  ): Promise<string | null> {
+    // Call parent implementation to write stream to EFS
+    const wordlistID = await super.createWordlistFromStream(stream, options);
+
+    // If we have origin S3 info, attempt to delete the original object now that it
+    // has been written to EFS successfully. Deletion is best-effort and errors are
+    // logged but do not fail the overall operation.
+    if (wordlistID && options?.originBucket && options?.originKey && this.s3) {
+      try {
+        await this.s3
+          .deleteObject({ Bucket: options.originBucket, Key: options.originKey })
+          .promise();
+        console.log(
+          `[AWS Cluster] Deleted origin S3 object s3://${options.originBucket}/${options.originKey} after writing wordlist ${wordlistID}`
+        );
+      } catch (e) {
+        console.error(
+          `[AWS Cluster] Failed to delete origin S3 object s3://${options?.originBucket}/${options?.originKey}:`,
+          e
+        );
+      }
+    }
+
+    return wordlistID;
   }
 
   protected async run(instanceID: string): Promise<void> {

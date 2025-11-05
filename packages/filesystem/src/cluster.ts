@@ -35,6 +35,8 @@ export const JOB_METADATA = z.object({
   ]),
   hashType: z.number().int().min(0),
   wordlist: z.string(),
+  // Optional rules file id (stored as the same id used for wordlists/rules storage)
+  rules: z.string().optional(),
 });
 export type JobMetadata = z.infer<typeof JOB_METADATA>;
 
@@ -385,7 +387,7 @@ export async function createJobFolder(
   instanceRoot: string,
   instanceID: string,
   jobID: string,
-  props: { hashType: number; hashes: string[]; wordlist: string }
+  props: { hashType: number; hashes: string[]; wordlist: string; rules?: string }
 ): Promise<void> {
   const jobPath = path.join(instanceRoot, instanceID, JOBS_FOLDER, jobID);
 
@@ -400,6 +402,7 @@ export async function createJobFolder(
         status: STATUS.Pending,
         hashType: props.hashType,
         wordlist: props.wordlist,
+        rules: props.rules,
       })
     )
   );

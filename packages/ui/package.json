@@ -20,7 +20,8 @@
     "./time": "./src/time.tsx",
     "./upload": "./src/upload.tsx",
     "./users": "./src/users.tsx",
-    "./wordlists": "./src/wordlists.tsx"
+    "./wordlists": "./src/wordlists.tsx",
+    "./rules": "./src/rules.tsx"
   },
   "scripts": {
     "build": "tailwindcss -i ./src/index.css -o dist/index.css",

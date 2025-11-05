@@ -33,50 +33,35 @@ ENV BACKEND_PORT=80
 RUN npm run build --workspace=@repo/web
 
 # Production stage
-FROM node:20-alpine
+FROM node:20-alpine AS runtime
 
 WORKDIR /app
 
-# Copy package files
+# Create non-root user for better security
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Copy minimal package files and install production deps
 COPY package.json package-lock.json* turbo.json ./
 COPY apps/server/package.json ./apps/server/
 COPY packages ./packages
 
-# Install production dependencies
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --no-audit --no-fund
 
-# Copy generated Prisma client from builder
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
 
-# Copy built application from builder
-COPY --from=builder /app/apps/server/dist ./apps/server/dist
+# Copy entrypoint script
+COPY apps/server/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-# Copy built web frontend to public folder
-COPY --from=builder /app/apps/web/dist ./public
+# Use non-root user
+RUN chown -R appuser:appgroup /app
+USER appuser
 
-# Copy database migrations and schema for PostgreSQL
-COPY --from=builder /app/apps/db/providers/postgresql/migrations ./migrations
-COPY --from=builder /app/schema.prisma ./schema.prisma
-
-# Create entrypoint script to construct DATABASE_PATH and run migrations
-RUN echo '#!/bin/sh' > /entrypoint.sh && \
-    echo 'set -e' >> /entrypoint.sh && \
-    echo '# Construct DATABASE_PATH from environment variables' >> /entrypoint.sh && \
-    echo 'export DATABASE_PATH="postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?schema=public"' >> /entrypoint.sh && \
-    echo 'echo "Running database migrations..."' >> /entrypoint.sh && \
-    echo 'npx prisma migrate deploy --schema=/app/schema.prisma' >> /entrypoint.sh && \
-    echo 'echo "Starting server..."' >> /entrypoint.sh && \
-    echo 'exec node apps/server/dist/index.js' >> /entrypoint.sh && \
-    chmod +x /entrypoint.sh
-
-# Set environment
 ENV NODE_ENV=production
+ENV PORT=8080
 
-# Expose server port
 EXPOSE 8080
 
-ENTRYPOINT ["/entrypoint.sh"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- --timeout=2 http://localhost:8080/api/health || exit 1
 
-# Start the server
-CMD ["node", "apps/server/dist/index.js"]
+ENTRYPOINT ["/entrypoint.sh"]

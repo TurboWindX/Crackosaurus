@@ -46,7 +46,8 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
     instanceID: string,
     wordlist: string,
     hashType: number,
-    hashes: string[]
+    hashes: string[],
+    rules?: string
   ): Promise<string | null> {
     const jobID = crypto.randomUUID();
 
@@ -62,7 +63,8 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
     jobID: string,
     wordlist: string,
     hashType: number,
-    hashes: string[]
+    hashes: string[],
+    rules?: string
   ): Promise<boolean> {
     console.log(
       `Queued job ${jobID} (existing ID) using wordlist ${wordlist} on ${instanceID}`

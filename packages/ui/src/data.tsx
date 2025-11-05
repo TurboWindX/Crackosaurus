@@ -123,6 +123,8 @@ export interface ImportDialogProps {
   onFileChange?: (file: File | null) => void;
   setOpen: (state: boolean) => void;
   onSubmit?: () => void;
+  accept?: string[];
+  children?: ReactNode;
 }
 
 export const ImportDialog = ({
@@ -132,6 +134,8 @@ export const ImportDialog = ({
   onFileChange,
   setOpen,
   onSubmit,
+  accept,
+  children,
 }: ImportDialogProps) => {
   const { t } = useTranslation();
 
@@ -152,10 +156,11 @@ export const ImportDialog = ({
       <div className="ui-grid ui-gap-2">
         <FilePicker
           placeholder={plural}
-          accept={["application/json", ".json"]}
+          accept={accept ?? ["application/json", ".json"]}
           file={file}
           onChange={onFileChange}
         />
+        {children}
         <Button onClick={onSubmit}>{t("action.import.text")}</Button>
       </div>
     </DrawerDialog>
@@ -199,6 +204,9 @@ export interface DataTableProps<T> {
   onAdd?: () => Promise<boolean>;
   onRemove?: (values: T[]) => Promise<boolean>;
   onImport?: (data: unknown[]) => Promise<boolean>;
+  parseImportData?: (contents: string, file: File) => unknown[];
+  importAccept?: string[];
+  importChildren?: ReactNode;
   onExport?: (values: T[]) => Promise<unknown[]>;
   preventAddDialogClose?: boolean;
   noAdd?: boolean;
@@ -224,6 +232,9 @@ export function DataTable<T>({
   onAdd,
   onRemove,
   onImport,
+  parseImportData,
+  importAccept,
+  importChildren,
   onExport,
   preventAddDialogClose = false,
   noAdd,
@@ -329,6 +340,7 @@ export function DataTable<T>({
               onFileChange={setImportFile}
               open={importDialogOpen}
               setOpen={setImportDialogOpen}
+              accept={importAccept}
               onSubmit={async () => {
                 if (onImport === undefined) return;
 
@@ -344,9 +356,13 @@ export function DataTable<T>({
                     reader.readAsText(importFile!);
                   });
 
-                  data = JSON.parse(contents);
+                  if (parseImportData) {
+                    data = parseImportData(contents, importFile!);
+                  } else {
+                    data = JSON.parse(contents);
 
-                  if (!(data instanceof Array)) data = [];
+                    if (!(data instanceof Array)) data = [];
+                  }
                 } catch {
                   // ignore error
                 }
@@ -356,7 +372,9 @@ export function DataTable<T>({
                 setImportDialogOpen(false);
                 setImportFile(null);
               }}
-            />
+            >
+              {importChildren}
+            </ImportDialog>
           )}
           {hasExport && (
             <ExportDialog

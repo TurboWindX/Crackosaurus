@@ -38,7 +38,15 @@ export const upload: FastifyPluginCallback = (instance, _opts, next) => {
 
     // request.body is a Readable stream thanks to the content type parser
     const raw = request.body as unknown as Readable;
-    return await cluster.createWordlistFromStream(raw);
+
+    // Read optional origin headers set by the server when streaming from S3
+    const originBucket = (request.headers["x-origin-s3-bucket"] as string) || undefined;
+    const originKey = (request.headers["x-origin-s3-key"] as string) || undefined;
+
+    return await cluster.createWordlistFromStream(raw, {
+      originBucket,
+      originKey,
+    });
   });
 
   next();
