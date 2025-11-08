@@ -1,4 +1,4 @@
-import { GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
@@ -61,7 +61,7 @@ async function uploadRawToCluster(
       signal: AbortSignal.timeout(60 * 60 * 1000),
       // undici/Node fetch requires duplex when streaming a request body
       duplex: "half",
-  } as RequestInit & { duplex: string });
+    } as RequestInit & { duplex: string });
 
     console.log("[uploadRawToCluster] response received", {
       status: res.status,
@@ -245,6 +245,29 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
             },
           });
         });
+
+        // For large files, trigger copy from S3 to EFS
+        console.log("[upload.complete] triggering S3 to EFS copy for large file");
+        try {
+          const copyResponse = await fetch(`${url}/upload/wordlist/copy-from-s3`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              bucket: bucketName,
+              key: s3Key,
+            }),
+          });
+          if (!copyResponse.ok) {
+            console.error("[upload.complete] failed to trigger S3 copy", await copyResponse.text());
+          } else {
+            const copiedWordlistID = await copyResponse.json();
+            console.log("[upload.complete] S3 copy completed", { copiedWordlistID });
+          }
+        } catch (err) {
+          console.error("[upload.complete] error triggering S3 copy", err);
+        }
       } else {
         // For smaller files, use streaming approach
         console.log("[upload.complete] streaming to cluster for small file");

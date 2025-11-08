@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+
+
 # Build the database URL
 export DATABASE_PATH="postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?schema=public"
 export DATABASE_URL="$DATABASE_PATH"

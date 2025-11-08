@@ -121,7 +121,15 @@ export abstract class FileSystemCluster<
     console.log(`[Cluster] createJob called with instanceID: ${instanceID}`);
     const jobID = crypto.randomUUID();
 
-    return await this.createJobWithID(instanceID, jobID, wordlist, hashType, hashes) ? jobID : null;
+    return (await this.createJobWithID(
+      instanceID,
+      jobID,
+      wordlist,
+      hashType,
+      hashes
+    ))
+      ? jobID
+      : null;
   }
 
   public async createJobWithID(
@@ -131,7 +139,9 @@ export abstract class FileSystemCluster<
     hashType: number,
     hashes: string[]
   ): Promise<boolean> {
-    console.log(`[Cluster] createJobWithID called with instanceID: ${instanceID}, jobID: ${jobID}`);
+    console.log(
+      `[Cluster] createJobWithID called with instanceID: ${instanceID}, jobID: ${jobID}`
+    );
 
     await createJobFolder(this.config.instanceRoot, instanceID, jobID, {
       wordlist,
@@ -194,9 +204,7 @@ export abstract class FileSystemCluster<
   }
 
   public async createWordlistFromStream(
-    stream: NodeJS.ReadableStream,
-    _options?: { originBucket?: string; originKey?: string }
-  ): Promise<string | null> {
+stream: NodeJS.ReadableStream, options: { originBucket?: string; originKey?: string; } | undefined  ): Promise<string | null> {
     const wordlistID = crypto.randomUUID();
 
     await writeWordlistFileFromStream(

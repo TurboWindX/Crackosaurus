@@ -35,7 +35,7 @@ export const instanceRouter = t.router({
 
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         return await tx.instance.findUniqueOrThrow({
           include: {
             jobs: true,
@@ -60,7 +60,7 @@ export const instanceRouter = t.router({
     .query(async (opts) => {
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         return await tx.instance.findMany({
           select: {
             IID: true,
@@ -83,7 +83,7 @@ export const instanceRouter = t.router({
     .query(async (opts) => {
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         return await tx.instance.findMany({
           select: {
             IID: true,
@@ -112,7 +112,7 @@ export const instanceRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         const tag = await cluster.instance.create.mutate({
           instanceType: type,
         });
@@ -144,7 +144,7 @@ export const instanceRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         const instances = await tx.instance.findMany({
           select: {
             IID: true,
@@ -158,10 +158,10 @@ export const instanceRouter = t.router({
         });
 
         await cluster.instance.deleteMany.mutate({
-          instanceIDs: instances.map(({ tag }) => tag),
+          instanceIDs: instances.map((instance: { tag: string }) => instance.tag),
         });
 
-        const deletedIDs = instances.map(({ IID }) => IID);
+        const deletedIDs = instances.map((instance: { IID: string }) => instance.IID);
 
         await tx.job.deleteMany({
           where: {
@@ -201,16 +201,13 @@ export const instanceRouter = t.router({
     .mutation(async (opts) => {
       const { instanceID, data } = opts.input;
 
-      const { prisma, cluster, hasPermission, currentUserID } = opts.ctx;
+      const { prisma, hasPermission, currentUserID } = opts.ctx;
 
       const projectIDs = data.flatMap((job) => job.projectIDs);
       const wordlistIDs = data.map((job) => job.wordlistID);
 
-      return await prisma.$transaction(async (tx) => {
-        const instance = await tx.instance.findUniqueOrThrow({
-          select: {
-            tag: true,
-          },
+      return await prisma.$transaction(async (tx: typeof prisma) => {
+        await tx.instance.findUniqueOrThrow({
           where: {
             IID: instanceID,
           },
@@ -242,7 +239,7 @@ export const instanceRouter = t.router({
           },
         });
         const projectMap = Object.fromEntries(
-          projects.map((project) => [project.PID, project])
+          projects.map((project: { PID: string }) => [project.PID, project])
         );
 
         const wordlists = await tx.wordlist.findMany({
@@ -255,7 +252,7 @@ export const instanceRouter = t.router({
             },
           },
         });
-        const wordlistIDSet = new Set(wordlists.map(({ WID }) => WID));
+        const wordlistIDSet = new Set(wordlists.map((wordlist: { WID: string }) => wordlist.WID));
 
         // Prepare job data without sending to cluster yet (will be sent on approval)
         const result = await Promise.allSettled(
@@ -268,7 +265,7 @@ export const instanceRouter = t.router({
 
             const jobHashes = jobProjects.flatMap((project) =>
               project.hashes.filter(
-                (hash) =>
+                (hash: { hashType: number; status: string; }) =>
                   hash.hashType === job.hashType &&
                   hash.status === STATUS.NotFound
               )
@@ -330,7 +327,7 @@ export const instanceRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         const instance = await tx.instance.findUniqueOrThrow({
           select: {
             IID: true,
@@ -355,14 +352,14 @@ export const instanceRouter = t.router({
           },
         });
 
-        const results = await await cluster.instance.deleteJobs.mutate({
+        const results = await cluster.instance.deleteJobs.mutate({
           instanceID: instance.tag,
-          jobIDs: jobs.map(({ JID }) => JID),
+          jobIDs: jobs.map((job: { JID: string }) => job.JID),
         });
 
         const deletedIDs = jobs
-          .filter((_, index) => results[index])
-          .map(({ JID }) => JID);
+          .filter((_: unknown, index: number) => results[index])
+          .map(({ JID }: { JID: string }) => JID);
 
         const { count } = await tx.job.deleteMany({
           where: {

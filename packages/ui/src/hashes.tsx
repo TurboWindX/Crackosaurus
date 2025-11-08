@@ -1,7 +1,8 @@
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { HASH_TYPES } from "@repo/hashcat/data";
+import { Input } from "@repo/shadcn/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -10,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@repo/shadcn/components/ui/select";
-import { Input } from "@repo/shadcn/components/ui/input";
 
 interface HashTypeSelectProps {
   value: number;
@@ -37,7 +37,7 @@ export const HashTypeSelect = ({
   );
 
   useEffect(() => {
-    if (!predefinedValues.has(value as any) && value > 0) {
+    if (!predefinedValues.has(value as number) && value > 0) {
       setIsAdvancedMode(true);
       setCustomHashType(value.toString());
     }
@@ -49,17 +49,17 @@ export const HashTypeSelect = ({
       setCustomHashType("");
     } else {
       setIsAdvancedMode(false);
-      onValueChange && onValueChange(parseInt(newValue));
+      if (onValueChange) onValueChange(parseInt(newValue));
     }
   };
 
   const handleCustomInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value;
     setCustomHashType(inputValue);
-    
+
     const numValue = parseInt(inputValue);
     if (!isNaN(numValue) && numValue >= 1 && numValue <= 99999) {
-      onValueChange && onValueChange(numValue);
+      if (onValueChange) onValueChange(numValue);
     }
   };
 
@@ -67,13 +67,15 @@ export const HashTypeSelect = ({
     return (
       <div className="space-y-2">
         <div className="flex items-center gap-2">
-          <label className="text-sm font-medium">Custom Hash Type (1-99999)</label>
+          <label className="text-sm font-medium">
+            Custom Hash Type (1-99999)
+          </label>
           <button
             type="button"
             onClick={() => {
               setIsAdvancedMode(false);
               setCustomHashType("");
-              onValueChange && onValueChange(HASH_TYPES.plaintext);
+              if (onValueChange) onValueChange(HASH_TYPES.plaintext);
             }}
             className="text-xs text-blue-600 hover:text-blue-800 underline"
           >
@@ -94,10 +96,7 @@ export const HashTypeSelect = ({
   }
 
   return (
-    <Select
-      value={value.toString()}
-      onValueChange={handleSelectChange}
-    >
+    <Select value={value.toString()} onValueChange={handleSelectChange}>
       <SelectTrigger>
         <SelectValue placeholder={t("item.type.singular")} />
       </SelectTrigger>

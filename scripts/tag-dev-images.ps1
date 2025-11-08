@@ -1,8 +1,8 @@
-# Script to tag existing :latest images as :dev
-# Run this BEFORE deploying with the new changes
+ # Script to tag existing :latest images as :bleeding
+ # Run this BEFORE deploying with the new changes
 $ErrorActionPreference = "Stop"
 
-Write-Host "=== Tagging existing images as :dev ===" -ForegroundColor Cyan
+Write-Host "=== Tagging existing images as :bleeding ===" -ForegroundColor Cyan
 
 # Auto-detect AWS account and region
 $AccountId = (aws sts get-caller-identity --query Account --output text)
@@ -30,15 +30,15 @@ foreach ($image in $images) {
     Write-Host "  Pulling :latest..." -ForegroundColor Gray
     docker pull "$REGISTRY/crackosaurus/${image}:latest"
     
-    # Tag as :dev
-    Write-Host "  Tagging as :dev..." -ForegroundColor Gray
-    docker tag "$REGISTRY/crackosaurus/${image}:latest" "$REGISTRY/crackosaurus/${image}:dev"
+    # Tag as :bleeding
+    Write-Host "  Tagging as :bleeding..." -ForegroundColor Gray
+    docker tag "$REGISTRY/crackosaurus/${image}:latest" "$REGISTRY/crackosaurus/${image}:bleeding"
     
-    # Push :dev
-    Write-Host "  Pushing :dev..." -ForegroundColor Gray
-    docker push "$REGISTRY/crackosaurus/${image}:dev"
+    # Push :bleeding
+    Write-Host "  Pushing :bleeding..." -ForegroundColor Gray
+    docker push "$REGISTRY/crackosaurus/${image}:bleeding"
     
 }
 
 Write-Host "`n=== All images tagged successfully! ===" -ForegroundColor Green
-Write-Host "`nYou can now safely run: .\deploy.ps1 -Environment dev" -ForegroundColor Yellow
+Write-Host "`nYou can now safely run: .\deploy.ps1 -Environment bleeding" -ForegroundColor Yellow

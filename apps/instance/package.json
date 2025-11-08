@@ -13,6 +13,7 @@
     "@repo/app-config": "*",
     "@repo/filesystem": "*",
     "@repo/hashcat": "*",
+    "aws-sdk": "^2.1675.0",
     "@repo/typescript-config": "*"
   },
   "devDependencies": {

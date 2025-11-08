@@ -50,7 +50,7 @@ export const jobRouter = t.router({
     .query(async (opts) => {
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: any) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         return await tx.job.findMany({
           where: {
             approvalStatus: "PENDING",
@@ -130,7 +130,7 @@ export const jobRouter = t.router({
     .query(async (opts) => {
       const { prisma, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: any) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         return await tx.job.findMany({
           where: {
             submittedById: currentUserID,
@@ -174,7 +174,7 @@ export const jobRouter = t.router({
       const { jobID } = opts.input;
       const { prisma, currentUserID, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: any) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         const job = await tx.job.findUniqueOrThrow({
           where: {
             JID: jobID,
@@ -189,11 +189,6 @@ export const jobRouter = t.router({
             wordlist: {
               select: {
                 WID: true,
-              },
-            },
-            rules: {
-              select: {
-                RID: true,
               },
             },
             hashes: {
@@ -281,7 +276,7 @@ export const jobRouter = t.router({
         });
 
         // Create job folder on EFS now that it's approved
-          try {
+        try {
           const hashType = job.hashes[0]?.hashType;
           if (!hashType) {
             throw new Error("Job has no hashes");
@@ -293,8 +288,7 @@ export const jobRouter = t.router({
             jobID: jobID, // Use the existing database JID
             wordlistID: job.wordlist!.WID,
             hashType: hashType,
-            hashes: job.hashes.map((h: any) => h.hash),
-            rulesID: job.rules?.RID ?? undefined,
+            hashes: job.hashes.map((h: unknown) => (h as { hash: string }).hash),
           });
         } catch (error) {
           console.error(`Failed to send approved job ${jobID} to cluster:`, error);
@@ -320,7 +314,7 @@ export const jobRouter = t.router({
       const { jobIDs } = opts.input;
       const { prisma, currentUserID, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: any) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         const jobs = await tx.job.findMany({
           where: {
             JID: {
@@ -340,11 +334,6 @@ export const jobRouter = t.router({
                 WID: true,
               },
             },
-            rules: {
-              select: {
-                RID: true,
-              },
-            },
             hashes: {
               select: {
                 hash: true,
@@ -360,9 +349,17 @@ export const jobRouter = t.router({
         }
 
         // Group jobs by {instanceType, hashType}
-        const groupKey = (job: any) => `${job.instanceType || ''}::${job.hashes[0]?.hashType || ''}`;
-        const grouped: Record<string, any[]> = {};
-        for (const job of jobs) {
+        const groupKey = (job: unknown) => `${(job as { instanceType?: string; hashes: { hashType?: string }[] }).instanceType || ''}::${(job as { hashes: { hashType?: string }[] }).hashes[0]?.hashType || ''}`;
+        type JobGroupItem = {
+          JID: string;
+          instance?: { IID: string; tag: string };
+          instanceType?: string;
+          wordlist?: { WID: string };
+          hashes: { hash: string; hashType: number }[];
+        };
+
+        const grouped: Record<string, JobGroupItem[]> = {};
+        for (const job of jobs as JobGroupItem[]) {
           const key = groupKey(job);
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(job);
@@ -374,7 +371,7 @@ export const jobRouter = t.router({
           let instance = group.find((j) => j.instance)?.instance;
           if (!instance) {
             const job0 = group[0];
-            if (!job0.instanceType) continue; // skip if no instanceType
+            if (!job0 || !job0.instanceType) continue; // skip if no job0 or instanceType
             const tag = await cluster.instance.create.mutate({
               instanceType: job0.instanceType,
             });
@@ -388,19 +385,25 @@ export const jobRouter = t.router({
             });
           }
           // Assign all jobs in group to this instance
-          await tx.job.updateMany({
-            where: { JID: { in: group.map((j) => j.JID) } },
-            data: { instanceId: instance.IID },
-          });
+          if (instance?.IID) {
+            await tx.job.updateMany({
+              where: { JID: { in: group.map((j) => j.JID) } },
+              data: { instanceId: instance.IID },
+            });
+          } else {
+            console.error("Instance is undefined, cannot update jobs with instanceId");
+          }
           // Update job objects in memory
-          for (const job of group) job.instance = { IID: instance.IID, tag: instance.tag };
+          if (instance) {
+            for (const job of group) job.instance = { IID: instance.IID, tag: instance.tag };
+          }
         }
 
         // Update all jobs to approved and set to RUNNING
         await tx.job.updateMany({
           where: {
             JID: {
-              in: jobs.map((j: any) => j.JID),
+              in: jobs.map((j: unknown) => (j as { JID: string }).JID),
             },
           },
           data: {
@@ -413,26 +416,26 @@ export const jobRouter = t.router({
 
         // Send all approved jobs to cluster with existing JIDs
         await Promise.allSettled(
-          jobs.map(async (job: any) => {
-            if (!job.instance?.tag) {
-              console.error(`Job ${job.JID} has no instance, skipping cluster send`);
+          jobs.map(async (job: unknown) => {
+            const j = job as { JID: string; instance?: { tag: string }; hashes: { hashType: number }[] };
+            if (!j.instance?.tag) {
+              console.error(`Job ${j.JID} has no instance, skipping cluster send`);
               return;
             }
             try {
-              const hashType = job.hashes[0]?.hashType;
+              const hashType = j.hashes[0]?.hashType;
               if (!hashType) {
-                throw new Error(`Job ${job.JID} has no hashes`);
+                throw new Error(`Job ${j.JID} has no hashes`);
               }
               await cluster.instance.createJobWithID.mutate({
-                instanceID: job.instance.tag,
-                jobID: job.JID,
-                wordlistID: job.wordlist!.WID,
+                instanceID: j.instance!.tag,
+                jobID: j.JID,
+                wordlistID: (j as { wordlist?: { WID: string } | null }).wordlist?.WID ?? "",
                 hashType: hashType,
-                hashes: job.hashes.map((h: any) => h.hash),
-                rulesID: job.rules?.RID ?? undefined,
+                hashes: j.hashes.map((h: unknown) => (h as { hash: string }).hash),
               });
             } catch (error) {
-              console.error(`Failed to send approved job ${job.JID} to cluster:`, error);
+              console.error(`Failed to send approved job ${j.JID} to cluster:`, error);
             }
           })
         );
@@ -454,7 +457,7 @@ export const jobRouter = t.router({
       const { jobID, note } = opts.input;
       const { prisma, currentUserID, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: any) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         const job = await tx.job.findUniqueOrThrow({
           where: {
             JID: jobID,
@@ -514,7 +517,7 @@ export const jobRouter = t.router({
       const { jobID } = opts.input;
       const { prisma } = opts.ctx;
 
-      await prisma.$transaction(async (tx: any) => {
+      await prisma.$transaction(async (tx: typeof prisma) => {
         await tx.job.delete({
           where: {
             JID: jobID,
@@ -534,7 +537,6 @@ export const jobRouter = t.router({
         data: z
           .object({
             wordlistID: z.string(),
-            rulesID: z.string().optional(),
             hashType: z.number().int().min(0),
             projectIDs: z.string().array(),
           })
@@ -549,7 +551,7 @@ export const jobRouter = t.router({
       const projectIDs = data.flatMap((job) => job.projectIDs);
       const wordlistIDs = data.map((job) => job.wordlistID);
 
-      return await prisma.$transaction(async (tx: any) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         // Verify user has access to projects
         const projects = await tx.project.findMany({
           select: {
@@ -577,7 +579,7 @@ export const jobRouter = t.router({
           },
         });
         const projectMap = Object.fromEntries(
-          projects.map((project: any) => [project.PID, project])
+          projects.map((project: unknown) => [(project as { PID: string }).PID, project])
         );
 
         // Verify wordlists exist
@@ -591,7 +593,7 @@ export const jobRouter = t.router({
             },
           },
         });
-        const wordlistIDSet = new Set(wordlists.map(({ WID }: any) => WID));
+        const wordlistIDSet = new Set(wordlists.map(({ WID }: { WID: string }) => WID));
 
         // Prepare job data
         const result = await Promise.allSettled(
@@ -602,11 +604,11 @@ export const jobRouter = t.router({
               .map((projectID) => projectMap[projectID]!)
               .filter((project) => project);
 
-            const jobHashes = jobProjects.flatMap((project: any) =>
-              project.hashes.filter(
-                (hash: any) =>
-                  hash.hashType === job.hashType &&
-                  hash.status === "NOT_FOUND"
+            const jobHashes = jobProjects.flatMap((project: unknown) =>
+              (project as { hashes: { hashType: number; status: string }[] }).hashes.filter(
+                (hash: unknown) =>
+                  (hash as { hashType: number; status: string }).hashType === job.hashType &&
+                  (hash as { hashType: number; status: string }).status === "NOT_FOUND"
               )
             );
 
@@ -635,12 +637,11 @@ export const jobRouter = t.router({
 
         // Create jobs with instanceType but no instanceId
         await Promise.all(
-          jobData.map(([{ wordlistID, rulesID }, hashes, JID]) =>
+          jobData.map(([{ wordlistID }, hashes, JID]) =>
             tx.job.create({
               data: {
                 JID,
                 wordlistId: wordlistID,
-                rulesId: rulesID ?? undefined,
                 instanceType, // Store the requested instance type
                 // instanceId is null - will be set when admin approves
                 hashes: {

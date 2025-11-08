@@ -1,3 +1,7 @@
+import {
+  GetSecretValueCommand,
+  SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
 import { fastifyCookie } from "@fastify/cookie";
 import cors from "@fastify/cors";
 import fastifyMultipart from "@fastify/multipart";
@@ -67,9 +71,42 @@ fastify.register(cors, {
   },
 });
 
+// Resolve cluster URL: prefer explicit CLUSTER_HOST, then Cloud Map discovery env vars,
+// then fallback to configured value from `config` (which itself falls back to localhost).
+const clusterUrl: string = (() => {
+  const envHost = process.env.CLUSTER_HOST;
+  const discoveryService = process.env.CLUSTER_DISCOVERY_SERVICE;
+  const discoveryNamespace = process.env.CLUSTER_DISCOVERY_NAMESPACE;
+  const envPort = process.env.CLUSTER_PORT;
+
+  let host: string;
+  if (envHost && envHost !== "0.0.0.0") {
+    host = envHost;
+  } else if (discoveryService && discoveryNamespace) {
+    // Use private DNS name provided by Cloud Map (service.namespace)
+    host = `${discoveryService}.${discoveryNamespace}`;
+  } else {
+    host = config.cluster.name;
+  }
+
+  const port = envPort ?? String(config.cluster.port);
+  const url = `http://${host}:${port}`;
+
+  console.info("[startup] resolved cluster url", {
+    host,
+    port,
+    url,
+    envHost: envHost ?? null,
+    discoveryService: discoveryService ?? null,
+    discoveryNamespace: discoveryNamespace ?? null,
+  });
+
+  return url;
+})();
+
 fastify.register(upload, {
   prefix: "upload",
-  url: `http://${config.cluster.name}:${config.cluster.port}`,
+  url: clusterUrl,
 });
 
 fastify.register(fastifyTRPCPlugin, {
@@ -80,17 +117,44 @@ fastify.register(fastifyTRPCPlugin, {
   } satisfies FastifyTRPCPluginOptions<AppRouter>["trpcOptions"],
 });
 
-fastify.listen(
-  {
-    host: "0.0.0.0",
-    port: config.host.port,
-  },
-  (err, address) => {
-    if (err) {
-      console.error(err);
-      process.exit(1);
-    }
-
-    console.log(`Running at ${address}`);
+(async () => {
+  // If DATABASE_SECRET_ARN is set, read the secret and set DATABASE_PATH
+  if (process.env.DATABASE_SECRET_ARN) {
+    console.log(
+      "[entrypoint] Reading database credentials from Secrets Manager..."
+    );
+    const secretsClient = new SecretsManagerClient({
+      region: process.env.AWS_REGION || "ca-central-1",
+    });
+    const command = new GetSecretValueCommand({
+      SecretId: process.env.DATABASE_SECRET_ARN,
+    });
+    const response = await secretsClient.send(command);
+    const secret = JSON.parse(response.SecretString!);
+    const password = secret.password;
+    const username = secret.username;
+    const host = process.env.DATABASE_HOST;
+    const port = process.env.DATABASE_PORT || "5432";
+    const dbName = process.env.DATABASE_NAME || "crackosaurus";
+    process.env.DATABASE_PATH = `postgresql://${username}:${password}@${host}:${port}/${dbName}?schema=public`;
+    process.env.DATABASE_URL = `postgresql://${username}:${password}@${host}:${port}/${dbName}?schema=public`;
+    console.log(
+      "[entrypoint] Database credentials loaded and DATABASE_PATH set"
+    );
   }
-);
+
+  fastify.listen(
+    {
+      host: "0.0.0.0",
+      port: config.host.port,
+    },
+    (err, address) => {
+      if (err) {
+        console.error(err);
+        process.exit(1);
+      }
+
+      console.log(`Running at ${address}`);
+    }
+  );
+})();

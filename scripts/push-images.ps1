@@ -3,7 +3,7 @@
 
 param(
     [string]$Environment = "dev",
-    [string]$ImageTag = "latest"
+    [string]$ImageTag = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,6 +11,11 @@ $ErrorActionPreference = "Stop"
 # Change to repository root (parent of scripts directory)
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $RepoRoot
+
+# If caller didn't provide an ImageTag, fall back to environment name
+if (-not $ImageTag -or $ImageTag -eq "") {
+    $ImageTag = $Environment
+}
 
 Write-Host "=== Crackosaurus Docker Image Build and Push ===" -ForegroundColor Cyan
 Write-Host "Environment: $Environment" -ForegroundColor Yellow

@@ -26,11 +26,17 @@ RUN NODE_ENV=production turbo run build --filter=@repo/db
 
 ARG DATABASE_PROVIDER=postgresql
 
+# Generate Prisma client into the top-level /app node_modules to avoid copying hacks.
+# Install @prisma/client at /app so `prisma generate` writes into /app/node_modules/@prisma.
 WORKDIR /app/apps/db
+# Run the schema generator from apps/db so its relative paths (schemas/...) resolve.
+RUN DATABASE_PROVIDER=$DATABASE_PROVIDER node dist/schema.js
 
-RUN DATABASE_PROVIDER=$DATABASE_PROVIDER node dist/schema.js && \
-    npm install @prisma/client && \
-    npx prisma generate --schema=providers/${DATABASE_PROVIDER}/schema.prisma
+WORKDIR /app
+# Install @prisma/client at top-level and generate the client from /app so output lands in /app/node_modules
+RUN npm install @prisma/client && \
+    DATABASE_PATH="postgresql://localhost:5432/placeholder?schema=public" \
+        npx prisma generate --schema=apps/db/providers/${DATABASE_PROVIDER}/schema.prisma
 
 WORKDIR /app
 

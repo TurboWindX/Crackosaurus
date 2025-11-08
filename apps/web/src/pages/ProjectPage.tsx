@@ -15,7 +15,6 @@ import { Separator } from "@repo/shadcn/components/ui/separator";
 import { useToast } from "@repo/shadcn/components/ui/use-toast";
 import { tRPCInput, tRPCOutput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
-import { InstanceSelect } from "@repo/ui/clusters";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
@@ -58,7 +57,7 @@ const HashDataTable = ({
     hashType: HASH_TYPES.plaintext,
   });
 
-  const [importHashType, setImportHashType] = useState(HASH_TYPES.plaintext);
+  const [importHashType, setImportHashType] = useState<number>(HASH_TYPES.plaintext);
 
   const queryClient = useQueryClient();
   const { handleError } = useErrors();
@@ -93,7 +92,7 @@ const HashDataTable = ({
     onError: handleError,
   });
 
-  const parseImportData = (contents: string, file: File) => {
+  const parseImportData = (contents: string) => {
     try {
       const data = JSON.parse(contents);
       if (Array.isArray(data)) return data;
@@ -170,7 +169,7 @@ const HashDataTable = ({
         importChildren={
           <HashTypeSelect
             value={importHashType}
-            onValueChange={setImportHashType}
+            onValueChange={(type: number) => setImportHashType(type)}
           />
         }
         onImport={async (data) => {
@@ -240,10 +239,7 @@ interface PendingJobsSectionProps {
   })[];
 }
 
-const PendingJobsSection = ({
-  projectID,
-  jobs,
-}: PendingJobsSectionProps) => {
+const PendingJobsSection = ({ projectID, jobs }: PendingJobsSectionProps) => {
   const { t } = useTranslation();
   const { hasPermission, uid } = useAuth();
   const trpc = useTRPC();
@@ -257,8 +253,7 @@ const PendingJobsSection = ({
   );
 
   const myPendingJobs = useMemo(
-    () =>
-      pendingJobs.filter((job) => job.submittedBy?.ID === uid),
+    () => pendingJobs.filter((job) => job.submittedBy?.ID === uid),
     [pendingJobs, uid]
   );
 
@@ -306,8 +301,8 @@ const PendingJobsSection = ({
   if (hasPermission("jobs:approve") && pendingJobs.length > 0) {
     return (
       <div className="rounded-lg border border-yellow-500 bg-yellow-50 p-4 dark:bg-yellow-950/20">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold">
             ⏳{" "}
             {t("message.pending.jobs.title", {
               defaultValue: "Pending Approval",
@@ -322,23 +317,26 @@ const PendingJobsSection = ({
           {pendingJobs.map((job) => (
             <div
               key={job.JID}
-              className="flex items-center justify-between bg-white dark:bg-gray-900 p-3 rounded border"
+              className="flex items-center justify-between rounded border bg-white p-3 dark:bg-gray-900"
             >
               <div className="flex-1">
                 <div className="font-medium">
-                  {t("field.job.id", { defaultValue: "Job" })}: {job.JID.slice(0, 8)}...
+                  {t("field.job.id", { defaultValue: "Job" })}:{" "}
+                  {job.JID.slice(0, 8)}...
                 </div>
-                <div className="text-sm text-muted-foreground">
+                <div className="text-muted-foreground text-sm">
                   {t("field.submitted.by", { defaultValue: "Submitted by" })}:{" "}
                   <span className="font-medium">
                     {job.submittedBy?.username || "Unknown"}
                   </span>{" "}
-                  •{" "}
-                  {t("field.wordlist", { defaultValue: "Wordlist" })}:{" "}
+                  • {t("field.wordlist", { defaultValue: "Wordlist" })}:{" "}
                   {job.wordlist?.name || "Unknown"} •{" "}
                   {t("field.instance.type", { defaultValue: "Instance Type" })}:{" "}
                   <span className="font-mono font-semibold">
-                    {job.instanceType || (job.instance ? (job.instance.name || job.instance.IID) : "Unknown")}
+                    {job.instanceType ||
+                      (job.instance
+                        ? job.instance.name || job.instance.IID
+                        : "Unknown")}
                   </span>
                 </div>
               </div>
@@ -347,7 +345,7 @@ const PendingJobsSection = ({
                 onClick={() => approveOne({ jobID: job.JID })}
                 className="ml-4"
               >
-                <CheckIcon className="h-4 w-4 mr-1" />
+                <CheckIcon className="mr-1 h-4 w-4" />
                 {t("action.approve", { defaultValue: "Approve" })}
               </Button>
             </div>
@@ -361,7 +359,7 @@ const PendingJobsSection = ({
   if (myPendingJobs.length > 0) {
     return (
       <div className="rounded-lg border border-blue-500 bg-blue-50 p-4 dark:bg-blue-950/20">
-        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+        <h3 className="mb-3 flex items-center gap-2 text-lg font-semibold">
           ⏳{" "}
           {t("message.your.pending.jobs", {
             defaultValue: "Your Pending Jobs",
@@ -372,12 +370,13 @@ const PendingJobsSection = ({
           {myPendingJobs.map((job) => (
             <div
               key={job.JID}
-              className="bg-white dark:bg-gray-900 p-3 rounded border"
+              className="rounded border bg-white p-3 dark:bg-gray-900"
             >
               <div className="font-medium">
-                {t("field.job.id", { defaultValue: "Job" })}: {job.JID.slice(0, 8)}...
+                {t("field.job.id", { defaultValue: "Job" })}:{" "}
+                {job.JID.slice(0, 8)}...
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-muted-foreground text-sm">
                 {t("message.waiting.approval", {
                   defaultValue:
                     "Waiting for admin approval. You'll be notified when it's approved.",
@@ -386,7 +385,10 @@ const PendingJobsSection = ({
                 {job.wordlist?.name || "Unknown"} •{" "}
                 {t("field.instance.type", { defaultValue: "Instance Type" })}:{" "}
                 <span className="font-mono font-semibold">
-                  {job.instanceType || (job.instance ? (job.instance.name || job.instance.IID) : "Unknown")}
+                  {job.instanceType ||
+                    (job.instance
+                      ? job.instance.name || job.instance.IID
+                      : "Unknown")}
                 </span>
               </div>
             </div>
@@ -421,13 +423,15 @@ const JobDataTable = ({ values, isLoading }: JobDataTableProps) => {
         t("item.time.update"),
       ]}
       valueKey={({ JID }) => JID}
-      rowClick={({ instance }) => instance && navigate(`/instances/${instance.IID}`)}
+      rowClick={({ instance }) =>
+        instance && navigate(`/instances/${instance.IID}`)
+      }
       isLoading={isLoading}
       sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
       row={({ JID, type, status, updatedAt, instance, instanceType }) => [
         JID,
         getHashName(type),
-        instance ? (instance.name || instance.IID) : (instanceType || "Pending"),
+        instance ? instance.name || instance.IID : instanceType || "Pending",
         <StatusBadge status={status as Status} />,
         <RelativeTime time={updatedAt} />,
       ]}
@@ -536,7 +540,12 @@ interface LaunchButtonProps {
   onRequestsSubmitted?: (count: number) => void;
 }
 
-const LaunchButton = ({ projectID, isLoading, hashes, onRequestsSubmitted }: LaunchButtonProps) => {
+const LaunchButton = ({
+  projectID,
+  isLoading,
+  hashes,
+  onRequestsSubmitted,
+}: LaunchButtonProps) => {
   const { t } = useTranslation();
   const trpc = useTRPC();
 
@@ -578,7 +587,7 @@ const LaunchButton = ({ projectID, isLoading, hashes, onRequestsSubmitted }: Lau
       // Inform parent (if provided) how many job requests were created
       try {
         if (onRequestsSubmitted) onRequestsSubmitted(data.length);
-      } catch (e) {
+      } catch {
         /* ignore */
       }
     },
@@ -590,39 +599,114 @@ const LaunchButton = ({ projectID, isLoading, hashes, onRequestsSubmitted }: Lau
     // G6 - Latest generation NVIDIA L4 GPUs (DEFAULT and pretty much the best in terms of cost/performance)
     // especially the 12xlarge which is 1/3 price of 48xlarge but 50% performance of it)
     { value: "g6.xlarge", label: "g6.xlarge (1x NVIDIA L4, 4 vCPU, 16GB RAM)" },
-    { value: "g6.2xlarge", label: "g6.2xlarge (1x NVIDIA L4, 8 vCPU, 32GB RAM)" },
-    { value: "g6.4xlarge", label: "g6.4xlarge (1x NVIDIA L4, 16 vCPU, 64GB RAM)" },
-    { value: "g6.8xlarge", label: "g6.8xlarge (1x NVIDIA L4, 32 vCPU, 128GB RAM)" },
-    { value: "g6.12xlarge", label: "g6.12xlarge (4x NVIDIA L4, 48 vCPU, 192GB RAM)" },
-    { value: "g6.16xlarge", label: "g6.16xlarge (1x NVIDIA L4, 64 vCPU, 256GB RAM)" },
-    { value: "g6.24xlarge", label: "g6.24xlarge (4x NVIDIA L4, 96 vCPU, 384GB RAM)" },
-    { value: "g6.48xlarge", label: "g6.48xlarge (8x NVIDIA L4, 192 vCPU, 768GB RAM) - RECOMMENDED" },
-    
+    {
+      value: "g6.2xlarge",
+      label: "g6.2xlarge (1x NVIDIA L4, 8 vCPU, 32GB RAM)",
+    },
+    {
+      value: "g6.4xlarge",
+      label: "g6.4xlarge (1x NVIDIA L4, 16 vCPU, 64GB RAM)",
+    },
+    {
+      value: "g6.8xlarge",
+      label: "g6.8xlarge (1x NVIDIA L4, 32 vCPU, 128GB RAM)",
+    },
+    {
+      value: "g6.12xlarge",
+      label: "g6.12xlarge (4x NVIDIA L4, 48 vCPU, 192GB RAM)",
+    },
+    {
+      value: "g6.16xlarge",
+      label: "g6.16xlarge (1x NVIDIA L4, 64 vCPU, 256GB RAM)",
+    },
+    {
+      value: "g6.24xlarge",
+      label: "g6.24xlarge (4x NVIDIA L4, 96 vCPU, 384GB RAM)",
+    },
+    {
+      value: "g6.48xlarge",
+      label: "g6.48xlarge (8x NVIDIA L4, 192 vCPU, 768GB RAM) - RECOMMENDED",
+    },
+
     // G5 - NVIDIA A10G GPUs
-    { value: "g5.xlarge", label: "g5.xlarge (1x NVIDIA A10G, 4 vCPU, 16GB RAM)" },
-    { value: "g5.2xlarge", label: "g5.2xlarge (1x NVIDIA A10G, 8 vCPU, 32GB RAM)" },
-    { value: "g5.4xlarge", label: "g5.4xlarge (1x NVIDIA A10G, 16 vCPU, 64GB RAM)" },
-    { value: "g5.8xlarge", label: "g5.8xlarge (1x NVIDIA A10G, 32 vCPU, 128GB RAM)" },
-    { value: "g5.12xlarge", label: "g5.12xlarge (4x NVIDIA A10G, 48 vCPU, 192GB RAM)" },
-    { value: "g5.16xlarge", label: "g5.16xlarge (1x NVIDIA A10G, 64 vCPU, 256GB RAM)" },
-    { value: "g5.24xlarge", label: "g5.24xlarge (4x NVIDIA A10G, 96 vCPU, 384GB RAM)" },
-    { value: "g5.48xlarge", label: "g5.48xlarge (8x NVIDIA A10G, 192 vCPU, 768GB RAM)" },
-    
+    {
+      value: "g5.xlarge",
+      label: "g5.xlarge (1x NVIDIA A10G, 4 vCPU, 16GB RAM)",
+    },
+    {
+      value: "g5.2xlarge",
+      label: "g5.2xlarge (1x NVIDIA A10G, 8 vCPU, 32GB RAM)",
+    },
+    {
+      value: "g5.4xlarge",
+      label: "g5.4xlarge (1x NVIDIA A10G, 16 vCPU, 64GB RAM)",
+    },
+    {
+      value: "g5.8xlarge",
+      label: "g5.8xlarge (1x NVIDIA A10G, 32 vCPU, 128GB RAM)",
+    },
+    {
+      value: "g5.12xlarge",
+      label: "g5.12xlarge (4x NVIDIA A10G, 48 vCPU, 192GB RAM)",
+    },
+    {
+      value: "g5.16xlarge",
+      label: "g5.16xlarge (1x NVIDIA A10G, 64 vCPU, 256GB RAM)",
+    },
+    {
+      value: "g5.24xlarge",
+      label: "g5.24xlarge (4x NVIDIA A10G, 96 vCPU, 384GB RAM)",
+    },
+    {
+      value: "g5.48xlarge",
+      label: "g5.48xlarge (8x NVIDIA A10G, 192 vCPU, 768GB RAM)",
+    },
+
     // G4dn - NVIDIA T4 GPUs (Cost-effective but older)
-    { value: "g4dn.xlarge", label: "g4dn.xlarge (1x NVIDIA T4, 4 vCPU, 16GB RAM)" },
-    { value: "g4dn.2xlarge", label: "g4dn.2xlarge (1x NVIDIA T4, 8 vCPU, 32GB RAM)" },
-    { value: "g4dn.4xlarge", label: "g4dn.4xlarge (1x NVIDIA T4, 16 vCPU, 64GB RAM)" },
-    { value: "g4dn.8xlarge", label: "g4dn.8xlarge (1x NVIDIA T4, 32 vCPU, 128GB RAM)" },
-    { value: "g4dn.12xlarge", label: "g4dn.12xlarge (4x NVIDIA T4, 48 vCPU, 192GB RAM)" },
-    { value: "g4dn.16xlarge", label: "g4dn.16xlarge (1x NVIDIA T4, 64 vCPU, 256GB RAM)" },
-    
+    {
+      value: "g4dn.xlarge",
+      label: "g4dn.xlarge (1x NVIDIA T4, 4 vCPU, 16GB RAM)",
+    },
+    {
+      value: "g4dn.2xlarge",
+      label: "g4dn.2xlarge (1x NVIDIA T4, 8 vCPU, 32GB RAM)",
+    },
+    {
+      value: "g4dn.4xlarge",
+      label: "g4dn.4xlarge (1x NVIDIA T4, 16 vCPU, 64GB RAM)",
+    },
+    {
+      value: "g4dn.8xlarge",
+      label: "g4dn.8xlarge (1x NVIDIA T4, 32 vCPU, 128GB RAM)",
+    },
+    {
+      value: "g4dn.12xlarge",
+      label: "g4dn.12xlarge (4x NVIDIA T4, 48 vCPU, 192GB RAM)",
+    },
+    {
+      value: "g4dn.16xlarge",
+      label: "g4dn.16xlarge (1x NVIDIA T4, 64 vCPU, 256GB RAM)",
+    },
+
     // P3 - NVIDIA V100 GPUs (High performance)
-    { value: "p3.2xlarge", label: "p3.2xlarge (1x NVIDIA V100, 8 vCPU, 61GB RAM)" },
-    { value: "p3.8xlarge", label: "p3.8xlarge (4x NVIDIA V100, 32 vCPU, 244GB RAM)" },
-    { value: "p3.16xlarge", label: "p3.16xlarge (8x NVIDIA V100, 64 vCPU, 488GB RAM)" },
-    
+    {
+      value: "p3.2xlarge",
+      label: "p3.2xlarge (1x NVIDIA V100, 8 vCPU, 61GB RAM)",
+    },
+    {
+      value: "p3.8xlarge",
+      label: "p3.8xlarge (4x NVIDIA V100, 32 vCPU, 244GB RAM)",
+    },
+    {
+      value: "p3.16xlarge",
+      label: "p3.16xlarge (8x NVIDIA V100, 64 vCPU, 488GB RAM)",
+    },
+
     // P5 - NVIDIA H100 GPUs (Latest, most powerful but really expensive and not efficient really)
-    { value: "p5.48xlarge", label: "p5.48xlarge (8x NVIDIA H100, 192 vCPU, 2TB RAM) - ULTIMATE" },
+    {
+      value: "p5.48xlarge",
+      label: "p5.48xlarge (8x NVIDIA H100, 192 vCPU, 2TB RAM) - ULTIMATE",
+    },
   ];
 
   // Set default instance type to g6.48xlarge
@@ -655,7 +739,7 @@ const LaunchButton = ({ projectID, isLoading, hashes, onRequestsSubmitted }: Lau
             ...new Set(todoHashes.map(({ hashType }) => hashType)),
           ];
 
-          const created = await requestJobs({
+          await requestJobs({
             instanceType,
             data: hashTypes.map((hashType) => ({
               wordlistID,
@@ -682,12 +766,12 @@ const LaunchButton = ({ projectID, isLoading, hashes, onRequestsSubmitted }: Lau
         <div className="grid gap-2">
           <label className="text-sm font-medium">
             GPU Instance Type
-            <span className="ml-2 text-xs text-muted-foreground font-normal">
+            <span className="text-muted-foreground ml-2 text-xs font-normal">
               (g6.48xlarge recommended)
             </span>
           </label>
           <select
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             value={instanceType}
             onChange={(e) => setInstanceType(e.target.value)}
           >
@@ -698,7 +782,8 @@ const LaunchButton = ({ projectID, isLoading, hashes, onRequestsSubmitted }: Lau
             ))}
           </select>
           <p className="text-xs text-yellow-600 dark:text-yellow-500">
-            ⚠️ Change instance type at your own risk. Other instances may not be optimally cost-effective for your workload.
+            ⚠️ Change instance type at your own risk. Other instances may not be
+            optimally cost-effective for your workload.
           </p>
         </div>
         <WordlistSelect value={wordlistID} onValueChange={setWordlistID} />
@@ -821,7 +906,9 @@ export const ProjectPage = () => {
 
     const jobs = (project.hashes ?? [])
       .flatMap((h) => h.jobs ?? [])
-      .filter((j) => j.approvalStatus === "PENDING" && j.submittedBy?.ID === uid);
+      .filter(
+        (j) => j.approvalStatus === "PENDING" && j.submittedBy?.ID === uid
+      );
 
     setPendingRequestsCount(jobs.length);
   }, [project, uid]);
@@ -895,7 +982,9 @@ export const ProjectPage = () => {
             projectID={projectID!}
             hashes={project?.hashes}
             isLoading={isLoading}
-            onRequestsSubmitted={(count) => setPendingRequestsCount((c) => c + count)}
+            onRequestsSubmitted={(count) =>
+              setPendingRequestsCount((c) => c + count)
+            }
           />
           <RemoveButton
             key="remove"
@@ -908,7 +997,9 @@ export const ProjectPage = () => {
         <div className="rounded-lg border border-yellow-500 bg-yellow-50 p-3 dark:bg-yellow-950/20">
           <div className="flex items-center justify-between">
             <div className="text-sm">
-              ⏳ You have {pendingRequestsCount} job{pendingRequestsCount > 1 ? "s" : ""} waiting for approval. You will be notified when an admin approves them.
+              ⏳ You have {pendingRequestsCount} job
+              {pendingRequestsCount > 1 ? "s" : ""} waiting for approval. You
+              will be notified when an admin approves them.
             </div>
             <div>
               <button

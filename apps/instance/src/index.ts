@@ -80,7 +80,7 @@ async function innerMain(): Promise<ExitCase> {
 
     let jobID: string | null = null;
     let jobProcess: ChildProcess | null = null;
-    const jobQueue: string[] = [];
+    const jobQueue: { jobID: string; retryCount: number }[] = [];
 
     // Initialize SQS client for receiving job notifications
     const sqs = new AWS.SQS({ region: "ca-central-1" });
@@ -125,8 +125,8 @@ async function innerMain(): Promise<ExitCase> {
                 );
 
                 // Add to job queue if not already present
-                if (!jobQueue.includes(messageJobID)) {
-                  jobQueue.push(messageJobID);
+                if (!jobQueue.some((job) => job.jobID === messageJobID)) {
+                  jobQueue.push({ jobID: messageJobID, retryCount: 0 });
                 }
 
                 // Delete message from queue since we're processing it
@@ -188,10 +188,12 @@ async function innerMain(): Promise<ExitCase> {
       else if (instanceMetadata.status === STATUS.Error)
         return resolve(EXIT_CASE.Error);
 
-      if (jobID === null) {
-        const nextJobID = jobQueue.shift();
+      let retryCount = 0; // Initialize retry count for the current job
 
-        if (nextJobID === undefined) {
+      if (jobID === null) {
+        const nextJob = jobQueue.shift();
+
+        if (nextJob === undefined) {
           // Use different cooldown periods based on whether we've processed jobs
           // If we've never processed a job, wait 5 minutes for initial job creation
           // If we have processed jobs, use the configured cooldown (default 60s)
@@ -225,7 +227,7 @@ async function innerMain(): Promise<ExitCase> {
           hasProcessedAnyJob = true; // Mark that we've started processing at least one job
         }
 
-        jobID = nextJobID;
+        jobID = nextJob.jobID;
       }
 
       console.log(
@@ -256,14 +258,24 @@ async function innerMain(): Promise<ExitCase> {
         );
 
         // If status is UNKNOWN, the job folder might not be visible yet (EFS propagation delay)
-        // Put job back in queue and try again next interval
+        // Put job back in queue and try again next interval, up to maxRetries
         if (jobMetadata.status === STATUS.Unknown) {
-          console.log(
-            `[Instance ${config.instanceID}] [DEBUG] Job metadata not ready yet, putting back in queue`
-          );
-          jobQueue.unshift(jobID); // Put back at front of queue
-          jobID = null;
-          return;
+          retryCount++;
+          const maxRetries = 5; // Retry up to 5 times before giving up
+          if (retryCount < maxRetries) {
+            console.log(
+              `[Instance ${config.instanceID}] [DEBUG] Job metadata not ready yet (attempt ${retryCount}/${maxRetries}), putting back in queue`
+            );
+            jobQueue.unshift({ jobID, retryCount }); // Put back at front of queue
+            jobID = null;
+            return;
+          } else {
+            console.log(
+              `[Instance ${config.instanceID}] [DEBUG] Job metadata still not ready after ${maxRetries} attempts, skipping job`
+            );
+            jobID = null;
+            return;
+          }
         }
 
         if (jobMetadata.status !== STATUS.Pending) {
@@ -298,10 +310,10 @@ async function innerMain(): Promise<ExitCase> {
             jobID
           ),
           hashType: jobMetadata.hashType,
-          wordlistFile: getWordlistPath(config.wordlistRoot, jobMetadata.wordlist),
-          rulesFile: jobMetadata.rules
-            ? getWordlistPath(config.wordlistRoot, jobMetadata.rules)
-            : undefined,
+          wordlistFile: getWordlistPath(
+            config.wordlistRoot,
+            jobMetadata.wordlist
+          ),
         });
       } else if (jobProcess && jobProcess.exitCode !== null) {
         const jobMetadata = await getJobMetadata(

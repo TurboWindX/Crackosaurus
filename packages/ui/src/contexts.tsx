@@ -31,14 +31,8 @@ export interface UploadInterface {
     onProgress?: (percent: number) => void,
     abortSignal?: AbortSignal
   ) => Promise<string | null>;
-  rules: (
-    file: File,
-    onProgress?: (percent: number) => void,
-    abortSignal?: AbortSignal
-  ) => Promise<string | null>;
 }
 
 export const UploadContext = createContext<UploadInterface>({
   wordlist: async () => null,
-  rules: async () => null,
 });

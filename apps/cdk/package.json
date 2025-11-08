@@ -20,6 +20,7 @@
     "typescript": "~5.5.4"
   },
   "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.926.0",
     "@repo/app-config": "*",
     "aws-cdk-lib": "2.152.0",
     "constructs": "^10.3.0",

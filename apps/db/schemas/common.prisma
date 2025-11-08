@@ -1,13 +1,27 @@
+// Common models used across providers
+
 model User {
   ID            String    @id @default(uuid())
   username      String    @unique
   password      String
   permissions   String    @default("")
+  groupId       String?
+  group         Group?    @relation(fields: [groupId], references: [GID])
   projects      Project[]
-  submittedJobs Job[]
+  submittedJobs Job[]     @relation("SubmittedJobs")
   approvedJobs  Job[]     @relation("ApprovedJobs")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @default(now()) @updatedAt
+}
+
+model Group {
+  GID         String   @id @default(uuid())
+  name        String   @unique
+  permissions String   @default("")
+  description String?
+  users       User[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
 }
 
 model Project {
@@ -28,6 +42,15 @@ model Hash {
   hashType  Int
   status    String   @default("NOT_FOUND")
   value     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+}
+
+model Rule {
+  RID       String   @id @default(uuid())
+  jobs      Job[]
+  name      String
+  content   String
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 }
@@ -57,14 +80,15 @@ model Job {
   JID            String    @id @default(uuid())
   instanceId     String?
   instance       Instance? @relation(fields: [instanceId], references: [IID])
-  instanceType   String?   // Requested instance type (g5.xlarge, p3.2xlarge, etc.)
+  instanceType   String?
   wordlistId     String?
   wordlist       Wordlist? @relation(fields: [wordlistId], references: [WID])
   hashes         Hash[]
+  rules          Rule[]
   status         String    @default("PENDING")
-  approvalStatus String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  approvalStatus String    @default("PENDING")
   submittedById  String?
-  submittedBy    User?     @relation(fields: [submittedById], references: [ID])
+  submittedBy    User?     @relation("SubmittedJobs", fields: [submittedById], references: [ID])
   approvedById   String?
   approvedBy     User?     @relation("ApprovedJobs", fields: [approvedById], references: [ID])
   approvedAt     DateTime?

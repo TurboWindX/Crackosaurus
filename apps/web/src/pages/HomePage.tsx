@@ -19,9 +19,6 @@ export const HomePage = () => {
               <a href="/projects">
                 <Button>Create Project</Button>
               </a>
-              <a href="/instances">
-                <Button variant="outline">Launch Instance</Button>
-              </a>
             </div>
           </div>
           <div className="bg-card rounded-lg border p-6 shadow-sm">

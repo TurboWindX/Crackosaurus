@@ -1,50 +1,77 @@
 import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
-import * as ecs from "aws-cdk-lib/aws-ecs";
-import * as ecs_patterns from "aws-cdk-lib/aws-ecs-patterns";
 import * as ecr from "aws-cdk-lib/aws-ecr";
+import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as iam from "aws-cdk-lib/aws-iam";
-import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
+import * as cloudmap from "aws-cdk-lib/aws-servicediscovery";
 import { Construct } from "constructs";
 
 export interface CrackosaurusFargateStackProps extends cdk.StackProps {
   environmentName: string;
   imageTag?: string;
+  // Optional: reuse an existing VPC and namespace created by another stack
+  vpc?: ec2.IVpc;
+  namespace?: cloudmap.INamespace;
   domainName?: string;
   certificateArn?: string;
   hostedZoneId?: string;
 }
 
 export class CrackosaurusFargateStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: CrackosaurusFargateStackProps) {
+  constructor(
+    scope: Construct,
+    id: string,
+    props: CrackosaurusFargateStackProps
+  ) {
     super(scope, id, props);
 
     const { environmentName } = props;
     const imageTag = props.imageTag || environmentName;
     const isProduction = environmentName === "prod";
 
-    // VPC
-    const vpc = new ec2.Vpc(this, "FargateVPC", {
-      maxAzs: 2,
-      natGateways: 1,
-      subnetConfiguration: [
-        { name: "Public", subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
-        { name: "Private", subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS, cidrMask: 24 },
-      ],
-    });
+    // VPC - reuse provided VPC if present
+    const vpc =
+      props.vpc ??
+      new ec2.Vpc(this, "FargateVPC", {
+        maxAzs: 2,
+        natGateways: 1,
+        subnetConfiguration: [
+          { name: "Public", subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
+          {
+            name: "Private",
+            subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+            cidrMask: 24,
+          },
+        ],
+      });
 
     // Security groups
-    const albSg = new ec2.SecurityGroup(this, "ALBSecurityGroup", { vpc, allowAllOutbound: true });
-    albSg.addIngressRule(ec2.Peer.anyIpv4(), ec2.Port.tcp(80), "Allow HTTP from internet");
-
-    const svcSg = new ec2.SecurityGroup(this, "ServiceSecurityGroup", { vpc, allowAllOutbound: true });
-    svcSg.addIngressRule(albSg, ec2.Port.tcp(8080), "Allow ALB to talk to service");
-
-    // ECR repository for server (create if not exists)
-    const serverRepo = new ecr.Repository(this, "ServerRepo", {
-      repositoryName: "crackosaurus/server",
-      removalPolicy: isProduction ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    const albSg = new ec2.SecurityGroup(this, "ALBSecurityGroup", {
+      vpc,
+      allowAllOutbound: true,
     });
+    albSg.addIngressRule(
+      ec2.Peer.anyIpv4(),
+      ec2.Port.tcp(80),
+      "Allow HTTP from internet"
+    );
+
+    const svcSg = new ec2.SecurityGroup(this, "ServiceSecurityGroup", {
+      vpc,
+      allowAllOutbound: true,
+    });
+    svcSg.addIngressRule(
+      albSg,
+      ec2.Port.tcp(8080),
+      "Allow ALB to talk to service"
+    );
+
+    // ECR repository for cluster
+    const clusterRepo = ecr.Repository.fromRepositoryName(
+      this,
+      "ClusterRepo",
+      "crackosaurus/cluster"
+    );
 
     // ECS cluster
     const cluster = new ecs.Cluster(this, "FargateCluster", {
@@ -60,35 +87,61 @@ export class CrackosaurusFargateStack extends cdk.Stack {
     const execRole = new iam.Role(this, "ServerExecRole", {
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
       managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName("service-role/AmazonECSTaskExecutionRolePolicy"),
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AmazonECSTaskExecutionRolePolicy"
+        ),
       ],
     });
 
-    // Fargate service with ALB
-    const fargateService = new ecs_patterns.ApplicationLoadBalancedFargateService(this, "FargateService", {
-      cluster,
-      cpu: 512,
-      memoryLimitMiB: 1024,
-      desiredCount: isProduction ? 2 : 1,
-      taskImageOptions: {
-        image: ecs.ContainerImage.fromEcrRepository(serverRepo, imageTag),
-        containerPort: 8080,
+    // Create a Fargate service for the cluster API (no public ALB) and register it with Cloud Map
+    const clusterTaskDef = new ecs.FargateTaskDefinition(
+      this,
+      "ClusterTaskDef",
+      {
+        cpu: 512,
+        memoryLimitMiB: 1024,
         executionRole: execRole,
         taskRole,
+      }
+    );
+
+    const clusterContainer = clusterTaskDef.addContainer("ClusterContainer", {
+      image: ecs.ContainerImage.fromEcrRepository(clusterRepo, imageTag),
+      logging: ecs.LogDrivers.awsLogs({ streamPrefix: "cluster" }),
+      environment: {
+        NODE_ENV: "production",
+        CLUSTER_HOST: "0.0.0.0",
+        CLUSTER_PORT: String(13337),
+        CLUSTER_DISCOVERY_TYPE: "cloud_map",
+        CLUSTER_DISCOVERY_NAMESPACE: `${environmentName}.crackosaurus.local`,
+        CLUSTER_DISCOVERY_SERVICE: "cluster",
+        CLUSTER_DISCOVERY_REGION: this.region,
       },
-      publicLoadBalancer: true,
-      securityGroups: [svcSg, albSg],
-      listenerPort: 80,
-      domainName: props.domainName,
     });
 
-    // Health check path
-    fargateService.targetGroup.configureHealthCheck({ path: "/api/health", interval: cdk.Duration.seconds(30) });
+    clusterContainer.addPortMappings({ containerPort: 13337 });
 
-    // Allow pull from ECR for tasks
-    serverRepo.grantPull(execRole);
+    const clusterService = new ecs.FargateService(
+      this,
+      "ClusterFargateService",
+      {
+        cluster,
+        taskDefinition: clusterTaskDef,
+        desiredCount: isProduction ? 2 : 1,
+        assignPublicIp: false,
+        securityGroups: [svcSg],
+        vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        cloudMapOptions: props.namespace
+          ? { name: "cluster", cloudMapNamespace: props.namespace }
+          : { name: "cluster" },
+      }
+    );
 
-    // Output ALB DNS
-    new cdk.CfnOutput(this, "ALBDns", { value: fargateService.loadBalancer.loadBalancerDnsName });
+    // Allow ECR pull for cluster tasks (execRole is used by the task execution role)
+    // Note: using fromRepositoryName above doesn't require creating the repo here
+
+    new cdk.CfnOutput(this, "ClusterServiceName", {
+      value: clusterService.serviceName,
+    });
   }
 }

@@ -79,14 +79,19 @@ export class InstanceStack extends Construct {
     });
 
     // Use provided security group or create a new one
-    this.instanceSG = props.securityGroup ?? new SecurityGroup(this, "security-group", {
-      securityGroupName: tag("security-group"),
-      vpc: props.vpc,
-      description: "Security group for GPU instances",
-    });
+    this.instanceSG =
+      props.securityGroup ??
+      new SecurityGroup(this, "security-group", {
+        securityGroupName: tag("security-group"),
+        vpc: props.vpc,
+        description: "Security group for GPU instances",
+      });
 
     if (props.sshKey) {
-      this.instanceSG.connections.allowFromAnyIpv4(Port.SSH, "SSH for debugging");
+      this.instanceSG.connections.allowFromAnyIpv4(
+        Port.SSH,
+        "SSH for debugging"
+      );
     }
 
     // Allow GPU instances to access EFS
@@ -101,7 +106,7 @@ export class InstanceStack extends Construct {
 
     // Remove AmazonEC2FullAccess - CRITICAL SECURITY FIX
     // GPU instances should NOT be able to create/modify/delete EC2 resources
-    
+
     // Allow EFS access for reading wordlists and writing results
     this.instanceRole.addManagedPolicy(
       ManagedPolicy.fromAwsManagedPolicyName(

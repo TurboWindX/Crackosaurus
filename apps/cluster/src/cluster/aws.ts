@@ -83,6 +83,45 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     return true;
   }
 
+  public async createInstance(instanceType: string): Promise<string | null> {
+    // Call parent to create instance folder and metadata
+    const instanceID = await super.createInstance(instanceType);
+
+    if (!instanceID) {
+      console.log(
+        `[AWS Cluster] Failed to create instance folder for type ${instanceType}`
+      );
+      return null;
+    }
+
+    // Start the Step Function to launch the EC2 instance
+    // Validate instance type early so we fail fast with a clear message
+    const supported = this.getTypes();
+    if (!supported.includes(instanceType)) {
+      console.error(
+        `[AWS Cluster] Unsupported instance type requested: ${instanceType}`
+      );
+      // Mark instance as error in metadata so it's visible in EFS
+      try {
+        const metadata = await getInstanceMetadata(
+          this.config.instanceRoot,
+          instanceID
+        );
+  metadata.status = STATUS.Error;
+  (metadata as any).error = `Unsupported instance type: ${instanceType}`;
+  await writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
+      } catch (e) {
+        // ignore metadata write errors
+      }
+
+      throw new Error(`Unsupported instance type: ${instanceType}`);
+    }
+
+    await this.run(instanceID);
+
+    return instanceID;
+  }
+
   public async createWordlistFromStream(
     stream: NodeJS.ReadableStream,
     options?: { originBucket?: string; originKey?: string }
@@ -96,7 +135,10 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     if (wordlistID && options?.originBucket && options?.originKey && this.s3) {
       try {
         await this.s3
-          .deleteObject({ Bucket: options.originBucket, Key: options.originKey })
+          .deleteObject({
+            Bucket: options.originBucket,
+            Key: options.originKey,
+          })
           .promise();
         console.log(
           `[AWS Cluster] Deleted origin S3 object s3://${options.originBucket}/${options.originKey} after writing wordlist ${wordlistID}`
@@ -110,6 +152,42 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     }
 
     return wordlistID;
+  }
+
+  /**
+   * Downloads a wordlist from S3 and writes it to EFS using the stream logic.
+   * Returns the wordlistID if successful, null otherwise.
+   */
+  public async copyWordlistFromS3ToEFS(
+    s3Bucket: string,
+    s3Key: string
+  ): Promise<string | null> {
+    if (!this.s3) {
+      this.s3 = new AWS.S3();
+    }
+    try {
+      const s3Stream = this.s3
+        .getObject({ Bucket: s3Bucket, Key: s3Key })
+        .createReadStream();
+      // Use the origin info so the S3 object is deleted after copy
+      const wordlistID = await this.createWordlistFromStream(s3Stream, {
+        originBucket: s3Bucket,
+        originKey: s3Key,
+      });
+      if (wordlistID) {
+        console.log(
+          `[AWSCluster] Successfully copied wordlist from S3 (${s3Bucket}/${s3Key}) to EFS as ${wordlistID}`
+        );
+      } else {
+        console.error(
+          `[AWSCluster] Failed to copy wordlist from S3 (${s3Bucket}/${s3Key}) to EFS`
+        );
+      }
+      return wordlistID;
+    } catch (err) {
+      console.error(`[AWSCluster] Error copying wordlist from S3 to EFS:`, err);
+      return null;
+    }
   }
 
   protected async run(instanceID: string): Promise<void> {
@@ -133,6 +211,10 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     );
 
     try {
+      if (!this.config.stepFunctionArn) {
+        throw new Error("Step Function ARN not configured for AWSCluster");
+      }
+
       const result = await this.stepFunctions
         .startExecution({
           stateMachineArn: this.config.stepFunctionArn,
@@ -142,6 +224,29 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
       console.log(`[AWS Cluster] Step Functions started:`, result.executionArn);
     } catch (e) {
       console.error(`[AWS Cluster] Step Functions error:`, e);
+
+      // Mark instance metadata as Error and save the error message for debugging
+      try {
+        const failedMetadata = await getInstanceMetadata(
+          this.config.instanceRoot,
+          instanceID
+        );
+        failedMetadata.status = STATUS.Error;
+        (failedMetadata as any).error =
+          e && typeof e === "object" && "message" in e
+            ? (e as any).message
+            : String(e);
+        await writeInstanceMetadata(
+          this.config.instanceRoot,
+          instanceID,
+          failedMetadata
+        );
+      } catch (w) {
+        console.error(`[AWS Cluster] Failed to write error metadata:`, w);
+      }
+
+      // Re-throw so upstream callers (and the server) receive a clear failure
+      throw e;
     }
   }
 
@@ -255,7 +360,13 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     hashes: string[]
   ): Promise<boolean> {
     // Call parent to create job folder and metadata with specified ID
-    const result = await super.createJobWithID(instanceID, jobID, wordlist, hashType, hashes);
+    const result = await super.createJobWithID(
+      instanceID,
+      jobID,
+      wordlist,
+      hashType,
+      hashes
+    );
 
     if (!result) {
       console.log(

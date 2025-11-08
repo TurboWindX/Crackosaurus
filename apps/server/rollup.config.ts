@@ -8,7 +8,7 @@ const bundle: RollupOptions = {
   input: "src/index.ts",
   output: {
     dir: "dist",
-    format: "cjs",
+    format: "es",
   },
   plugins: [
     nodeResolve({
@@ -17,7 +17,7 @@ const bundle: RollupOptions = {
     }),
     esbuild({
       platform: "node",
-      target: "node12",
+      target: "node18",
       include: [/.ts/],
       sourceMap: isDev,
       minify: !isDev,

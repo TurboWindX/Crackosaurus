@@ -1,1 +1,15 @@
-{"containerOverrides":[{"name":"ServerContainer","command":["npx","prisma","db","push","--schema=/app/schema.prisma","--accept-data-loss"]}]}
+{
+  "containerOverrides": [
+    {
+      "name": "ServerContainer",
+      "command": [
+        "npx",
+        "prisma",
+        "db",
+        "push",
+        "--schema=/app/schema.prisma",
+        "--accept-data-loss"
+      ]
+    }
+  ]
+}

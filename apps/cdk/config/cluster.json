@@ -1,0 +1,7 @@
+{
+  "desiredCount": 1,
+  "clusterDiscoveryService": "cluster",
+  "clusterHost": "cluster.bleeding.crackosaurus.local",
+  "clusterPort": "13337",
+  "deployClusterEc2": false
+}

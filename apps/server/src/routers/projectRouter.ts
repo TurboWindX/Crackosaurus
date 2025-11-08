@@ -51,10 +51,13 @@ export const projectRouter = t.router({
                   .nullable(),
                 updatedAt: z.date(),
                 instanceType: z.string().nullable().optional(), // Requested instance type
-                instance: z.object({
-                  IID: z.string(),
-                  name: z.string().nullable(),
-                }).nullable().optional(), // Nullable until instance is created
+                instance: z
+                  .object({
+                    IID: z.string(),
+                    name: z.string().nullable(),
+                  })
+                  .nullable()
+                  .optional(), // Nullable until instance is created
               })
               .array()
               .optional(),
@@ -68,7 +71,7 @@ export const projectRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         return await tx.project.findUniqueOrThrow({
           select: {
             PID: true,
@@ -165,7 +168,7 @@ export const projectRouter = t.router({
     .query(async (opts) => {
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         const projects = await tx.project.findMany({
           select: {
             PID: true,
@@ -205,15 +208,36 @@ export const projectRouter = t.router({
         });
 
         // Calculate pending jobs count per project
-        return projects.map((project) => ({
-          PID: project.PID,
-          name: project.name,
-          updatedAt: project.updatedAt,
-          pendingJobsCount: project.hashes
-            .flatMap((hash) => hash.jobs)
-            .filter((job) => job.approvalStatus === "PENDING").length,
-          members: project.members,
-        }));
+        return projects.map(
+          (project: {
+            PID: string;
+            name: string;
+            updatedAt: Date;
+            hashes: {
+              flatMap: (arg0: (hash: unknown) => unknown) => {
+                (): unknown;
+                new (): unknown;
+                filter: {
+                  (arg0: (job: unknown) => boolean): {
+                    (): unknown;
+                    new (): unknown;
+                    length: number;
+                  };
+                  new (): unknown;
+                };
+              };
+            };
+            members: unknown;
+          }) => ({
+            PID: project.PID,
+            name: project.name,
+            updatedAt: project.updatedAt,
+            pendingJobsCount: project.hashes
+              .flatMap((hash: unknown) => (hash as { jobs: unknown[] }).jobs)
+              .filter((job: unknown) => (job as { approvalStatus: string }).approvalStatus === "PENDING").length,
+            members: project.members,
+          })
+        );
       });
     }),
   getList: permissionProcedure(["auth"])
@@ -228,7 +252,7 @@ export const projectRouter = t.router({
     .query(async (opts) => {
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         return await tx.project.findMany({
           select: {
             PID: true,
@@ -258,7 +282,7 @@ export const projectRouter = t.router({
 
       const { prisma, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         const project = await tx.project.create({
           select: {
             PID: true,
@@ -288,7 +312,7 @@ export const projectRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         const projects = await tx.project.findMany({
           select: {
             PID: true,
@@ -310,7 +334,7 @@ export const projectRouter = t.router({
         await tx.hash.deleteMany({
           where: {
             projectId: {
-              in: projects.map((project) => project.PID),
+              in: projects.map((project: { PID: string }) => project.PID),
             },
           },
         });
@@ -318,7 +342,7 @@ export const projectRouter = t.router({
         const { count } = await tx.project.deleteMany({
           where: {
             PID: {
-              in: projects.map((project) => project.PID),
+              in: projects.map((project: { PID: string }) => project.PID),
             },
           },
         });
@@ -339,7 +363,7 @@ export const projectRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         await tx.project.update({
           where: {
             PID: projectID,
@@ -374,7 +398,7 @@ export const projectRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: typeof prisma) => {
         await tx.project.update({
           where: {
             PID: projectID,

@@ -40,7 +40,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
   }
 
   try {
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: PrismaClient) => {
       const instanceSelect = {
         IID: true,
         tag: true,
@@ -71,16 +71,19 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
       });
 
       const instanceSearch = Object.fromEntries(
-        instances.map((instance) => [instance.tag, instance])
+        instances.map((instance: (typeof instances)[number]) => [
+          instance.tag,
+          instance,
+        ])
       );
-
+      /*
       console.log(
         `[Sync] Processing ${instances.length} instances from database`
       );
       console.log(
         `[Sync] Cluster status has ${Object.keys(clusterStatus.instances).length} instances`
       );
-
+      */
       await Promise.all(
         Object.entries(clusterStatus.instances).map(
           async ([instanceTag, instanceStatus]) => {
@@ -116,7 +119,10 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
             }
 
             const jobSearch = Object.fromEntries(
-              instanceDB.jobs.map((job) => [job.JID, job])
+              instanceDB.jobs.map((job: (typeof instanceDB.jobs)[number]) => [
+                job.JID,
+                job,
+              ])
             );
 
             console.log(
@@ -126,7 +132,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
               `[Sync] Instance ${instanceDB.tag} has ${Object.keys(instanceStatus.jobs).length} jobs in EFS`
             );
             console.log(
-              `[Sync] Database job IDs: ${instanceDB.jobs.map((j: any) => j.JID).join(", ")}`
+              `[Sync] Database job IDs: ${instanceDB.jobs.map((j: unknown) => (j as { JID: string }).JID).join(", ")}`
             );
             console.log(
               `[Sync] EFS job IDs: ${Object.keys(instanceStatus.jobs).join(", ")}`
@@ -166,11 +172,13 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
 
                   const hashSearch: Record<string, (typeof jobDB)["hashes"]> =
                     {};
-                  jobDB.hashes.forEach((hash) => {
-                    const entry = hashSearch[hash.hash];
-                    if (entry) entry.push(hash);
-                    else hashSearch[hash.hash] = [hash];
-                  });
+                  jobDB.hashes.forEach(
+                    (hash: (typeof jobDB.hashes)[number]) => {
+                      const entry = hashSearch[hash.hash];
+                      if (entry) entry.push(hash);
+                      else hashSearch[hash.hash] = [hash];
+                    }
+                  );
 
                   await Promise.all(
                     Object.entries(jobStatus.hashes).map(
@@ -181,20 +189,22 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
                         if (hashDBs === undefined) return;
 
                         await Promise.all(
-                          hashDBs.map(async (hashDB) => {
-                            if (hashDB.status !== STATUS.NotFound) return;
+                          hashDBs.map(
+                            async (hashDB: (typeof jobDB.hashes)[number]) => {
+                              if (hashDB.status !== STATUS.NotFound) return;
 
-                            await tx.hash.update({
-                              where: {
-                                HID: hashDB.HID,
-                              },
-                              data: {
-                                status: STATUS.Found,
-                                value: plain,
-                                updatedAt: new Date(),
-                              },
-                            });
-                          })
+                              await tx.hash.update({
+                                where: {
+                                  HID: hashDB.HID,
+                                },
+                                data: {
+                                  status: STATUS.Found,
+                                  value: plain,
+                                  updatedAt: new Date(),
+                                },
+                              });
+                            }
+                          )
                         );
                       }
                     )

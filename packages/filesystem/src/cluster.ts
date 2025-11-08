@@ -35,8 +35,6 @@ export const JOB_METADATA = z.object({
   ]),
   hashType: z.number().int().min(0),
   wordlist: z.string(),
-  // Optional rules file id (stored as the same id used for wordlists/rules storage)
-  rules: z.string().optional(),
 });
 export type JobMetadata = z.infer<typeof JOB_METADATA>;
 
@@ -387,7 +385,7 @@ export async function createJobFolder(
   instanceRoot: string,
   instanceID: string,
   jobID: string,
-  props: { hashType: number; hashes: string[]; wordlist: string; rules?: string }
+  props: { hashType: number; hashes: string[]; wordlist: string }
 ): Promise<void> {
   const jobPath = path.join(instanceRoot, instanceID, JOBS_FOLDER, jobID);
 
@@ -402,10 +400,26 @@ export async function createJobFolder(
         status: STATUS.Pending,
         hashType: props.hashType,
         wordlist: props.wordlist,
-        rules: props.rules,
       })
     )
   );
+  
+  // Ensure metadata is flushed to the filesystem before returning.
+  // This helps avoid a race where the SQS notification is delivered and
+  // the EC2 instance reads the metadata file before it's been persisted
+  // (EFS can be eventual-consistent in some paths). Open the file and
+  // fsync to force data to disk visibility across clients.
+  const metadataPath = path.join(jobPath, METADATA_FILE);
+  const fd = fs.openSync(metadataPath, "r+");
+  try {
+    fs.fsyncSync(fd);
+  } finally {
+    try {
+      fs.closeSync(fd);
+    } catch (e) {
+      // ignore close errors
+    }
+  }
 }
 
 export async function deleteJobFolder(
@@ -425,7 +439,7 @@ export async function writeWordlistFile(
 ): Promise<void> {
   const wordlistFile = path.join(wordlistRoot, wordlistID);
 
-  fs.writeFileSync(wordlistFile, data);
+  fs.writeFileSync(wordlistFile, data as Uint8Array);
 }
 
 export async function writeWordlistFileFromStream(
