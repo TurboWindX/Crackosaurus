@@ -234,7 +234,11 @@ export const projectRouter = t.router({
             updatedAt: project.updatedAt,
             pendingJobsCount: project.hashes
               .flatMap((hash: unknown) => (hash as { jobs: unknown[] }).jobs)
-              .filter((job: unknown) => (job as { approvalStatus: string }).approvalStatus === "PENDING").length,
+              .filter(
+                (job: unknown) =>
+                  (job as { approvalStatus: string }).approvalStatus ===
+                  "PENDING"
+              ).length,
             members: project.members,
           })
         );

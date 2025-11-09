@@ -52,24 +52,41 @@ export const upload: FastifyPluginCallback = (instance, _opts, next) => {
   });
 
   // Endpoint to copy wordlist from S3 to EFS (for large files)
-  instance.post("/wordlist/copy-from-s3", {}, async (request: FastifyRequest) => {
-    const cluster = (
-      request.server as unknown as Record<string, Cluster<unknown>>
-    ).cluster!;
+  instance.post(
+    "/wordlist/copy-from-s3",
+    {},
+    async (request: FastifyRequest) => {
+      const cluster = (
+        request.server as unknown as Record<string, Cluster<unknown>>
+      ).cluster!;
 
-    const { bucket, key } = request.body as { bucket: string; key: string };
+      const { bucket, key } = request.body as { bucket: string; key: string };
 
-    if (!bucket || !key) {
-      throw new TRPCError({ code: "BAD_REQUEST", message: "bucket and key required" });
+      if (!bucket || !key) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "bucket and key required",
+        });
+      }
+
+      // Assuming cluster is AWSCluster, call the new method if present
+      const awsCluster = cluster as unknown as {
+        copyWordlistFromS3ToEFS?: (
+          bucket: string,
+          key: string
+        ) => Promise<string | null>;
+      };
+
+      if (typeof awsCluster.copyWordlistFromS3ToEFS === "function") {
+        return await awsCluster.copyWordlistFromS3ToEFS(bucket, key);
+      } else {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Cluster does not support S3 copy",
+        });
+      }
     }
-
-    // Assuming cluster is AWSCluster, call the new method
-    if (typeof (cluster as any).copyWordlistFromS3ToEFS === 'function') {
-      return await (cluster as any).copyWordlistFromS3ToEFS(bucket, key);
-    } else {
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Cluster does not support S3 copy" });
-    }
-  });
+  );
 
   next();
 };

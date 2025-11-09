@@ -1,6 +1,5 @@
-import crypto from "crypto";
-
 import { TRPCError } from "@trpc/server";
+import crypto from "crypto";
 import { z } from "zod";
 
 import { permissionProcedure, t } from "../plugins/trpc";
@@ -210,21 +209,23 @@ export const jobRouter = t.router({
         // If job has instanceType but no instance, create one
         let instanceTag = job.instance?.tag;
         if (!instanceTag && job.instanceType) {
-          console.log(`Creating new instance of type ${job.instanceType} for job ${jobID}`);
-          
+          console.log(
+            `Creating new instance of type ${job.instanceType} for job ${jobID}`
+          );
+
           try {
             // Create instance in cluster
             const tag = await cluster.instance.create.mutate({
               instanceType: job.instanceType,
             });
-            
+
             if (!tag) {
               throw new TRPCError({
                 code: "INTERNAL_SERVER_ERROR",
                 message: "Failed to create instance in cluster",
               });
             }
-            
+
             // Create instance in database
             const instance = await tx.instance.create({
               data: {
@@ -233,7 +234,7 @@ export const jobRouter = t.router({
                 type: job.instanceType,
               },
             });
-            
+
             // Link job to the new instance
             await tx.job.update({
               where: {
@@ -243,9 +244,11 @@ export const jobRouter = t.router({
                 instanceId: instance.IID,
               },
             });
-            
+
             instanceTag = tag;
-            console.log(`Created instance ${instance.IID} (tag: ${tag}) for job ${jobID}`);
+            console.log(
+              `Created instance ${instance.IID} (tag: ${tag}) for job ${jobID}`
+            );
           } catch (error) {
             console.error(`Failed to create instance for job ${jobID}:`, error);
             throw new TRPCError({
@@ -288,10 +291,15 @@ export const jobRouter = t.router({
             jobID: jobID, // Use the existing database JID
             wordlistID: job.wordlist!.WID,
             hashType: hashType,
-            hashes: job.hashes.map((h: unknown) => (h as { hash: string }).hash),
+            hashes: job.hashes.map(
+              (h: unknown) => (h as { hash: string }).hash
+            ),
           });
         } catch (error) {
-          console.error(`Failed to send approved job ${jobID} to cluster:`, error);
+          console.error(
+            `Failed to send approved job ${jobID} to cluster:`,
+            error
+          );
           throw new TRPCError({
             code: "INTERNAL_SERVER_ERROR",
             message: "Failed to start job on cluster",
@@ -349,7 +357,8 @@ export const jobRouter = t.router({
         }
 
         // Group jobs by {instanceType, hashType}
-        const groupKey = (job: unknown) => `${(job as { instanceType?: string; hashes: { hashType?: string }[] }).instanceType || ''}::${(job as { hashes: { hashType?: string }[] }).hashes[0]?.hashType || ''}`;
+        const groupKey = (job: unknown) =>
+          `${(job as { instanceType?: string; hashes: { hashType?: string }[] }).instanceType || ""}::${(job as { hashes: { hashType?: string }[] }).hashes[0]?.hashType || ""}`;
         type JobGroupItem = {
           JID: string;
           instance?: { IID: string; tag: string };
@@ -391,11 +400,14 @@ export const jobRouter = t.router({
               data: { instanceId: instance.IID },
             });
           } else {
-            console.error("Instance is undefined, cannot update jobs with instanceId");
+            console.error(
+              "Instance is undefined, cannot update jobs with instanceId"
+            );
           }
           // Update job objects in memory
           if (instance) {
-            for (const job of group) job.instance = { IID: instance.IID, tag: instance.tag };
+            for (const job of group)
+              job.instance = { IID: instance.IID, tag: instance.tag };
           }
         }
 
@@ -417,9 +429,15 @@ export const jobRouter = t.router({
         // Send all approved jobs to cluster with existing JIDs
         await Promise.allSettled(
           jobs.map(async (job: unknown) => {
-            const j = job as { JID: string; instance?: { tag: string }; hashes: { hashType: number }[] };
+            const j = job as {
+              JID: string;
+              instance?: { tag: string };
+              hashes: { hashType: number }[];
+            };
             if (!j.instance?.tag) {
-              console.error(`Job ${j.JID} has no instance, skipping cluster send`);
+              console.error(
+                `Job ${j.JID} has no instance, skipping cluster send`
+              );
               return;
             }
             try {
@@ -430,12 +448,19 @@ export const jobRouter = t.router({
               await cluster.instance.createJobWithID.mutate({
                 instanceID: j.instance!.tag,
                 jobID: j.JID,
-                wordlistID: (j as { wordlist?: { WID: string } | null }).wordlist?.WID ?? "",
+                wordlistID:
+                  (j as { wordlist?: { WID: string } | null }).wordlist?.WID ??
+                  "",
                 hashType: hashType,
-                hashes: j.hashes.map((h: unknown) => (h as { hash: string }).hash),
+                hashes: j.hashes.map(
+                  (h: unknown) => (h as { hash: string }).hash
+                ),
               });
             } catch (error) {
-              console.error(`Failed to send approved job ${j.JID} to cluster:`, error);
+              console.error(
+                `Failed to send approved job ${j.JID} to cluster:`,
+                error
+              );
             }
           })
         );
@@ -498,7 +523,10 @@ export const jobRouter = t.router({
             jobIDs: [jobID],
           });
         } catch (error) {
-          console.error(`Failed to delete rejected job ${jobID} from cluster:`, error);
+          console.error(
+            `Failed to delete rejected job ${jobID} from cluster:`,
+            error
+          );
         }
 
         return true;
@@ -547,7 +575,7 @@ export const jobRouter = t.router({
     .mutation(async (opts) => {
       const { instanceType, data } = opts.input;
       const { prisma, hasPermission, currentUserID } = opts.ctx;
-      
+
       const projectIDs = data.flatMap((job) => job.projectIDs);
       const wordlistIDs = data.map((job) => job.wordlistID);
 
@@ -579,7 +607,10 @@ export const jobRouter = t.router({
           },
         });
         const projectMap = Object.fromEntries(
-          projects.map((project: unknown) => [(project as { PID: string }).PID, project])
+          projects.map((project: unknown) => [
+            (project as { PID: string }).PID,
+            project,
+          ])
         );
 
         // Verify wordlists exist
@@ -593,7 +624,9 @@ export const jobRouter = t.router({
             },
           },
         });
-        const wordlistIDSet = new Set(wordlists.map(({ WID }: { WID: string }) => WID));
+        const wordlistIDSet = new Set(
+          wordlists.map(({ WID }: { WID: string }) => WID)
+        );
 
         // Prepare job data
         const result = await Promise.allSettled(
@@ -605,10 +638,14 @@ export const jobRouter = t.router({
               .filter((project) => project);
 
             const jobHashes = jobProjects.flatMap((project: unknown) =>
-              (project as { hashes: { hashType: number; status: string }[] }).hashes.filter(
+              (
+                project as { hashes: { hashType: number; status: string }[] }
+              ).hashes.filter(
                 (hash: unknown) =>
-                  (hash as { hashType: number; status: string }).hashType === job.hashType &&
-                  (hash as { hashType: number; status: string }).status === "NOT_FOUND"
+                  (hash as { hashType: number; status: string }).hashType ===
+                    job.hashType &&
+                  (hash as { hashType: number; status: string }).status ===
+                    "NOT_FOUND"
               )
             );
 

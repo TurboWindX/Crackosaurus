@@ -57,7 +57,9 @@ const HashDataTable = ({
     hashType: HASH_TYPES.plaintext,
   });
 
-  const [importHashType, setImportHashType] = useState<number>(HASH_TYPES.plaintext);
+  const [importHashType, setImportHashType] = useState<number>(
+    HASH_TYPES.plaintext
+  );
 
   const queryClient = useQueryClient();
   const { handleError } = useErrors();

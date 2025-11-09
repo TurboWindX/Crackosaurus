@@ -1,6 +1,5 @@
-import crypto from "crypto";
-
 import { TRPCError } from "@trpc/server";
+import crypto from "crypto";
 import { z } from "zod";
 
 import { STATUS } from "@repo/api";
@@ -158,10 +157,14 @@ export const instanceRouter = t.router({
         });
 
         await cluster.instance.deleteMany.mutate({
-          instanceIDs: instances.map((instance: { tag: string }) => instance.tag),
+          instanceIDs: instances.map(
+            (instance: { tag: string }) => instance.tag
+          ),
         });
 
-        const deletedIDs = instances.map((instance: { IID: string }) => instance.IID);
+        const deletedIDs = instances.map(
+          (instance: { IID: string }) => instance.IID
+        );
 
         await tx.job.deleteMany({
           where: {
@@ -252,7 +255,9 @@ export const instanceRouter = t.router({
             },
           },
         });
-        const wordlistIDSet = new Set(wordlists.map((wordlist: { WID: string }) => wordlist.WID));
+        const wordlistIDSet = new Set(
+          wordlists.map((wordlist: { WID: string }) => wordlist.WID)
+        );
 
         // Prepare job data without sending to cluster yet (will be sent on approval)
         const result = await Promise.allSettled(
@@ -265,7 +270,7 @@ export const instanceRouter = t.router({
 
             const jobHashes = jobProjects.flatMap((project) =>
               project.hashes.filter(
-                (hash: { hashType: number; status: string; }) =>
+                (hash: { hashType: number; status: string }) =>
                   hash.hashType === job.hashType &&
                   hash.status === STATUS.NotFound
               )

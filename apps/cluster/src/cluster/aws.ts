@@ -107,10 +107,16 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
           this.config.instanceRoot,
           instanceID
         );
-  metadata.status = STATUS.Error;
-  (metadata as any).error = `Unsupported instance type: ${instanceType}`;
-  await writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
-      } catch (e) {
+        metadata.status = STATUS.Error;
+        // Attach a best-effort error field without using `any`
+        (metadata as Record<string, unknown>)["error"] =
+          `Unsupported instance type: ${instanceType}`;
+        await writeInstanceMetadata(
+          this.config.instanceRoot,
+          instanceID,
+          metadata
+        );
+      } catch {
         // ignore metadata write errors
       }
 
@@ -232,10 +238,11 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
           instanceID
         );
         failedMetadata.status = STATUS.Error;
-        (failedMetadata as any).error =
+        const errMsg =
           e && typeof e === "object" && "message" in e
-            ? (e as any).message
+            ? String((e as { message?: unknown }).message)
             : String(e);
+        (failedMetadata as Record<string, unknown>)["error"] = errMsg;
         await writeInstanceMetadata(
           this.config.instanceRoot,
           instanceID,

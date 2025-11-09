@@ -247,23 +247,33 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
         });
 
         // For large files, trigger copy from S3 to EFS
-        console.log("[upload.complete] triggering S3 to EFS copy for large file");
+        console.log(
+          "[upload.complete] triggering S3 to EFS copy for large file"
+        );
         try {
-          const copyResponse = await fetch(`${url}/upload/wordlist/copy-from-s3`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              bucket: bucketName,
-              key: s3Key,
-            }),
-          });
+          const copyResponse = await fetch(
+            `${url}/upload/wordlist/copy-from-s3`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                bucket: bucketName,
+                key: s3Key,
+              }),
+            }
+          );
           if (!copyResponse.ok) {
-            console.error("[upload.complete] failed to trigger S3 copy", await copyResponse.text());
+            console.error(
+              "[upload.complete] failed to trigger S3 copy",
+              await copyResponse.text()
+            );
           } else {
             const copiedWordlistID = await copyResponse.json();
-            console.log("[upload.complete] S3 copy completed", { copiedWordlistID });
+            console.log("[upload.complete] S3 copy completed", {
+              copiedWordlistID,
+            });
           }
         } catch (err) {
           console.error("[upload.complete] error triggering S3 copy", err);

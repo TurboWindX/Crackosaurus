@@ -50,7 +50,7 @@ export function hashcat({
     process.stderr.on("data", (data) => {
       stderrBuffer += data.toString();
     });
-    
+
     process.on("exit", (code) => {
       if (code !== 0 && stderrBuffer) {
         console.error("[Hashcat] STDERR output:", stderrBuffer);
@@ -63,7 +63,11 @@ export function hashcat({
     process.stdout.on("data", (data) => {
       const output = data.toString();
       // Log hashcat status updates
-      if (output.includes("Status") || output.includes("Progress") || output.includes("Recovered")) {
+      if (
+        output.includes("Status") ||
+        output.includes("Progress") ||
+        output.includes("Recovered")
+      ) {
         console.log("[Hashcat]", output.trim());
       }
     });
@@ -84,7 +88,9 @@ export function hashcat({
       if (code === 0) {
         console.log("[Hashcat] Job completed - all hashes cracked");
       } else if (code === 1) {
-        console.log("[Hashcat] Job completed - exhausted wordlist (some hashes may remain uncracked)");
+        console.log(
+          "[Hashcat] Job completed - exhausted wordlist (some hashes may remain uncracked)"
+        );
       } else if (code === 2) {
         console.log("[Hashcat] Job aborted by user");
       } else {

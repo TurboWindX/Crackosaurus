@@ -84,7 +84,8 @@ services:
       WEB_PORT: 8080
       CLUSTER_HOST: cluster
       CLUSTER_PORT: 13337
-      BACKEND_SECRET: SECRET:123456789012345678901234567890
+      # Provide a backend secret via environment or an .env file. Do NOT commit real secrets.
+      BACKEND_SECRET: "${BACKEND_SECRET:-change-me}"
       DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test

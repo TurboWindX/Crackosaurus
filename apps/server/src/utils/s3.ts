@@ -47,10 +47,16 @@ export function createS3Client(
       : process.env.AWS_ENDPOINT_URL;
 
     s3Config.endpoint = endpoint;
-    s3Config.credentials = {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID || "test",
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "test",
-    };
+    // Only set explicit credentials if both values are provided.
+    // Avoid embedding test credentials in source; local dev may set these in a .env file.
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID;
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY;
+    if (accessKeyId && secretAccessKey) {
+      s3Config.credentials = {
+        accessKeyId,
+        secretAccessKey,
+      };
+    }
     s3Config.forcePathStyle = true; // Required for LocalStack
   }
   // Production: Use AWS SDK defaults (IAM role credentials from instance metadata)

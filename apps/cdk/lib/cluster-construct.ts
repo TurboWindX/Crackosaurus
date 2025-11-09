@@ -68,8 +68,12 @@ export class ClusterService extends Construct {
         CLUSTER_DISCOVERY_NAMESPACE: props.discoveryNamespace ?? "",
         CLUSTER_DISCOVERY_SERVICE: props.discoveryService ?? "cluster",
         CLUSTER_DISCOVERY_REGION: props.discoveryRegion ?? "",
-        ...(props.stepFunctionArn ? { CLUSTER_STEP_FUNCTION: props.stepFunctionArn } : {}),
-        ...(props.jobQueueUrl ? { CLUSTER_JOB_QUEUE_URL: props.jobQueueUrl } : {}),
+        ...(props.stepFunctionArn
+          ? { CLUSTER_STEP_FUNCTION: props.stepFunctionArn }
+          : {}),
+        ...(props.jobQueueUrl
+          ? { CLUSTER_JOB_QUEUE_URL: props.jobQueueUrl }
+          : {}),
       },
     });
 

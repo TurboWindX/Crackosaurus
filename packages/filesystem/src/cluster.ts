@@ -403,7 +403,7 @@ export async function createJobFolder(
       })
     )
   );
-  
+
   // Ensure metadata is flushed to the filesystem before returning.
   // This helps avoid a race where the SQS notification is delivered and
   // the EC2 instance reads the metadata file before it's been persisted
@@ -416,7 +416,7 @@ export async function createJobFolder(
   } finally {
     try {
       fs.closeSync(fd);
-    } catch (e) {
+    } catch {
       // ignore close errors
     }
   }

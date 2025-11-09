@@ -70,16 +70,12 @@ if (!clusterConfig["clusterDiscoveryNamespace"]) {
 }
 
 // Create the main stack
-new CrackosaurusStack(
-  app,
-  `Crackosaurus-${config.environmentName}`,
-  {
-    env: { account, region },
-    description: `Crackosaurus password cracking platform - ${config.environmentName} environment`,
-    ...config,
-    serverConfig,
-    clusterConfig,
-  }
-);
+new CrackosaurusStack(app, `Crackosaurus-${config.environmentName}`, {
+  env: { account, region },
+  description: `Crackosaurus password cracking platform - ${config.environmentName} environment`,
+  ...config,
+  serverConfig,
+  clusterConfig,
+});
 
 app.synth();

@@ -204,8 +204,14 @@ export abstract class FileSystemCluster<
   }
 
   public async createWordlistFromStream(
-stream: NodeJS.ReadableStream, options: { originBucket?: string; originKey?: string; } | undefined  ): Promise<string | null> {
+    stream: NodeJS.ReadableStream,
+    options: { originBucket?: string; originKey?: string } | undefined
+  ): Promise<string | null> {
     const wordlistID = crypto.randomUUID();
+
+    // options is intentionally optional for filesystem-backed clusters; reference
+    // it to avoid linter complaints when callers pass origin metadata.
+    void options;
 
     await writeWordlistFileFromStream(
       this.config.wordlistRoot,

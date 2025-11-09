@@ -50,6 +50,10 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
   ): Promise<string | null> {
     const jobID = crypto.randomUUID();
 
+    // Silence "defined but never used" lint errors for debug parameters
+    void _hashType;
+    void _hashes;
+
     console.log(
       `Queued job ${jobID} using wordlist ${wordlist} on ${instanceID}`
     );
@@ -64,6 +68,9 @@ export class DebugCluster extends Cluster<DebugClusterConfig> {
     _hashType: number,
     _hashes: string[]
   ): Promise<boolean> {
+    // Silence "defined but never used" lint errors for debug parameters
+    void _hashType;
+    void _hashes;
     console.log(
       `Queued job ${jobID} (existing ID) using wordlist ${wordlist} on ${instanceID}`
     );

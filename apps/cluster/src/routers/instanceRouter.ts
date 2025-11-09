@@ -67,7 +67,13 @@ export const instanceRouter = t.router({
 
       const { cluster } = opts.ctx;
 
-      return await cluster.createJobWithID(instanceID, jobID, wordlistID, hashType, hashes);
+      return await cluster.createJobWithID(
+        instanceID,
+        jobID,
+        wordlistID,
+        hashType,
+        hashes
+      );
     }),
   deleteJobs: publicProcedure
     .input(

@@ -36,3 +36,12 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# Additional common ignores
+**/dist/
+**/build/
+node_modules/
+localstack_data/
+.env.*
+.env*
+.vscode/

@@ -37,12 +37,16 @@ export class CrackosaurusStack extends cdk.Stack {
     const { environmentName } = props;
     // allow per-service overrides via props.serverConfig / props.clusterConfig
     const serverConfig = (props.serverConfig || {}) as Record<string, unknown>;
-    const clusterConfig = (props.clusterConfig || {}) as Record<string, unknown>;
+    const clusterConfig = (props.clusterConfig || {}) as Record<
+      string,
+      unknown
+    >;
 
     const globalImageTag = props.imageTag || environmentName; // default
     // Always use the imageTag from config, which is set by bin/cdk.ts fallback logic
     const serverImageTag = (serverConfig.imageTag as string) || globalImageTag;
-    const clusterImageTag = (clusterConfig.imageTag as string) || globalImageTag;
+    const clusterImageTag =
+      (clusterConfig.imageTag as string) || globalImageTag;
 
     const serverDesiredCount = (serverConfig.desiredCount as number) ?? 1;
     const isProduction = environmentName === "prod";
@@ -685,18 +689,22 @@ export class CrackosaurusStack extends cdk.Stack {
     const taskRole = new iam.Role(this, "FargateTaskRole", {
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
     });
-    
+
     //Grants instead of addtopolicy for instanceStack resources
     instanceStack.jobQueue.grantSendMessages(taskRole);
 
-        // Allow task to read DB credentials
+    // Allow task to read DB credentials
     dbCredentials.grantRead(taskRole);
 
     // Grant the Fargate task role access to the wordlists bucket (created above).
     // We do this here because `taskRole` is declared only after the bucket
     // creation site earlier in this function.
     wordlistsBucket.grantReadWrite(taskRole);
-    instanceStack.instanceRole.grant(taskRole, "s3:ListBucket", "s3:GetBucketLocation");
+    instanceStack.instanceRole.grant(
+      taskRole,
+      "s3:ListBucket",
+      "s3:GetBucketLocation"
+    );
     taskRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -719,7 +727,6 @@ export class CrackosaurusStack extends cdk.Stack {
         ],
       })
     );
-
 
     // Add permission for Fargate cluster tasks to start Step Function executions
     taskRole.addToPolicy(
@@ -903,158 +910,157 @@ export class CrackosaurusStack extends cdk.Stack {
     // Cluster Worker Launch Template (Spot)
     // ===========================================
     let clusterAsg: autoscaling.AutoScalingGroup | undefined = undefined;
-  if (deployClusterEc2) {
+    if (deployClusterEc2) {
       const clusterUserData = ec2.UserData.forLinux();
-    clusterUserData.addCommands(
-      "set -ex",
-      "",
-      "# Install required packages",
-      "yum update -y",
-      "yum install -y docker amazon-efs-utils jq",
-      "systemctl start docker",
-      "systemctl enable docker",
-      "usermod -aG docker ec2-user",
-      "",
-      "# Mount EFS using token substitution"
-    );
+      clusterUserData.addCommands(
+        "set -ex",
+        "",
+        "# Install required packages",
+        "yum update -y",
+        "yum install -y docker amazon-efs-utils jq",
+        "systemctl start docker",
+        "systemctl enable docker",
+        "usermod -aG docker ec2-user",
+        "",
+        "# Mount EFS using token substitution"
+      );
 
-    // Mount EFS for cluster
-    clusterUserData.addCommands(
-      "mkdir -p /mnt/efs",
-      "",
-      "# Create mount script"
-    );
+      // Mount EFS for cluster
+      clusterUserData.addCommands(
+        "mkdir -p /mnt/efs",
+        "",
+        "# Create mount script"
+      );
 
-    clusterUserData.addCommands(
-      cdk.Fn.sub(
-        "cat > /tmp/mount-efs.sh << 'EOFSCRIPT'\n#!/bin/bash\nset -e\nmount -t efs -o tls,iam ${FileSystemId}:/ /mnt/efs\necho \"${FileSystemId}:/ /mnt/efs efs _netdev,tls,iam 0 0\" >> /etc/fstab\nEOFSCRIPT",
-        {
-          FileSystemId: fileSystem.fileSystemId,
-        }
-      )
-    );
-
-    clusterUserData.addCommands(
-      "chmod +x /tmp/mount-efs.sh",
-      "/tmp/mount-efs.sh",
-      "",
-      "# Create cluster user with UID 1001 to match Docker container",
-      "groupadd -g 1001 cluster || true",
-      "useradd -u 1001 -g 1001 -m cluster || true",
-      "",
-      "# Create data directories and set ownership",
-      "mkdir -p /mnt/efs/wordlists /mnt/efs/instances /mnt/efs/jobs",
-      "chown -R 1001:1001 /mnt/efs",
-      ""
-    );
-
-    clusterUserData.addCommands(
-      "# Get database credentials from Secrets Manager",
-      `DB_SECRET_ARN=${dbCredentials.secretArn}`,
-      `AWS_REGION=${this.region}`,
-      "DB_SECRET=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN --region $AWS_REGION --query SecretString --output text)",
-      "DB_PASSWORD=$(echo $DB_SECRET | jq -r .password)",
-      `DB_HOST=${dbCluster.clusterEndpoint.hostname}`,
-      "",
-      "# ECR Login and pull cluster image",
-      `ECR_REGISTRY=${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
-      `IMAGE_TAG=${globalImageTag}`,
-      "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
-      "docker pull $ECR_REGISTRY/crackosaurus/cluster:$IMAGE_TAG",
-      'DATABASE_URL="postgresql://crackosaurus:${DB_PASSWORD}@${DB_HOST}:5432/crackosaurus?schema=public"',
-      "docker run -d \\",
-      "  --name crackosaurus-cluster \\",
-      "  --restart unless-stopped \\",
-      "  -p 13337:13337 \\",
-      "  -v /mnt/efs:/data \\",
-      '  -e NODE_ENV="production" \\',
-      '  -e DATABASE_PROVIDER="postgresql" \\',
-      '  -e DATABASE_PATH="$DATABASE_URL" \\',
-      '  -e STORAGE_TYPE="filesystem" \\',
-      '  -e STORAGE_PATH="/data" \\',
-      '  -e CLUSTER_TYPE="aws" \\',
-      '  -e CLUSTER_HOST="0.0.0.0" \\',
-      '  -e CLUSTER_PORT="13337" \\',
-      '  -e AWS_REGION="$AWS_REGION" \\',
-  `  -e CLUSTER_STEP_FUNCTION="${instanceStack!.stepFunction.stateMachineArn}" \\`,
-  `  -e CLUSTER_JOB_QUEUE_URL="${instanceStack!.jobQueue.queueUrl}" \\`,
-      '  -e CLUSTER_INSTANCE_ROOT="/data/instances" \\',
-      '  -e CLUSTER_WORDLIST_ROOT="/data/wordlists" \\',
-      '  -e CLUSTER_DISCOVERY_TYPE="cloud_map" \\',
-      `  -e CLUSTER_DISCOVERY_NAMESPACE="${environmentName}.crackosaurus.local" \\`,
-      '  -e CLUSTER_DISCOVERY_SERVICE="cluster" \\',
-      '  -e CLUSTER_DISCOVERY_REGION="$AWS_REGION" \\',
-      "  $ECR_REGISTRY/crackosaurus/cluster:$IMAGE_TAG",
-      "",
-      "# Register with Cloud Map",
-      "INSTANCE_ID=$(ec2-metadata --instance-id | cut -d ' ' -f 2)",
-      "PRIVATE_IP=$(ec2-metadata --local-ipv4 | cut -d ' ' -f 2)",
-      `NAMESPACE_ID=$(aws servicediscovery list-namespaces --region $AWS_REGION --query "Namespaces[?Name=='${environmentName}.crackosaurus.local'].Id" --output text)`,
-      `SERVICE_ID=$(aws servicediscovery list-services --region $AWS_REGION --filters Name=NAMESPACE_ID,Values=$NAMESPACE_ID,Condition=EQ --query "Services[?Name=='cluster'].Id" --output text)`,
-      "aws servicediscovery register-instance --region $AWS_REGION \\",
-      "  --service-id $SERVICE_ID \\",
-      "  --instance-id $INSTANCE_ID \\",
-      "  --attributes AWS_INSTANCE_IPV4=$PRIVATE_IP,AWS_INSTANCE_PORT=13337",
-      "",
-      "echo 'Cluster worker setup complete'"
-    );
-
-    const clusterLaunchTemplate = new ec2.LaunchTemplate(
-      this,
-      "ClusterLaunchTemplate",
-      {
-        instanceType: ec2.InstanceType.of(
-          ec2.InstanceClass.T3,
-          ec2.InstanceSize.SMALL
-        ),
-        machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-        securityGroup: clusterSecurityGroup, // Cluster security group
-        role: clusterRole, // Cluster IAM role
-        userData: clusterUserData,
-        blockDevices: [
+      clusterUserData.addCommands(
+        cdk.Fn.sub(
+          "cat > /tmp/mount-efs.sh << 'EOFSCRIPT'\n#!/bin/bash\nset -e\nmount -t efs -o tls,iam ${FileSystemId}:/ /mnt/efs\necho \"${FileSystemId}:/ /mnt/efs efs _netdev,tls,iam 0 0\" >> /etc/fstab\nEOFSCRIPT",
           {
-            deviceName: "/dev/xvda",
-            volume: ec2.BlockDeviceVolume.ebs(30, {
-              volumeType: ec2.EbsDeviceVolumeType.GP3,
-              encrypted: true, // CRITICAL: Required by SCP
-              deleteOnTermination: true,
-            }),
+            FileSystemId: fileSystem.fileSystemId,
+          }
+        )
+      );
+
+      clusterUserData.addCommands(
+        "chmod +x /tmp/mount-efs.sh",
+        "/tmp/mount-efs.sh",
+        "",
+        "# Create cluster user with UID 1001 to match Docker container",
+        "groupadd -g 1001 cluster || true",
+        "useradd -u 1001 -g 1001 -m cluster || true",
+        "",
+        "# Create data directories and set ownership",
+        "mkdir -p /mnt/efs/wordlists /mnt/efs/instances /mnt/efs/jobs",
+        "chown -R 1001:1001 /mnt/efs",
+        ""
+      );
+
+      clusterUserData.addCommands(
+        "# Get database credentials from Secrets Manager",
+        `DB_SECRET_ARN=${dbCredentials.secretArn}`,
+        `AWS_REGION=${this.region}`,
+        "DB_SECRET=$(aws secretsmanager get-secret-value --secret-id $DB_SECRET_ARN --region $AWS_REGION --query SecretString --output text)",
+        "DB_PASSWORD=$(echo $DB_SECRET | jq -r .password)",
+        `DB_HOST=${dbCluster.clusterEndpoint.hostname}`,
+        "",
+        "# ECR Login and pull cluster image",
+        `ECR_REGISTRY=${this.account}.dkr.ecr.${this.region}.amazonaws.com`,
+        `IMAGE_TAG=${globalImageTag}`,
+        "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY",
+        "docker pull $ECR_REGISTRY/crackosaurus/cluster:$IMAGE_TAG",
+        'DATABASE_URL="postgresql://crackosaurus:${DB_PASSWORD}@${DB_HOST}:5432/crackosaurus?schema=public"',
+        "docker run -d \\",
+        "  --name crackosaurus-cluster \\",
+        "  --restart unless-stopped \\",
+        "  -p 13337:13337 \\",
+        "  -v /mnt/efs:/data \\",
+        '  -e NODE_ENV="production" \\',
+        '  -e DATABASE_PROVIDER="postgresql" \\',
+        '  -e DATABASE_PATH="$DATABASE_URL" \\',
+        '  -e STORAGE_TYPE="filesystem" \\',
+        '  -e STORAGE_PATH="/data" \\',
+        '  -e CLUSTER_TYPE="aws" \\',
+        '  -e CLUSTER_HOST="0.0.0.0" \\',
+        '  -e CLUSTER_PORT="13337" \\',
+        '  -e AWS_REGION="$AWS_REGION" \\',
+        `  -e CLUSTER_STEP_FUNCTION="${instanceStack!.stepFunction.stateMachineArn}" \\`,
+        `  -e CLUSTER_JOB_QUEUE_URL="${instanceStack!.jobQueue.queueUrl}" \\`,
+        '  -e CLUSTER_INSTANCE_ROOT="/data/instances" \\',
+        '  -e CLUSTER_WORDLIST_ROOT="/data/wordlists" \\',
+        '  -e CLUSTER_DISCOVERY_TYPE="cloud_map" \\',
+        `  -e CLUSTER_DISCOVERY_NAMESPACE="${environmentName}.crackosaurus.local" \\`,
+        '  -e CLUSTER_DISCOVERY_SERVICE="cluster" \\',
+        '  -e CLUSTER_DISCOVERY_REGION="$AWS_REGION" \\',
+        "  $ECR_REGISTRY/crackosaurus/cluster:$IMAGE_TAG",
+        "",
+        "# Register with Cloud Map",
+        "INSTANCE_ID=$(ec2-metadata --instance-id | cut -d ' ' -f 2)",
+        "PRIVATE_IP=$(ec2-metadata --local-ipv4 | cut -d ' ' -f 2)",
+        `NAMESPACE_ID=$(aws servicediscovery list-namespaces --region $AWS_REGION --query "Namespaces[?Name=='${environmentName}.crackosaurus.local'].Id" --output text)`,
+        `SERVICE_ID=$(aws servicediscovery list-services --region $AWS_REGION --filters Name=NAMESPACE_ID,Values=$NAMESPACE_ID,Condition=EQ --query "Services[?Name=='cluster'].Id" --output text)`,
+        "aws servicediscovery register-instance --region $AWS_REGION \\",
+        "  --service-id $SERVICE_ID \\",
+        "  --instance-id $INSTANCE_ID \\",
+        "  --attributes AWS_INSTANCE_IPV4=$PRIVATE_IP,AWS_INSTANCE_PORT=13337",
+        "",
+        "echo 'Cluster worker setup complete'"
+      );
+
+      const clusterLaunchTemplate = new ec2.LaunchTemplate(
+        this,
+        "ClusterLaunchTemplate",
+        {
+          instanceType: ec2.InstanceType.of(
+            ec2.InstanceClass.T3,
+            ec2.InstanceSize.SMALL
+          ),
+          machineImage: ec2.MachineImage.latestAmazonLinux2023(),
+          securityGroup: clusterSecurityGroup, // Cluster security group
+          role: clusterRole, // Cluster IAM role
+          userData: clusterUserData,
+          blockDevices: [
+            {
+              deviceName: "/dev/xvda",
+              volume: ec2.BlockDeviceVolume.ebs(30, {
+                volumeType: ec2.EbsDeviceVolumeType.GP3,
+                encrypted: true, // CRITICAL: Required by SCP
+                deleteOnTermination: true,
+              }),
+            },
+          ],
+          requireImdsv2: true,
+        }
+      );
+
+      // NOTE: Cloud Map service for the cluster is created by the
+      // ClusterService construct (via FargateService.cloudMapOptions).
+      // Removing the explicit namespace.createService call avoids
+      // attempting to create the same service twice which can cause
+      // CREATE_FAILED errors when a prior service already exists.
+
+      // ===========================================
+      // Auto Scaling Group for Cluster Workers (Spot)
+      // ===========================================
+      clusterAsg = new autoscaling.AutoScalingGroup(this, "ClusterASG", {
+        vpc,
+        vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+        mixedInstancesPolicy: {
+          launchTemplate: clusterLaunchTemplate,
+          instancesDistribution: {
+            onDemandPercentageAboveBaseCapacity: 100, // 100% spot instances
+            spotAllocationStrategy:
+              autoscaling.SpotAllocationStrategy.PRICE_CAPACITY_OPTIMIZED,
           },
-        ],
-        requireImdsv2: true,
-      }
-    );
-
-    // NOTE: Cloud Map service for the cluster is created by the
-    // ClusterService construct (via FargateService.cloudMapOptions).
-    // Removing the explicit namespace.createService call avoids
-    // attempting to create the same service twice which can cause
-    // CREATE_FAILED errors when a prior service already exists.
-
-    // ===========================================
-    // Auto Scaling Group for Cluster Workers (Spot)
-    // ===========================================
-  clusterAsg = new autoscaling.AutoScalingGroup(this, "ClusterASG", {
-      vpc,
-      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
-      mixedInstancesPolicy: {
-        launchTemplate: clusterLaunchTemplate,
-        instancesDistribution: {
-          onDemandPercentageAboveBaseCapacity: 100, // 100% spot instances
-          spotAllocationStrategy:
-            autoscaling.SpotAllocationStrategy.PRICE_CAPACITY_OPTIMIZED,
         },
-      },
-      minCapacity: 0,
-      maxCapacity: isProduction ? 10 : 3,
-      desiredCapacity: 1, // Keep 1 cluster instance running
-      updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
-        maxBatchSize: 2,
-        minInstancesInService: 0,
-      }),
-  });
-
-  } // end if (deployClusterEc2)
+        minCapacity: 0,
+        maxCapacity: isProduction ? 10 : 3,
+        desiredCapacity: 1, // Keep 1 cluster instance running
+        updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
+          maxBatchSize: 2,
+          minInstancesInService: 0,
+        }),
+      });
+    } // end if (deployClusterEc2)
 
     // ===========================================
     // Outputs
@@ -1074,8 +1080,7 @@ export class CrackosaurusStack extends cdk.Stack {
       description: "EFS file system ID",
     });
 
-
-  if (deployClusterEc2) {
+    if (deployClusterEc2) {
       new cdk.CfnOutput(this, "ClusterASGName", {
         value: clusterAsg!.autoScalingGroupName,
         description: "Cluster Auto Scaling Group name",
