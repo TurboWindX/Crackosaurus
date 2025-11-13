@@ -67,10 +67,26 @@ async function innerMain(): Promise<ExitCase> {
       );
     } else if (instanceMetadata.status === STATUS.Unknown) {
       console.log(`[DEBUG] Instance is UNKNOWN, creating instance folder`);
+      
+      // Fetch EC2 instance type from instance metadata service
+      let ec2InstanceType = "external";
+      try {
+        const ec2Metadata = new AWS.MetadataService();
+        ec2InstanceType = await new Promise<string>((resolve, reject) => {
+          ec2Metadata.request("/latest/meta-data/instance-type", (err, data) => {
+            if (err) reject(err);
+            else resolve(data);
+          });
+        });
+        console.log(`[DEBUG] Fetched EC2 instance type: ${ec2InstanceType}`);
+      } catch (e) {
+        console.error(`[DEBUG] Failed to fetch EC2 instance type, using 'external':`, e);
+      }
+      
       await createInstanceFolder(config.instanceRoot, config.instanceID, {
-        type: "external",
+        type: ec2InstanceType,
       });
-      console.log(`[DEBUG] Instance folder created`);
+      console.log(`[DEBUG] Instance folder created with type: ${ec2InstanceType}`);
 
       instanceMetadata = await getInstanceMetadata(
         config.instanceRoot,

@@ -224,29 +224,12 @@ export const jobRouter = t.router({
 
           const visible = await waitForVisibility(instance.tag);
           if (!visible) {
-            // Target instance not found in cluster after waiting. Create a fresh
-            // cluster instance and update DB to point to the new tag.
-            if (!job.instanceType)
-              throw new TRPCError({
-                code: "BAD_REQUEST",
-                message: "Job missing instance type",
-              });
-
-            const newTag = await cluster.instance.create.mutate({
-              instanceType: job.instanceType,
-            });
-            if (!newTag)
-              throw new TRPCError({
-                code: "INTERNAL_SERVER_ERROR",
-                message: "Failed to create cluster instance",
-              });
-
-            await tx.instance.update({
-              where: { IID: instance.IID },
-              data: { tag: newTag, updatedAt: new Date() },
-            });
-
-            instance.tag = newTag;
+            // Instance not visible in cluster after waiting. This is likely a transient
+            // issue - the instance is still starting up. Log the error but don't create
+            // a second instance (which would cause duplicate instances).
+            console.error(
+              `[JobRouter] Instance ${instance.tag} not visible in cluster after waiting. Job will be picked up once instance reports to cluster.`
+            );
           }
 
           await cluster.instance.createJobWithID.mutate({
@@ -365,29 +348,12 @@ export const jobRouter = t.router({
 
               const visible = await waitForVisibility(instance.tag);
               if (!visible) {
-                // If not visible, attempt to recreate a fresh instance tag and update DB.
-                if (!job.instanceType) {
-                  throw new TRPCError({
-                    code: "BAD_REQUEST",
-                    message: "Job missing instance type",
-                  });
-                }
-
-                const newTag = await cluster.instance.create.mutate({
-                  instanceType: job.instanceType,
-                });
-                if (!newTag)
-                  throw new TRPCError({
-                    code: "INTERNAL_SERVER_ERROR",
-                    message: "Failed to create cluster instance",
-                  });
-
-                await tx.instance.update({
-                  where: { IID: instance.IID },
-                  data: { tag: newTag, updatedAt: new Date() },
-                });
-
-                instance.tag = newTag;
+                // Instance not visible in cluster after waiting. This is likely a transient
+                // issue - the instance is still starting up. Log the error but don't create
+                // a second instance (which would cause duplicate instances).
+                console.error(
+                  `[JobRouter] Instance ${instance.tag} not visible in cluster after waiting. Job will be picked up once instance reports to cluster.`
+                );
               }
 
               await cluster.instance.createJobWithID.mutate({
