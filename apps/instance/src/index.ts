@@ -20,6 +20,12 @@ import { hashcat } from "@repo/hashcat/exe";
 
 import config from "./config";
 
+// Log environment variables for debugging
+console.log(`[DEBUG] INSTANCE_ID env var: ${process.env.INSTANCE_ID}`);
+console.log(`[DEBUG] INSTANCE_TYPE env var: ${process.env.INSTANCE_TYPE}`);
+console.log(`[DEBUG] config.instanceID: ${config.instanceID}`);
+console.log(`[DEBUG] config.instanceType: ${config.instanceType}`);
+
 const EXIT_CASES = [0, 1, 2] as const;
 type ExitCase = (typeof EXIT_CASES)[number];
 
