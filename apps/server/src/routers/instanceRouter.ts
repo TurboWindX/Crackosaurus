@@ -104,7 +104,7 @@ export const instanceRouter = t.router({
           IID: z.string(),
           name: z.string().nullable(),
           tag: z.string(),
-          type: z.string(),
+          type: z.string().nullable(),
           status: z.string(),
           createdAt: z.date(),
         })
