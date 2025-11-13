@@ -90,9 +90,6 @@ export const instanceRouter = t.router({
 
       return await prisma.$transaction(async (tx: TransactionClient) => {
         return await tx.instance.findMany({
-          where: {
-            visible: true,
-          },
           select: {
             IID: true,
             name: true,

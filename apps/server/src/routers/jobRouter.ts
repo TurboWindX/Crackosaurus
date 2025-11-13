@@ -35,7 +35,7 @@ export const jobRouter = t.router({
 
       const projectIDs = data.flatMap((job) => job.projectIDs);
       const wordlistIDs = data.map((job) => job.wordlistID);
-      const ruleIDs = data.flatMap((job) => job.ruleID).filter(Boolean);
+      const ruleIDs = data.flatMap((job) => job.ruleID).filter((id): id is string => id !== undefined);
 
       return await prisma.$transaction(async (tx: TransactionClient) => {
         const projects = await tx.project.findMany({
@@ -255,7 +255,7 @@ export const jobRouter = t.router({
             wordlistID: job.wordlistId,
             hashType: job.hashes[0]?.hashType || 0, // All hashes should have same type
             hashes: hashStrings,
-            ruleID: job.ruleId,
+            ruleID: job.ruleId ?? undefined,
           });
         } catch (e) {
           console.error(
@@ -396,7 +396,7 @@ export const jobRouter = t.router({
                 wordlistID: job.wordlistId,
                 hashType: job.hashes[0]?.hashType || 0,
                 hashes: hashStrings,
-                ruleID: job.ruleId,
+                ruleID: job.ruleId ?? undefined,
               });
             } catch (e) {
               console.error(
