@@ -339,8 +339,36 @@ export async function createInstanceFolder(
 ): Promise<void> {
   const instancePath = path.join(instanceRoot, instanceID);
 
-  fs.mkdirSync(instancePath, { recursive: true });
+  // Log the intended path so we can later verify it is on EFS and not
+  // the container's ephemeral filesystem.
+  console.log(`[filesystem] Creating instance folder at: ${instancePath}`);
 
+  // Best-effort check: if /proc/mounts exists, look for common EFS mount
+  // markers to detect whether instanceRoot is mounted from a remote FS.
+  try {
+    if (fs.existsSync("/proc/mounts")) {
+      const mounts = fs.readFileSync("/proc/mounts", "utf8");
+      console.log(`[filesystem] Full /proc/mounts for debugging:\n${mounts}`);
+      
+      const isOnMountedFs = mounts.split("\n").some((line) => {
+        // Look for the instanceRoot or common efs mount points in mounts
+        return line.includes(instanceRoot) || line.includes("/crackodata") || line.includes("/mnt/efs") || line.includes("efs");
+      });
+      if (!isOnMountedFs) {
+        console.warn(
+          `[filesystem] Warning: target instanceRoot (${instanceRoot}) does not appear in /proc/mounts. ` +
+            "This can mean the process will write to a container-local filesystem instead of EFS."
+        );
+      } else {
+        console.log(`[filesystem] Confirmed instanceRoot (${instanceRoot}) is on a mounted filesystem`);
+      }
+    }
+  } catch (e) {
+    // Don't fail on best-effort check
+    console.error(`[filesystem] Failed to inspect /proc/mounts:`, e);
+  }
+
+  fs.mkdirSync(instancePath, { recursive: true });
   fs.mkdirSync(path.join(instancePath, JOBS_FOLDER));
 
   await atomicWriteFileAsync(

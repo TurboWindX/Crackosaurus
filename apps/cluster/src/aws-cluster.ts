@@ -102,15 +102,28 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
     console.log(`[AWS Cluster] launchInstance() called with instanceID: ${instanceID}`);
     
     // Verify the instance folder exists before launching EC2
-    // This ensures EFS has propagated the folder creation
-    const metadata = await getInstanceMetadata(
+    // Retry a few times to account for EFS propagation delays
+    let metadata = await getInstanceMetadata(
       this.config.instanceRoot,
       instanceID
     );
+    
+    let attempts = 0;
+    const maxAttempts = 10;
+    while (metadata.status === STATUS.Unknown && attempts < maxAttempts) {
+      console.log(`[AWS Cluster] Instance folder not found yet, waiting 500ms (attempt ${attempts + 1}/${maxAttempts})...`);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      metadata = await getInstanceMetadata(
+        this.config.instanceRoot,
+        instanceID
+      );
+      attempts++;
+    }
+    
     console.log(`[AWS Cluster] Verified instance folder exists with metadata:`, JSON.stringify(metadata));
     
     if (metadata.status === STATUS.Unknown) {
-      throw new Error(`Instance folder ${instanceID} not found on EFS before launch`);
+      throw new Error(`Instance folder ${instanceID} not found on EFS after ${maxAttempts} attempts`);
     }
     
     await this.run(instanceID);
