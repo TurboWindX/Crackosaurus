@@ -93,21 +93,33 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
           async ([instanceTag, instanceStatus]) => {
             let instanceDB = instanceSearch[instanceTag];
             if (instanceDB === undefined) {
-              // Only track new instances if it in a valid state.
-              if (
-                instanceStatus.status === STATUS.Pending ||
-                instanceStatus.status === STATUS.Running
-              ) {
-                instanceDB = await tx.instance.create({
-                  select: instanceSelect,
-                  data: {
-                    name: instanceTag,
-                    tag: instanceTag,
-                    type: "external",
-                    status: instanceStatus.status,
-                  },
-                });
-              } else return;
+              // Check if instance exists in DB but wasn't in our initial query
+              // (e.g., instance was just created and EFS folder appeared after query)
+              const existing = await tx.instance.findFirst({
+                select: instanceSelect,
+                where: { tag: instanceTag },
+              });
+              
+              if (existing) {
+                instanceDB = existing;
+                instanceSearch[instanceTag] = existing; // Cache it
+              } else {
+                // Only create new instance record if it's in a valid state.
+                if (
+                  instanceStatus.status === STATUS.Pending ||
+                  instanceStatus.status === STATUS.Running
+                ) {
+                  instanceDB = await tx.instance.create({
+                    select: instanceSelect,
+                    data: {
+                      name: instanceTag,
+                      tag: instanceTag,
+                      type: "external",
+                      status: instanceStatus.status,
+                    },
+                  });
+                } else return;
+              }
             }
 
             if (instanceDB.status !== instanceStatus.status) {
