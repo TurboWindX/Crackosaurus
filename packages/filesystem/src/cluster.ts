@@ -411,16 +411,10 @@ export async function getJobMetadata(
   );
 
   if (!fs.existsSync(metadataFile)) {
-    console.warn(
-      `[getJobMetadata] Metadata file missing for job ${jobID} at ${metadataFile}`
-    );
+    // Metadata file missing - this is expected for external/unknown jobs
     return UNKNOWN_JOB_METADATA;
   }
   const raw = await safeReadFileAsync(metadataFile);
-  console.log(
-    `[getJobMetadata] Read metadata for job ${jobID} at ${metadataFile}`
-  );
-  console.log(`[getJobMetadata] Metadata contents:`, raw);
   return JOB_METADATA.parse(JSON.parse(raw));
 }
 

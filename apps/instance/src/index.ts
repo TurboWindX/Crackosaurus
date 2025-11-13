@@ -68,25 +68,37 @@ async function innerMain(): Promise<ExitCase> {
     } else if (instanceMetadata.status === STATUS.Unknown) {
       console.log(`[DEBUG] Instance is UNKNOWN, creating instance folder`);
       
-      // Fetch EC2 instance type from instance metadata service
-      let ec2InstanceType = "external";
-      try {
-        const ec2Metadata = new AWS.MetadataService();
-        ec2InstanceType = await new Promise<string>((resolve, reject) => {
-          ec2Metadata.request("/latest/meta-data/instance-type", (err, data) => {
-            if (err) reject(err);
-            else resolve(data);
-          });
-        });
-        console.log(`[DEBUG] Fetched EC2 instance type: ${ec2InstanceType}`);
-      } catch (e) {
-        console.error(`[DEBUG] Failed to fetch EC2 instance type, using 'external':`, e);
-      }
+        // Detect instance type from EC2 metadata
+  let detectedType: string = "external";
+  try {
+    // Use IMDSv2 token-based authentication
+    const metadata = new AWS.MetadataService({
+      httpOptions: { timeout: 5000 },
+      maxRetries: 3,
+      // Force IMDSv2
+      ec2MetadataV1Disabled: true,
+    });
+    
+    // Fetch instance type using IMDSv2
+    const instanceType = await new Promise<string>((resolve, reject) => {
+      metadata.request("/latest/meta-data/instance-type", (err, data) => {
+        if (err) reject(err);
+        else resolve(data);
+      });
+    });
+    detectedType = instanceType;
+    console.log(`[DEBUG] Detected EC2 instance type: ${detectedType}`);
+  } catch (err) {
+    console.error(
+      `[DEBUG] Failed to fetch EC2 instance type, using 'external':`,
+      err
+    );
+  }
       
       await createInstanceFolder(config.instanceRoot, config.instanceID, {
-        type: ec2InstanceType,
+        type: detectedType,
       });
-      console.log(`[DEBUG] Instance folder created with type: ${ec2InstanceType}`);
+      console.log(`[DEBUG] Instance folder created with type: ${detectedType}`);
 
       instanceMetadata = await getInstanceMetadata(
         config.instanceRoot,

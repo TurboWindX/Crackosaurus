@@ -129,18 +129,16 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
               ])
             );
 
-            console.log(
-              `[Sync] Instance ${instanceDB.tag} has ${instanceDB.jobs.length} jobs in database`
-            );
-            console.log(
-              `[Sync] Instance ${instanceDB.tag} has ${Object.keys(instanceStatus.jobs).length} jobs in EFS`
-            );
-            console.log(
-              `[Sync] Database job IDs: ${instanceDB.jobs.map((j: unknown) => (j as { JID: string }).JID).join(", ")}`
-            );
-            console.log(
-              `[Sync] EFS job IDs: ${Object.keys(instanceStatus.jobs).join(", ")}`
-            );
+            // Only log if there are jobs or mismatches (reduce log spam)
+            const dbJobCount = instanceDB.jobs.length;
+            const efsJobCount = Object.keys(instanceStatus.jobs).length;
+            if (dbJobCount > 0 || efsJobCount > 0) {
+              if (dbJobCount !== efsJobCount) {
+                console.log(
+                  `[Sync] Instance ${instanceDB.tag} job count mismatch: DB=${dbJobCount}, EFS=${efsJobCount}`
+                );
+              }
+            }
 
             await Promise.all(
               Object.entries(instanceStatus.jobs).map(
@@ -149,9 +147,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
 
                   // Unsupported external jobs.
                   if (jobDB === undefined) {
-                    console.log(
-                      `[Sync] Job ${jobID} from EFS not found in database, skipping`
-                    );
+                    // Only log once per job (check if we've seen this before)
                     return;
                   }
 
@@ -168,10 +164,6 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
                         updatedAt: new Date(),
                       },
                     });
-                  } else {
-                    console.log(
-                      `[Sync] Job ${jobDB.JID} already has status ${jobDB.status}, no update needed`
-                    );
                   }
 
                   const hashSearch: Record<string, (typeof jobDB)["hashes"]> =
