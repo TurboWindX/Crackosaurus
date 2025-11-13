@@ -238,6 +238,9 @@ export const jobRouter = t.router({
           );
         }
 
+        console.log(
+          `[JobRouter] Creating job folder for job ${jobID} in instance ${instance.tag}`
+        );
         await cluster.instance.createJobWithID.mutate({
           instanceID: instance.tag, // Use tag for cluster communication
           jobID,
@@ -246,11 +249,15 @@ export const jobRouter = t.router({
           hashes: hashStrings,
           ruleID: job.ruleId ?? undefined,
         });
+        console.log(
+          `[JobRouter] Successfully created job folder for job ${jobID} in instance ${instance.tag}`
+        );
       } catch (e) {
         console.error(
           `[JobRouter] Failed to send job ${jobID} to cluster for instance ${instance.tag}:`,
           e
         );
+        console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
         // Don't throw - DB changes are already committed, just log the error
         // The instance will be in "running" state but job won't be in EFS
         // Manual intervention may be needed
@@ -350,6 +357,9 @@ export const jobRouter = t.router({
           const { job, instance } = pair;
           const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
           try {
+            console.log(
+              `[JobRouter] Creating job folder for job ${job.JID} in instance ${instance.tag}`
+            );
             await cluster.instance.createJobWithID.mutate({
               instanceID: instance.tag,
               jobID: job.JID,
@@ -358,12 +368,16 @@ export const jobRouter = t.router({
               hashes: hashStrings,
               ruleID: job.ruleId ?? undefined,
             });
+            console.log(
+              `[JobRouter] Successfully created job folder for job ${job.JID} in instance ${instance.tag}`
+            );
             totalApproved++;
           } catch (e) {
             console.error(
               `[JobRouter] Failed to send job ${job.JID} to cluster for instance ${instance.tag}:`,
               e
             );
+            console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
             // Don't throw - DB changes are already committed, continue with other jobs
           }
         })
