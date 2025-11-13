@@ -97,6 +97,39 @@ export const instanceRouter = t.router({
         });
       });
     }),
+  debugListAll: permissionProcedure(["instances:list"])
+    .output(
+      z
+        .object({
+          IID: z.string(),
+          name: z.string().nullable(),
+          tag: z.string(),
+          type: z.string(),
+          status: z.string(),
+          createdAt: z.date(),
+        })
+        .array()
+    )
+    .query(async (opts) => {
+      const { prisma } = opts.ctx;
+
+      return await prisma.$transaction(async (tx: TransactionClient) => {
+        return await tx.instance.findMany({
+          select: {
+            IID: true,
+            name: true,
+            tag: true,
+            type: true,
+            status: true,
+            createdAt: true,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 10,
+        });
+      });
+    }),
   getTypes: permissionProcedure(["instances:get"])
     .output(z.string().array())
     .query(async (opts) => {
