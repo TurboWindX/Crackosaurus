@@ -2,658 +2,94 @@ import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
 import { z } from "zod";
 
+import { STATUS } from "@repo/api";
+
 import { permissionProcedure, t } from "../plugins/trpc";
 
 export const jobRouter = t.router({
-  // Get all pending jobs (admin only)
-  getPending: permissionProcedure(["jobs:approve"])
-    .output(
-      z
-        .object({
-          JID: z.string(),
-          status: z.string(),
-          approvalStatus: z.string(),
-          submittedBy: z
-            .object({
-              ID: z.string(),
-              username: z.string(),
-            })
-            .nullable(),
-          instance: z.object({
-            IID: z.string(),
-            name: z.string().nullable(),
-            type: z.string().nullable(),
-          }),
-          wordlist: z
-            .object({
-              WID: z.string(),
-              name: z.string().nullable(),
-              size: z.bigint(),
-            })
-            .nullable(),
-          hashes: z
-            .object({
-              HID: z.string(),
-              hash: z.string(),
-              hashType: z.number(),
-              project: z.object({
-                PID: z.string(),
-                name: z.string(),
-              }),
-            })
-            .array(),
-          createdAt: z.date(),
-        })
-        .array()
-    )
-    .query(async (opts) => {
-      const { prisma } = opts.ctx;
-
-      return await prisma.$transaction(async (tx: typeof prisma) => {
-        return await tx.job.findMany({
-          where: {
-            approvalStatus: "PENDING",
-          },
-          include: {
-            submittedBy: {
-              select: {
-                ID: true,
-                username: true,
-              },
-            },
-            instance: {
-              select: {
-                IID: true,
-                name: true,
-                type: true,
-              },
-            },
-            wordlist: {
-              select: {
-                WID: true,
-                name: true,
-                size: true,
-              },
-            },
-            hashes: {
-              select: {
-                HID: true,
-                hash: true,
-                hashType: true,
-                project: {
-                  select: {
-                    PID: true,
-                    name: true,
-                  },
-                },
-              },
-            },
-          },
-          orderBy: {
-            createdAt: "asc",
-          },
-        });
-      });
-    }),
-
-  // Get user's own submitted jobs
-  getMy: permissionProcedure(["jobs:view"])
-    .output(
-      z
-        .object({
-          JID: z.string(),
-          status: z.string(),
-          approvalStatus: z.string(),
-          approvedBy: z
-            .object({
-              ID: z.string(),
-              username: z.string(),
-            })
-            .nullable(),
-          approvedAt: z.date().nullable(),
-          rejectionNote: z.string().nullable(),
-          instance: z.object({
-            IID: z.string(),
-            name: z.string().nullable(),
-          }),
-          wordlist: z
-            .object({
-              WID: z.string(),
-              name: z.string().nullable(),
-            })
-            .nullable(),
-          createdAt: z.date(),
-        })
-        .array()
-    )
-    .query(async (opts) => {
-      const { prisma, currentUserID } = opts.ctx;
-
-      return await prisma.$transaction(async (tx: typeof prisma) => {
-        return await tx.job.findMany({
-          where: {
-            submittedById: currentUserID,
-          },
-          include: {
-            approvedBy: {
-              select: {
-                ID: true,
-                username: true,
-              },
-            },
-            instance: {
-              select: {
-                IID: true,
-                name: true,
-              },
-            },
-            wordlist: {
-              select: {
-                WID: true,
-                name: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-        });
-      });
-    }),
-
-  // Approve a job (admin only)
-  approve: permissionProcedure(["jobs:approve"])
-    .input(
-      z.object({
-        jobID: z.string(),
-      })
-    )
-    .output(z.boolean())
-    .mutation(async (opts) => {
-      const { jobID } = opts.input;
-      const { prisma, currentUserID, cluster } = opts.ctx;
-
-      return await prisma.$transaction(async (tx: typeof prisma) => {
-        const job = await tx.job.findUniqueOrThrow({
-          where: {
-            JID: jobID,
-          },
-          include: {
-            instance: {
-              select: {
-                IID: true,
-                tag: true,
-              },
-            },
-            wordlist: {
-              select: {
-                WID: true,
-              },
-            },
-            hashes: {
-              select: {
-                hash: true,
-                hashType: true,
-              },
-            },
-          },
-        });
-
-        if (job.approvalStatus !== "PENDING") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Job is not pending approval",
-          });
-        }
-
-        // If job has instanceType but no instance, create one
-        let instanceTag = job.instance?.tag;
-        if (!instanceTag && job.instanceType) {
-          console.log(
-            `Creating new instance of type ${job.instanceType} for job ${jobID}`
-          );
-
-          try {
-            // Create instance in cluster
-            const tag = await cluster.instance.create.mutate({
-              instanceType: job.instanceType,
-            });
-
-            if (!tag) {
-              throw new TRPCError({
-                code: "INTERNAL_SERVER_ERROR",
-                message: "Failed to create instance in cluster",
-              });
-            }
-
-            // Create instance in database
-            const instance = await tx.instance.create({
-              data: {
-                name: `Auto-${job.instanceType}-${Date.now()}`,
-                tag,
-                type: job.instanceType,
-              },
-            });
-
-            // Link job to the new instance
-            await tx.job.update({
-              where: {
-                JID: jobID,
-              },
-              data: {
-                instanceId: instance.IID,
-              },
-            });
-
-            instanceTag = tag;
-            console.log(
-              `Created instance ${instance.IID} (tag: ${tag}) for job ${jobID}`
-            );
-          } catch (error) {
-            console.error(`Failed to create instance for job ${jobID}:`, error);
-            throw new TRPCError({
-              code: "INTERNAL_SERVER_ERROR",
-              message: `Failed to create ${job.instanceType} instance`,
-            });
-          }
-        }
-
-        if (!instanceTag) {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Job has neither instance nor instanceType",
-          });
-        }
-
-        // Update job approval status and set to RUNNING immediately
-        await tx.job.update({
-          where: {
-            JID: jobID,
-          },
-          data: {
-            approvalStatus: "APPROVED",
-            approvedById: currentUserID,
-            approvedAt: new Date(),
-            status: "RUNNING", // Show as cracking immediately when approved
-          },
-        });
-
-        // Create job folder on EFS now that it's approved
-        try {
-          const hashType = job.hashes[0]?.hashType;
-          if (!hashType) {
-            throw new Error("Job has no hashes");
-          }
-
-          // Create job folder with the existing JID (not a new one)
-          await cluster.instance.createJobWithID.mutate({
-            instanceID: instanceTag,
-            jobID: jobID, // Use the existing database JID
-            wordlistID: job.wordlist!.WID,
-            hashType: hashType,
-            hashes: job.hashes.map(
-              (h: unknown) => (h as { hash: string }).hash
-            ),
-          });
-        } catch (error) {
-          console.error(
-            `Failed to send approved job ${jobID} to cluster:`,
-            error
-          );
-          throw new TRPCError({
-            code: "INTERNAL_SERVER_ERROR",
-            message: "Failed to start job on cluster",
-          });
-        }
-
-        return true;
-      });
-    }),
-
-  // Approve multiple jobs (admin only)
-  approveMany: permissionProcedure(["jobs:approve"])
-    .input(
-      z.object({
-        jobIDs: z.string().array(),
-      })
-    )
-    .output(z.number())
-    .mutation(async (opts) => {
-      const { jobIDs } = opts.input;
-      const { prisma, currentUserID, cluster } = opts.ctx;
-
-      return await prisma.$transaction(async (tx: typeof prisma) => {
-        const jobs = await tx.job.findMany({
-          where: {
-            JID: {
-              in: jobIDs,
-            },
-            approvalStatus: "PENDING",
-          },
-          include: {
-            instance: {
-              select: {
-                IID: true,
-                tag: true,
-              },
-            },
-            wordlist: {
-              select: {
-                WID: true,
-              },
-            },
-            hashes: {
-              select: {
-                hash: true,
-                hashType: true,
-              },
-            },
-            instanceType: true,
-          },
-        });
-
-        if (jobs.length === 0) {
-          return 0;
-        }
-
-        // Group jobs by {instanceType, hashType}
-        const groupKey = (job: unknown) =>
-          `${(job as { instanceType?: string; hashes: { hashType?: string }[] }).instanceType || ""}::${(job as { hashes: { hashType?: string }[] }).hashes[0]?.hashType || ""}`;
-        type JobGroupItem = {
-          JID: string;
-          instance?: { IID: string; tag: string };
-          instanceType?: string;
-          wordlist?: { WID: string };
-          hashes: { hash: string; hashType: number }[];
-        };
-
-        const grouped: Record<string, JobGroupItem[]> = {};
-        for (const job of jobs as JobGroupItem[]) {
-          const key = groupKey(job);
-          if (!grouped[key]) grouped[key] = [];
-          grouped[key].push(job);
-        }
-
-        // For each group, create one instance and assign all jobs in the group to it
-        for (const group of Object.values(grouped)) {
-          // If any job already has an instance, use it for all in the group
-          let instance = group.find((j) => j.instance)?.instance;
-          if (!instance) {
-            const job0 = group[0];
-            if (!job0 || !job0.instanceType) continue; // skip if no job0 or instanceType
-            const tag = await cluster.instance.create.mutate({
-              instanceType: job0.instanceType,
-            });
-            if (!tag) continue;
-            instance = await tx.instance.create({
-              data: {
-                name: `Auto-${job0.instanceType}-${Date.now()}`,
-                tag,
-                type: job0.instanceType,
-              },
-            });
-          }
-          // Assign all jobs in group to this instance
-          if (instance?.IID) {
-            await tx.job.updateMany({
-              where: { JID: { in: group.map((j) => j.JID) } },
-              data: { instanceId: instance.IID },
-            });
-          } else {
-            console.error(
-              "Instance is undefined, cannot update jobs with instanceId"
-            );
-          }
-          // Update job objects in memory
-          if (instance) {
-            for (const job of group)
-              job.instance = { IID: instance.IID, tag: instance.tag };
-          }
-        }
-
-        // Update all jobs to approved and set to RUNNING
-        await tx.job.updateMany({
-          where: {
-            JID: {
-              in: jobs.map((j: unknown) => (j as { JID: string }).JID),
-            },
-          },
-          data: {
-            approvalStatus: "APPROVED",
-            approvedById: currentUserID,
-            approvedAt: new Date(),
-            status: "RUNNING",
-          },
-        });
-
-        // Send all approved jobs to cluster with existing JIDs
-        await Promise.allSettled(
-          jobs.map(async (job: unknown) => {
-            const j = job as {
-              JID: string;
-              instance?: { tag: string };
-              hashes: { hashType: number }[];
-            };
-            if (!j.instance?.tag) {
-              console.error(
-                `Job ${j.JID} has no instance, skipping cluster send`
-              );
-              return;
-            }
-            try {
-              const hashType = j.hashes[0]?.hashType;
-              if (!hashType) {
-                throw new Error(`Job ${j.JID} has no hashes`);
-              }
-              await cluster.instance.createJobWithID.mutate({
-                instanceID: j.instance!.tag,
-                jobID: j.JID,
-                wordlistID:
-                  (j as { wordlist?: { WID: string } | null }).wordlist?.WID ??
-                  "",
-                hashType: hashType,
-                hashes: j.hashes.map(
-                  (h: unknown) => (h as { hash: string }).hash
-                ),
-              });
-            } catch (error) {
-              console.error(
-                `Failed to send approved job ${j.JID} to cluster:`,
-                error
-              );
-            }
-          })
-        );
-
-        return jobs.length;
-      });
-    }),
-
-  // Reject a job (admin only)
-  reject: permissionProcedure(["jobs:approve"])
-    .input(
-      z.object({
-        jobID: z.string(),
-        note: z.string().optional(),
-      })
-    )
-    .output(z.boolean())
-    .mutation(async (opts) => {
-      const { jobID, note } = opts.input;
-      const { prisma, currentUserID, cluster } = opts.ctx;
-
-      return await prisma.$transaction(async (tx: typeof prisma) => {
-        const job = await tx.job.findUniqueOrThrow({
-          where: {
-            JID: jobID,
-          },
-          include: {
-            instance: {
-              select: {
-                tag: true,
-              },
-            },
-          },
-        });
-
-        if (job.approvalStatus !== "PENDING") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Job is not pending approval",
-          });
-        }
-
-        // Update job approval status
-        await tx.job.update({
-          where: {
-            JID: jobID,
-          },
-          data: {
-            approvalStatus: "REJECTED",
-            approvedById: currentUserID,
-            approvedAt: new Date(),
-            rejectionNote: note,
-          },
-        });
-
-        // Delete the job from cluster
-        try {
-          await cluster.instance.deleteJobs.mutate({
-            instanceID: job.instance.tag,
-            jobIDs: [jobID],
-          });
-        } catch (error) {
-          console.error(
-            `Failed to delete rejected job ${jobID} from cluster:`,
-            error
-          );
-        }
-
-        return true;
-      });
-    }),
-
-  // Delete a rejected/approved job from history
-  delete: permissionProcedure(["jobs:approve"])
-    .input(
-      z.object({
-        jobID: z.string(),
-      })
-    )
-    .output(z.boolean())
-    .mutation(async (opts) => {
-      const { jobID } = opts.input;
-      const { prisma } = opts.ctx;
-
-      await prisma.$transaction(async (tx: typeof prisma) => {
-        await tx.job.delete({
-          where: {
-            JID: jobID,
-          },
-        });
-      });
-
-      return true;
-    }),
-
-  // Request jobs with an instance type (for non-admin users)
-  // Admin will approve and create the actual instance
+  // Create pending job requests (called from project UI)
   requestJobs: permissionProcedure(["instances:jobs:add"])
     .input(
       z.object({
-        instanceType: z.string(), // e.g., "g5.xlarge", "p3.2xlarge"
+        instanceType: z.string(),
         data: z
           .object({
             wordlistID: z.string(),
             hashType: z.number().int().min(0),
             projectIDs: z.string().array(),
+            ruleID: z.string().optional(),
           })
           .array(),
       })
     )
-    .output(z.string().array())
+    .output(z.array(z.string()))
     .mutation(async (opts) => {
       const { instanceType, data } = opts.input;
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
       const projectIDs = data.flatMap((job) => job.projectIDs);
       const wordlistIDs = data.map((job) => job.wordlistID);
+      const ruleIDs = data.map((job) => job.ruleID).filter(Boolean) as string[];
 
       return await prisma.$transaction(async (tx: typeof prisma) => {
-        // Verify user has access to projects
         const projects = await tx.project.findMany({
           select: {
             PID: true,
             hashes: {
-              select: {
-                HID: true,
-                hash: true,
-                hashType: true,
-                status: true,
-              },
+              select: { HID: true, hash: true, hashType: true, status: true },
             },
           },
           where: {
-            PID: {
-              in: projectIDs,
-            },
+            PID: { in: projectIDs },
             members: hasPermission("root")
               ? undefined
-              : {
-                  some: {
-                    ID: currentUserID,
-                  },
-                },
+              : { some: { ID: currentUserID } },
           },
         });
+
         const projectMap = Object.fromEntries(
-          projects.map((project: unknown) => [
-            (project as { PID: string }).PID,
-            project,
-          ])
+          projects.map((p: { PID: string }) => [p.PID, p])
         );
 
-        // Verify wordlists exist
         const wordlists = await tx.wordlist.findMany({
-          select: {
-            WID: true,
-          },
-          where: {
-            WID: {
-              in: wordlistIDs,
-            },
-          },
+          select: { WID: true },
+          where: { WID: { in: wordlistIDs } },
         });
+
+        const ruleIDSet = new Set<string>();
+        if (ruleIDs.length > 0) {
+          const rules = await tx.rule.findMany({
+            select: { RID: true },
+            where: { RID: { in: ruleIDs } },
+          });
+          rules.forEach((r: { RID: string }) => ruleIDSet.add(r.RID));
+        }
+
         const wordlistIDSet = new Set(
-          wordlists.map(({ WID }: { WID: string }) => WID)
+          wordlists.map((w: { WID: string }) => w.WID)
         );
 
-        // Prepare job data
         const result = await Promise.allSettled(
           data.map(async (job) => {
             if (!wordlistIDSet.has(job.wordlistID)) return null;
 
             const jobProjects = job.projectIDs
               .map((projectID) => projectMap[projectID]!)
-              .filter((project) => project);
+              .filter(Boolean);
 
-            const jobHashes = jobProjects.flatMap((project: unknown) =>
-              (
-                project as { hashes: { hashType: number; status: string }[] }
-              ).hashes.filter(
-                (hash: unknown) =>
-                  (hash as { hashType: number; status: string }).hashType ===
-                    job.hashType &&
-                  (hash as { hashType: number; status: string }).status ===
-                    "NOT_FOUND"
-              )
+            const jobHashes = jobProjects.flatMap(
+              (project: {
+                hashes: { HID: string; hashType: number; status: string }[];
+              }) =>
+                project.hashes.filter(
+                  (h: { HID: string; hashType: number; status: string }) =>
+                    h.hashType === job.hashType && h.status === STATUS.NotFound
+                )
             );
 
             if (jobHashes.length === 0) return null;
 
-            // Generate job ID
             const JID = crypto.randomUUID();
-
             return [job, jobHashes, JID] as const;
           })
         );
@@ -665,26 +101,23 @@ export const jobRouter = t.router({
           .map(
             (res) =>
               (
-                res as unknown as Record<
-                  string,
-                  [(typeof data)[number], { HID: string }[], string]
+                res as PromiseFulfilledResult<
+                  [(typeof data)[number], { HID: string }[], string] | null
                 >
               ).value
           ) as [(typeof data)[number], { HID: string }[], string][];
 
-        // Create jobs with instanceType but no instanceId
         await Promise.all(
-          jobData.map(([{ wordlistID }, hashes, JID]) =>
+          jobData.map(([{ wordlistID, ruleID }, hashes, JID]) =>
             tx.job.create({
               data: {
                 JID,
                 wordlistId: wordlistID,
-                instanceType, // Store the requested instance type
-                // instanceId is null - will be set when admin approves
-                hashes: {
-                  connect: hashes.map(({ HID }) => ({ HID })),
-                },
+                ruleId: ruleID && ruleIDSet.has(ruleID) ? ruleID : undefined,
+                instanceId: null,
+                hashes: { connect: hashes.map(({ HID }) => ({ HID })) },
                 approvalStatus: "PENDING",
+                instanceType: instanceType,
                 submittedById: currentUserID,
               },
             })
@@ -692,6 +125,263 @@ export const jobRouter = t.router({
         );
 
         return jobData.map(([, , JID]) => JID);
+      });
+    }),
+
+  // Approve single job and mark as approved. Scheduling to cluster is out of scope here.
+  approve: permissionProcedure(["jobs:approve"])
+    .input(z.object({ jobID: z.string() }))
+    .output(z.boolean())
+    .mutation(async (opts) => {
+      const { jobID } = opts.input;
+      const { prisma, cluster } = opts.ctx;
+
+      return await prisma.$transaction(async (tx: typeof prisma) => {
+        const job = await tx.job.findUniqueOrThrow({
+          where: { JID: jobID },
+          select: {
+            JID: true,
+            wordlistId: true,
+            ruleId: true,
+            instanceType: true,
+            approvalStatus: true,
+            hashes: {
+              select: {
+                HID: true,
+                hash: true,
+                hashType: true,
+              },
+            },
+          },
+        });
+        if (job.approvalStatus !== "PENDING")
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Job not pending",
+          });
+
+        // Create a fresh instance for this approved job. We intentionally do
+        // NOT reuse pre-warmed instances: policy is one job == one EC2 GPU
+        // instance, created at approval time to avoid idle-costs and surprise
+        // launches on redeploy.
+        const tag = await cluster.instance.create.mutate({
+          instanceType: job.instanceType,
+        });
+        if (!tag) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+        const instance = await tx.instance.create({
+          data: {
+            name: `Auto-created for job ${jobID.slice(0, 8)}`,
+            tag,
+            type: job.instanceType,
+            status: "RUNNING", // optimistic: cluster will start it
+          },
+        });
+
+        // Update job with instance assignment and approval
+        await tx.job.update({
+          where: { JID: jobID },
+          data: {
+            approvalStatus: "APPROVED",
+            instanceId: instance.IID,
+            updatedAt: new Date(),
+          },
+        });
+
+        // Send job to cluster. Verify the cluster knows about this instance tag
+        const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
+        try {
+          // Wait briefly for the cluster to report the new instance tag so
+          // createJobWithID doesn't race with instance startup and EFS visibility.
+          const waitForVisibility = async (
+            tagToCheck: string,
+            attempts = 20,
+            delayMs = 500
+          ) => {
+            for (let i = 0; i < attempts; i++) {
+              try {
+                const s = await cluster.info.status.query();
+                if (s && tagToCheck in s.instances) return true;
+              } catch {
+                // ignore transient errors and retry
+              }
+              await new Promise((r) => setTimeout(r, delayMs));
+            }
+            return false;
+          };
+
+          const visible = await waitForVisibility(instance.tag);
+          if (!visible) {
+            // Target instance not found in cluster after waiting. Create a fresh
+            // cluster instance and update DB to point to the new tag.
+            const newTag = await cluster.instance.create.mutate({
+              instanceType: job.instanceType,
+            });
+            if (!newTag)
+              throw new TRPCError({
+                code: "INTERNAL_SERVER_ERROR",
+                message: "Failed to create cluster instance",
+              });
+
+            await tx.instance.update({
+              where: { IID: instance.IID },
+              data: { tag: newTag, updatedAt: new Date() },
+            });
+
+            instance.tag = newTag;
+          }
+
+          await cluster.instance.createJobWithID.mutate({
+            instanceID: instance.tag, // Use tag for cluster communication
+            jobID,
+            wordlistID: job.wordlistId,
+            hashType: job.hashes[0]?.hashType || 0, // All hashes should have same type
+            hashes: hashStrings,
+            ruleID: job.ruleId,
+          });
+        } catch (e) {
+          console.error(
+            `[JobRouter] Failed to send job ${jobID} to cluster for instance ${instance.tag}:`,
+            e
+          );
+          throw e;
+        }
+
+        return true;
+      });
+    }),
+
+  approveMany: permissionProcedure(["jobs:approve"])
+    .input(z.object({ jobIDs: z.array(z.string()) }))
+    .output(z.number().int().min(0))
+    .mutation(async (opts) => {
+      const { jobIDs } = opts.input;
+      const { prisma, cluster } = opts.ctx;
+
+      return await prisma.$transaction(async (tx: typeof prisma) => {
+        // Get all jobs to be approved
+        const jobs = await tx.job.findMany({
+          where: { JID: { in: jobIDs }, approvalStatus: "PENDING" },
+          select: {
+            JID: true,
+            wordlistId: true,
+            ruleId: true,
+            instanceType: true,
+            approvalStatus: true,
+            hashes: {
+              select: {
+                HID: true,
+                hash: true,
+                hashType: true,
+              },
+            },
+          },
+        });
+
+        if (jobs.length === 0) return 0;
+
+        // Group jobs by instance type for efficient instance assignment
+        const jobsByType = jobs.reduce(
+          (acc: Record<string, typeof jobs>, job: (typeof jobs)[0]) => {
+            const type = job.instanceType;
+            if (!acc[type]) acc[type] = [];
+            acc[type].push(job);
+            return acc;
+          },
+          {} as Record<string, typeof jobs>
+        );
+
+        let totalApproved = 0;
+
+        for (const [, typeJobs] of Object.entries(jobsByType) as [
+          string,
+          typeof jobs,
+        ][]) {
+          for (const job of typeJobs) {
+            // Create a fresh instance for each job (one job == one instance)
+            const tag = await cluster.instance.create.mutate({
+              instanceType: job.instanceType,
+            });
+            if (!tag) continue; // Skip if instance creation failed
+
+            const instance = await tx.instance.create({
+              data: {
+                name: `Auto-created for job ${job.JID.slice(0, 8)}`,
+                tag,
+                type: job.instanceType,
+                status: "RUNNING",
+              },
+            });
+
+            await tx.job.update({
+              where: { JID: job.JID },
+              data: {
+                approvalStatus: "APPROVED",
+                instanceId: instance.IID,
+                updatedAt: new Date(),
+              },
+            });
+
+            const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
+            try {
+              // Wait briefly for the cluster to report the new instance tag
+              const waitForVisibility = async (
+                tagToCheck: string,
+                attempts = 20,
+                delayMs = 500
+              ) => {
+                for (let i = 0; i < attempts; i++) {
+                  try {
+                    const s = await cluster.info.status.query();
+                    if (s && tagToCheck in s.instances) return true;
+                  } catch {
+                    // ignore transient errors and retry
+                  }
+                  await new Promise((r) => setTimeout(r, delayMs));
+                }
+                return false;
+              };
+
+              const visible = await waitForVisibility(instance.tag);
+              if (!visible) {
+                // If not visible, attempt to recreate a fresh instance tag and update DB.
+                const newTag = await cluster.instance.create.mutate({
+                  instanceType: job.instanceType,
+                });
+                if (!newTag)
+                  throw new TRPCError({
+                    code: "INTERNAL_SERVER_ERROR",
+                    message: "Failed to create cluster instance",
+                  });
+
+                await tx.instance.update({
+                  where: { IID: instance.IID },
+                  data: { tag: newTag, updatedAt: new Date() },
+                });
+
+                instance.tag = newTag;
+              }
+
+              await cluster.instance.createJobWithID.mutate({
+                instanceID: instance.tag,
+                jobID: job.JID,
+                wordlistID: job.wordlistId,
+                hashType: job.hashes[0]?.hashType || 0,
+                hashes: hashStrings,
+                ruleID: job.ruleId,
+              });
+            } catch (e) {
+              console.error(
+                `[JobRouter] Failed to send job ${job.JID} to cluster for instance ${tag}:`,
+                e
+              );
+            }
+
+            totalApproved++;
+          }
+        }
+
+        return totalApproved;
       });
     }),
 });

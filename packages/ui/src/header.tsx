@@ -2,6 +2,7 @@ import {
   ALargeSmallIcon,
   CpuIcon,
   FolderIcon,
+  ListIcon,
   UserIcon,
   UsersIcon,
 } from "lucide-react";
@@ -59,6 +60,12 @@ const LINKS: readonly HeaderLinkProps[] = [
     path: "/wordlists",
     icon: <ALargeSmallIcon />,
     permission: "wordlists:get",
+  },
+  {
+    label: "item.rule.plural",
+    path: "/rules",
+    icon: <ListIcon />,
+    permission: "rules:get",
   },
   {
     label: "item.user.plural",

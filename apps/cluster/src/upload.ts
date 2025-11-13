@@ -2,7 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { FastifyPluginCallback, FastifyRequest } from "fastify";
 import { Readable } from "stream";
 
-import { Cluster } from "./cluster/cluster";
+import { Cluster } from "./cluster";
 
 async function streamToBuffer(stream: Readable): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -60,7 +60,11 @@ export const upload: FastifyPluginCallback = (instance, _opts, next) => {
         request.server as unknown as Record<string, Cluster<unknown>>
       ).cluster!;
 
-      const { bucket, key } = request.body as { bucket: string; key: string };
+      const { bucket, key, targetID } = request.body as {
+        bucket: string;
+        key: string;
+        targetID?: string;
+      };
 
       if (!bucket || !key) {
         throw new TRPCError({
@@ -73,12 +77,13 @@ export const upload: FastifyPluginCallback = (instance, _opts, next) => {
       const awsCluster = cluster as unknown as {
         copyWordlistFromS3ToEFS?: (
           bucket: string,
-          key: string
+          key: string,
+          targetID?: string
         ) => Promise<string | null>;
       };
 
       if (typeof awsCluster.copyWordlistFromS3ToEFS === "function") {
-        return await awsCluster.copyWordlistFromS3ToEFS(bucket, key);
+        return await awsCluster.copyWordlistFromS3ToEFS(bucket, key, targetID);
       } else {
         throw new TRPCError({
           code: "INTERNAL_SERVER_ERROR",
@@ -87,6 +92,63 @@ export const upload: FastifyPluginCallback = (instance, _opts, next) => {
       }
     }
   );
+
+  // Rules endpoints (same pattern as wordlists)
+  instance.post("/rules", {}, async (request: FastifyRequest) => {
+    const cluster = (
+      request.server as unknown as Record<string, Cluster<unknown>>
+    ).cluster!;
+
+    if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST" });
+
+    const multipart = await request.file();
+    if (!multipart) throw new TRPCError({ code: "BAD_REQUEST" });
+
+    const buffer = await streamToBuffer(multipart.file);
+
+    return await cluster.createRule(buffer);
+  });
+
+  instance.post("/rules/raw", {}, async (request: FastifyRequest) => {
+    const cluster = (
+      request.server as unknown as Record<string, Cluster<unknown>>
+    ).cluster!;
+
+    const raw = request.body as unknown as Readable;
+
+    return await cluster.createRuleFromStream(raw);
+  });
+
+  instance.post("/rules/copy-from-s3", {}, async (request: FastifyRequest) => {
+    const cluster = (
+      request.server as unknown as Record<string, Cluster<unknown>>
+    ).cluster!;
+
+    const { bucket, key } = request.body as { bucket: string; key: string };
+
+    if (!bucket || !key) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: "bucket and key required",
+      });
+    }
+
+    const awsCluster = cluster as unknown as {
+      copyRuleFromS3ToEFS?: (
+        bucket: string,
+        key: string
+      ) => Promise<string | null>;
+    };
+
+    if (typeof awsCluster.copyRuleFromS3ToEFS === "function") {
+      return await awsCluster.copyRuleFromS3ToEFS(bucket, key);
+    } else {
+      throw new TRPCError({
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Cluster does not support S3 copy",
+      });
+    }
+  });
 
   next();
 };

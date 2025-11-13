@@ -2,7 +2,7 @@ import fp from "fastify-plugin";
 
 import { type ClusterTypeConfig } from "@repo/app-config/cluster";
 
-import { buildCluster } from "../cluster";
+import { buildCluster } from "../cluster-factory";
 
 export type ClusterPluginConfig = ClusterTypeConfig;
 

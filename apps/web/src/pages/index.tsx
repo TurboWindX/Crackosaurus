@@ -10,6 +10,7 @@ import { InstancesPage } from "./InstancesPage.tsx";
 import { LoginPage } from "./LoginPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
 import { ProjectsPage } from "./ProjectsPage.tsx";
+import { RulesPage } from "./RulesPage.tsx";
 import { SetupPage } from "./SetupPage.tsx";
 import { UserPage } from "./UserPage.tsx";
 import { UsersPage } from "./UsersPage.tsx";
@@ -97,6 +98,14 @@ export const router = createBrowserRouter([
             element: (
               <PermissionRoute permission="wordlists:get">
                 <WordlistsPage />
+              </PermissionRoute>
+            ),
+          },
+          {
+            path: "rules",
+            element: (
+              <PermissionRoute permission="rules:get">
+                <RulesPage />
               </PermissionRoute>
             ),
           },

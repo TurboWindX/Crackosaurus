@@ -1,4 +1,5 @@
-import { TRPCError } from "@trpc/server";
+import type { Prisma } from "@prisma/client";
+import { TRPCError, inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { z } from "zod";
 
 import { publicProcedure, t } from "../plugins/trpc";
@@ -7,6 +8,7 @@ import { hashRouter } from "./hashRouter";
 import { instanceRouter } from "./instanceRouter";
 import { jobRouter } from "./jobRouter";
 import { projectRouter } from "./projectRouter";
+import { ruleRouter } from "./ruleRouter";
 import { userRouter } from "./userRouter";
 import { wordlistRouter } from "./wordlistRouter";
 
@@ -24,7 +26,7 @@ export const appRouter = t.router({
       const { username, password } = opts.input;
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const firstUser = await tx.user.findFirst({
           select: {
             ID: true,
@@ -50,10 +52,13 @@ export const appRouter = t.router({
   auth: authRouter,
   hash: hashRouter,
   instance: instanceRouter,
-  job: jobRouter,
   project: projectRouter,
+  rule: ruleRouter,
   user: userRouter,
   wordlist: wordlistRouter,
+  job: jobRouter,
 });
 
 export type AppRouter = typeof appRouter;
+export type AppRouterInput = inferRouterInputs<AppRouter>;
+export type AppRouterOutput = inferRouterOutputs<AppRouter>;

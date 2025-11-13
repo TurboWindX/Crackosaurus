@@ -121,6 +121,10 @@
     "wordlist": {
       "singular": "Wordlist",
       "plural": "Wordlists"
+    },
+    "rule": {
+      "singular": "Rule",
+      "plural": "Rules"
     }
   },
   "page": {

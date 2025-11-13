@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
@@ -35,6 +36,8 @@ export const JOB_METADATA = z.object({
   ]),
   hashType: z.number().int().min(0),
   wordlist: z.string(),
+  rule: z.string().optional(),
+  instanceType: z.string().optional(), // Required instance type for this job
 });
 export type JobMetadata = z.infer<typeof JOB_METADATA>;
 
@@ -42,6 +45,7 @@ const UNKNOWN_JOB_METADATA: JobMetadata = {
   status: STATUS.Unknown,
   hashType: HASH_TYPES.plaintext,
   wordlist: "",
+  rule: undefined,
 };
 
 const JOBS_FOLDER = "jobs";
@@ -94,30 +98,53 @@ async function safeReadFileAsync(filePath: string): Promise<string> {
   return data;
 }
 
-async function safeWriteFileAsync(
+/**
+ * Atomic write helper that writes to a temp file in the same directory,
+ * fsyncs the file, renames it into place, and fsyncs the parent directory.
+ * This reduces the chance of readers seeing partially-written files on
+ * network filesystems like EFS.
+ */
+async function atomicWriteFileAsync(
   filePath: string,
   data: string
 ): Promise<void> {
-  const lockFile = filePath + ".lock";
+  const dir = path.dirname(filePath);
+  fs.mkdirSync(dir, { recursive: true });
 
-  await new Promise<void>((resolve) => {
-    const interval = setInterval(() => {
-      if (!fs.existsSync(lockFile)) {
-        fs.writeFileSync(lockFile, "");
-        clearInterval(interval);
-        resolve();
-      }
-    }, 100);
-  });
+  // Temp filename in same directory
+  const tmpName = path.join(dir, `.tmp-${crypto.randomUUID()}.tmp`);
 
-  await new Promise<void>((resolve, reject) =>
-    fs.writeFile(filePath, data, {}, (err) => {
-      if (err) reject(err);
-      resolve();
-    })
-  );
+  try {
+    // Write file fully to temp path
+    fs.writeFileSync(tmpName, data, { encoding: "utf-8" });
 
-  fs.rmSync(lockFile);
+    // Ensure file contents are flushed to disk
+    const fd = fs.openSync(tmpName, "r+");
+    try {
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+
+    // Atomically rename into place
+    fs.renameSync(tmpName, filePath);
+
+    // Fsync parent directory so the rename is durable
+    const dirFd = fs.openSync(dir, "r");
+    try {
+      fs.fsyncSync(dirFd);
+    } finally {
+      fs.closeSync(dirFd);
+    }
+  } catch (err) {
+    // Cleanup temp file if present
+    try {
+      if (fs.existsSync(tmpName)) fs.rmSync(tmpName);
+    } catch {
+      // ignore cleanup errors
+    }
+    throw err;
+  }
 }
 
 export async function getClusterFolderStatus(
@@ -280,7 +307,27 @@ export async function writeInstanceMetadata(
 ): Promise<void> {
   const metadataFile = path.join(instanceRoot, instanceID, METADATA_FILE);
 
-  await safeWriteFileAsync(metadataFile, JSON.stringify(metadata));
+  console.log(
+    `[writeInstanceMetadata] Writing metadata for instance ${instanceID} to ${metadataFile}`
+  );
+  console.log(
+    `[writeInstanceMetadata] Metadata contents: ${JSON.stringify(metadata)}`
+  );
+
+  await atomicWriteFileAsync(metadataFile, JSON.stringify(metadata));
+
+  // Attempt to read back the file to verify visibility/consistency
+  try {
+    const raw = await safeReadFileAsync(metadataFile);
+    console.log(
+      `[writeInstanceMetadata] Verified metadata file for instance ${instanceID}: ${raw}`
+    );
+  } catch (err) {
+    console.warn(
+      `[writeInstanceMetadata] Failed to verify metadata file for instance ${instanceID}:`,
+      err
+    );
+  }
 }
 
 export async function createInstanceFolder(
@@ -296,7 +343,7 @@ export async function createInstanceFolder(
 
   fs.mkdirSync(path.join(instancePath, JOBS_FOLDER));
 
-  await safeWriteFileAsync(
+  await atomicWriteFileAsync(
     path.join(instancePath, METADATA_FILE),
     JSON.stringify(
       INSTANCE_METADATA.parse({
@@ -340,7 +387,14 @@ export async function writeJobMetadata(
     METADATA_FILE
   );
 
-  fs.writeFileSync(metadataFile, JSON.stringify(metadata));
+  console.log(
+    `[writeJobMetadata] Writing metadata for job ${jobID} at ${metadataFile}`
+  );
+  console.log(
+    `[writeJobMetadata] Metadata contents:`,
+    JSON.stringify(metadata)
+  );
+  await atomicWriteFileAsync(metadataFile, JSON.stringify(metadata));
 }
 
 export async function getJobMetadata(
@@ -356,9 +410,82 @@ export async function getJobMetadata(
     METADATA_FILE
   );
 
-  if (!fs.existsSync(metadataFile)) return UNKNOWN_JOB_METADATA;
+  if (!fs.existsSync(metadataFile)) {
+    console.warn(
+      `[getJobMetadata] Metadata file missing for job ${jobID} at ${metadataFile}`
+    );
+    return UNKNOWN_JOB_METADATA;
+  }
+  const raw = await safeReadFileAsync(metadataFile);
+  console.log(
+    `[getJobMetadata] Read metadata for job ${jobID} at ${metadataFile}`
+  );
+  console.log(`[getJobMetadata] Metadata contents:`, raw);
+  return JOB_METADATA.parse(JSON.parse(raw));
+}
 
-  return JOB_METADATA.parse(JSON.parse(await safeReadFileAsync(metadataFile)));
+/**
+ * Cleanup `.tmp-*` files recursively under the given root. Returns the number
+ * of files removed.
+ */
+export async function cleanupTempFiles(
+  root: string,
+  /** max age in milliseconds; defaults to 30 minutes */
+  maxAgeMs = 30 * 60 * 1000
+): Promise<number> {
+  if (!fs.existsSync(root)) return 0;
+
+  let removed = 0;
+
+  const now = Date.now();
+
+  function walk(dir: string) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(p);
+      } else if (entry.isFile()) {
+        if (entry.name.startsWith(".tmp-")) {
+          try {
+            const stat = fs.statSync(p);
+            if (now - stat.mtimeMs > maxAgeMs) {
+              fs.rmSync(p);
+              removed++;
+            }
+          } catch {
+            // ignore per-file errors
+          }
+        }
+      }
+    }
+  }
+
+  try {
+    walk(root);
+  } catch {
+    // ignore overall errors
+  }
+
+  return removed;
+}
+
+/**
+ * Schedule periodic cleanup of `.tmp-*` files under root. Returns the
+ * interval handle so callers can clear it when needed.
+ */
+export function scheduleTempFileCleanup(
+  root: string,
+  intervalMs = 10 * 60 * 1000,
+  maxAgeMs = 10 * 60 * 1000
+): NodeJS.Timeout {
+  // Run once immediately
+  void cleanupTempFiles(root, maxAgeMs);
+
+  return setInterval(() => {
+    void cleanupTempFiles(root, maxAgeMs).catch(() => {
+      /* swallow errors */
+    });
+  }, intervalMs);
 }
 
 export function getJobHashPath(
@@ -385,40 +512,112 @@ export async function createJobFolder(
   instanceRoot: string,
   instanceID: string,
   jobID: string,
-  props: { hashType: number; hashes: string[]; wordlist: string }
+  props: {
+    hashType: number;
+    hashes: string[];
+    wordlist: string;
+    rule?: string;
+    instanceType?: string;
+  }
 ): Promise<void> {
-  const jobPath = path.join(instanceRoot, instanceID, JOBS_FOLDER, jobID);
+  const jobsDir = path.join(instanceRoot, instanceID, JOBS_FOLDER);
+  const jobPath = path.join(jobsDir, jobID);
 
-  fs.mkdirSync(jobPath, { recursive: true });
+  // Create a temporary folder and write all job files there first. Then
+  // atomically rename the folder into place. This reduces the chance that
+  // a remote NFS client will observe a partially-written job folder and
+  // addresses EFS propagation edge cases without requiring SQS.
+  const tempJobPath = `${jobPath}.tmp-${crypto.randomUUID()}`;
 
-  fs.writeFileSync(path.join(jobPath, HASHES_FILE), props.hashes.join("\n"));
-
-  fs.writeFileSync(
-    path.join(jobPath, METADATA_FILE),
-    JSON.stringify(
-      JOB_METADATA.parse({
-        status: STATUS.Pending,
-        hashType: props.hashType,
-        wordlist: props.wordlist,
-      })
-    )
-  );
-
-  // Ensure metadata is flushed to the filesystem before returning.
-  // This helps avoid a race where the SQS notification is delivered and
-  // the EC2 instance reads the metadata file before it's been persisted
-  // (EFS can be eventual-consistent in some paths). Open the file and
-  // fsync to force data to disk visibility across clients.
-  const metadataPath = path.join(jobPath, METADATA_FILE);
-  const fd = fs.openSync(metadataPath, "r+");
   try {
-    fs.fsyncSync(fd);
-  } finally {
+    fs.mkdirSync(tempJobPath, { recursive: true });
+
+    // Write hashes file
+    fs.writeFileSync(
+      path.join(tempJobPath, HASHES_FILE),
+      props.hashes.join("\n")
+    );
+
+    // Prepare metadata and write
+    const metadataObj = JOB_METADATA.parse({
+      status: STATUS.Pending,
+      hashType: props.hashType,
+      wordlist: props.wordlist,
+      rule: props.rule,
+      instanceType: props.instanceType,
+    });
+    const metadataPath = path.join(tempJobPath, METADATA_FILE);
+    fs.writeFileSync(metadataPath, JSON.stringify(metadataObj));
+    console.log(
+      `[createJobFolder] Wrote metadata for job ${jobID} at ${metadataPath}`
+    );
+
+    // fsync metadata file to flush contents to storage
     try {
-      fs.closeSync(fd);
-    } catch {
-      // ignore close errors
+      const fd = fs.openSync(metadataPath, "r+");
+      try {
+        fs.fsyncSync(fd);
+      } finally {
+        try {
+          fs.closeSync(fd);
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch (err) {
+      console.error(
+        `[createJobFolder] Error fsync'ing metadata for job ${jobID}:`,
+        err
+      );
     }
+
+    // Atomically rename into place
+    try {
+      // Ensure parent jobs directory exists
+      fs.mkdirSync(jobsDir, { recursive: true });
+      fs.renameSync(tempJobPath, jobPath);
+
+      // fsync the jobs directory so directory entry is persisted
+      try {
+        const dirFd = fs.openSync(jobsDir, "r");
+        try {
+          fs.fsyncSync(dirFd);
+        } finally {
+          try {
+            fs.closeSync(dirFd);
+          } catch {
+            /* ignore */
+          }
+        }
+      } catch (err) {
+        console.error(
+          `[createJobFolder] Error fsync'ing jobs dir for job ${jobID}:`,
+          err
+        );
+      }
+
+      console.log(
+        `[createJobFolder] Atomically created job folder for ${jobID} at ${jobPath}`
+      );
+    } catch (err) {
+      // Attempt cleanup of temp folder on failure
+      try {
+        if (fs.existsSync(tempJobPath))
+          fs.rmdirSync(tempJobPath, { recursive: true });
+      } catch (cleanupErr) {
+        console.error(
+          `[createJobFolder] Failed to cleanup temp job folder ${tempJobPath}:`,
+          cleanupErr
+        );
+      }
+      throw err;
+    }
+  } catch (err) {
+    console.error(
+      `[createJobFolder] Failed to create job folder for ${jobID}:`,
+      err
+    );
+    throw err;
   }
 }
 
@@ -483,4 +682,55 @@ export async function deleteWordlistFile(
   const wordlistFile = path.join(wordlistRoot, wordlistID);
 
   if (fs.existsSync(wordlistFile)) fs.rmSync(wordlistFile);
+}
+
+// Rules helpers (mirror wordlist helpers). Rules are stored on EFS like
+// wordlists so the instances can fetch them by path rather than storing
+// the rule contents in the DB.
+export async function writeRuleFile(
+  ruleRoot: string,
+  ruleID: string,
+  data: Buffer
+): Promise<void> {
+  const ruleFile = path.join(ruleRoot, ruleID);
+
+  fs.writeFileSync(ruleFile, data as Uint8Array);
+}
+
+export async function writeRuleFileFromStream(
+  ruleRoot: string,
+  ruleID: string,
+  stream: NodeJS.ReadableStream
+): Promise<void> {
+  const ruleFile = path.join(ruleRoot, ruleID);
+  const writeStream = fs.createWriteStream(ruleFile);
+
+  return new Promise((resolve, reject) => {
+    stream.pipe(writeStream);
+
+    writeStream.on("finish", () => {
+      console.log(`[writeRuleFileFromStream] completed: ${ruleID}`);
+      resolve();
+    });
+
+    writeStream.on("error", (err) => {
+      console.error(`[writeRuleFileFromStream] write error: ${err.message}`);
+      reject(err);
+    });
+
+    stream.on("error", (err) => {
+      console.error(`[writeRuleFileFromStream] stream error: ${err.message}`);
+      writeStream.destroy();
+      reject(err);
+    });
+  });
+}
+
+export async function deleteRuleFile(
+  ruleRoot: string,
+  ruleID: string
+): Promise<void> {
+  const ruleFile = path.join(ruleRoot, ruleID);
+
+  if (fs.existsSync(ruleFile)) fs.rmSync(ruleFile);
 }

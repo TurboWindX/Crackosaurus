@@ -12,7 +12,7 @@ import { APIProvider } from "@repo/ui/api";
 
 import config from "./config.ts";
 import { router } from "./pages/index.tsx";
-import "./translation.ts";
+import i18nPromise from "./translation.ts";
 
 const protocol = window.location.protocol;
 
@@ -43,8 +43,14 @@ const App = () => {
   );
 };
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+const initApp = async () => {
+  await i18nPromise;
+
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+};
+
+initApp();

@@ -1,6 +1,6 @@
 import { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
 
-import { Cluster } from "../../cluster/cluster";
+import { Cluster } from "../../cluster";
 
 export async function createContext({
   req: request,

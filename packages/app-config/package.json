@@ -6,6 +6,7 @@
     "./db": "./db.ts",
     "./host": "./host.ts",
     "./instance": "./instance.ts",
+    "./instance-types": "./instance-types.ts",
     "./server": "./server.ts",
     "./web": "./web.ts"
   },

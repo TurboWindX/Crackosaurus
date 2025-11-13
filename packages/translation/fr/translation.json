@@ -1,158 +1,88 @@
 {
   "app": "Crackosaurus",
   "action": {
-    "add": {
-      "text": "Ajouter",
-      "item": "Ajouter {{item}}"
-    },
-    "cancel": {
-      "text": "Annuler",
-      "item": "Annuler {{item}}"
-    },
-    "export": {
-      "text": "Exporter",
-      "item": "Exporter {{item}}"
-    },
-    "import": {
-      "text": "Importer",
-      "item": "Importer {{item}}"
-    },
-    "launch": {
-      "text": "Débuter",
-      "item": "Débuter {{item}}"
-    },
-    "loading": {
-      "text": "Chargement"
-    },
-    "logout": {
-      "text": "Déconnexion"
-    },
+    "add": { "text": "Ajouter", "item": "Ajouter {{item}}" },
+    "cancel": { "text": "Annuler", "item": "Annuler {{item}}" },
+    "export": { "text": "Exporter", "item": "Exporter {{item}}" },
+    "import": { "text": "Importer", "item": "Importer {{item}}" },
+    "launch": { "text": "Démarrer", "item": "Démarrer {{item}}" },
+    "loading": { "text": "Chargement..." },
+    "logout": { "text": "Se déconnecter" },
     "remove": {
       "text": "Supprimer",
       "item": "Supprimer {{item}}",
-      "warn": "Voulez-vous supprimer {{item}}?",
-      "warn_count": "Voulez-vous supprimer {{count}} {{item}}?"
+      "warn": "Voulez-vous supprimer {{item}} ?",
+      "warn_count": "Voulez-vous supprimer {{count}} {{item}} ?"
     },
-    "search": {
-      "text": "Rechercher",
-      "item": "Rechercher {{item}}"
-    },
-    "update": {
-      "text": "Mise à jour",
-      "item": "Mise à jour de {{item}}"
-    }
+    "search": { "text": "Rechercher", "item": "Rechercher {{item}}" },
+    "update": { "text": "Mettre à jour", "item": "Mettre à jour {{item}}" }
   },
   "error": {
-    "UNAUTHORIZED": "Autorisations invalide",
-    "BAD_REQUEST": "Entrée invalide",
-    "INTERNAL_SERVER_ERROR": "Erreur interne",
-    "NOT_FOUND": "Pas trouvé",
-    "EMPTY": "Aucun(e)s {{item}}"
+    "UNAUTHORIZED": "Accès non autorisé",
+    "BAD_REQUEST": "Requête invalide",
+    "INTERNAL_SERVER_ERROR": "Erreur interne du serveur",
+    "NOT_FOUND": "Introuvable",
+    "EMPTY": "Aucun(e) {{item}}"
   },
   "item": {
     "checksum": {
       "singular": "Somme de contrôle",
-      "plural": "Somme de contrôles"
+      "plural": "Sommes de contrôle"
     },
-    "collaborator": {
-      "singular": "Collaborateur",
-      "plural": "Collaborateurs"
-    },
-    "error": {
-      "singular": "Erreur",
-      "plural": "Erreurs"
-    },
-    "hash": {
-      "singular": "Hash",
-      "plural": "Hashes"
-    },
-    "instance": {
-      "singular": "Instance",
-      "plural": "Instances"
-    },
-    "job": {
-      "singular": "Tâche",
-      "plural": "Tâches"
-    },
-    "name": {
-      "singular": "Nom",
-      "plural": "Nom"
-    },
-    "password": {
-      "singular": "Mot de passe",
-      "plural": "Mots de passe"
-    },
-    "permission": {
-      "singular": "Autorisation",
-      "plural": "Autorisations"
-    },
-    "profile": {
-      "singular": "Profile",
-      "plural": "Profiles"
-    },
-    "project": {
-      "singular": "Projet",
-      "plural": "Projets"
-    },
-    "size": {
-      "singular": "Taille",
-      "plural": "Tailles"
-    },
-    "status": "Statut",
-    "time": {
-      "update": "Dernière mise à jour"
-    },
-    "type": {
-      "singular": "Type",
-      "plural": "Types"
-    },
-    "user": {
-      "singular": "Utilisateur",
-      "plural": "Utilisateurs"
-    },
+    "collaborator": { "singular": "Collaborateur", "plural": "Collaborateurs" },
+    "error": { "singular": "Erreur", "plural": "Erreurs" },
+    "hash": { "singular": "Hash", "plural": "Hashes" },
+    "instance": { "singular": "Instance", "plural": "Instances" },
+    "job": { "singular": "Tâche", "plural": "Tâches" },
+    "name": { "singular": "Nom", "plural": "Noms" },
+    "password": { "singular": "Mot de passe", "plural": "Mots de passe" },
+    "permission": { "singular": "Autorisation", "plural": "Autorisations" },
+    "profile": { "singular": "Profil", "plural": "Profils" },
+    "project": { "singular": "Projet", "plural": "Projets" },
+    "size": { "singular": "Taille", "plural": "Tailles" },
+    "status": "État",
+    "time": { "update": "Dernière mise à jour" },
+    "type": { "singular": "Type", "plural": "Types" },
+    "user": { "singular": "Utilisateur", "plural": "Utilisateurs" },
     "username": {
       "singular": "Nom d'utilisateur",
-      "plural": "Nom d'utilisateurs"
+      "plural": "Noms d'utilisateur"
     },
-    "value": {
-      "singular": "Valeur",
-      "plural": "Valeurs"
-    },
-    "wordlist": {
-      "singular": "Dictionnaire",
-      "plural": "Dictionnaires"
-    }
+    "value": { "singular": "Valeur", "plural": "Valeurs" },
+    "wordlist": { "singular": "Dictionnaire", "plural": "Dictionnaires" },
+    "rule": { "singular": "Règle", "plural": "Règles" }
   },
   "page": {
     "error": {
       "header": "Une erreur s'est produite",
-      "button": "Retour à l'acceuil"
+      "button": "Retour à l'accueil"
     },
     "home": {
       "title": "Accueil",
       "header": "Bienvenue sur Crackosaurus",
-      "p1": "Crackosaurus est la première plateforme source ouverte de récupération de mots de passe. Le système principal est alimenté par hashcat, l'outil de récupération de mot de passe le plus rapide et le plus avancé au monde. Une nouvelle approche est utilisée pour distribuer la récupération de mot de passe sur plusieurs systèmes de manière sûre et sécurisée. Collaborez avec votre équipe pour identifier les mots de passe faibles dans votre organisation.",
-      "p2": "Nouvel utilisateur de Crackosaurus? Vous revenez après ne pas avoir utilisé la plateforme pendant un certain temps? Vous cherchez plus d'informations? Notre développeur principal Alex vous fera un rapide tour d'horizon de Crackosaurus:",
-      "video": "Vidéo d'introduction"
+      "p1": "Crackosaurus est une plateforme open source dédiée à l'audit de mots de passe. Le système s'appuie sur hashcat, l'outil de récupération de mots de passe performant et reconnu, et propose une approche distribuée pour exécuter des opérations de craquage de manière sécurisée sur plusieurs machines. Collaborez avec votre équipe pour détecter et corriger les mots de passe faibles au sein de votre organisation.",
+      "p2": "Nouveau sur Crackosaurus ? De retour après une longue pause ? Besoin d'en savoir plus ? Notre développeur principal, Alex, vous propose un rapide aperçu de la plateforme :",
+      "video": "Vidéo de présentation"
     },
     "login": {
-      "header": "Entrez votre nom d'utilisateur et votre mot de passe ci-dessous pour vous connecter",
-      "button": "Connexion"
+      "header": "Saisissez votre nom d'utilisateur et votre mot de passe pour vous connecter",
+      "button": "Se connecter"
     },
     "setup": {
-      "title": "Installation",
-      "header": "Entrez les informations pour démarrer la plateforme",
-      "button": "Installer"
+      "title": "Configuration",
+      "header": "Renseignez les informations pour démarrer la plateforme",
+      "button": "Configurer"
     }
   },
   "status": {
     "PENDING": "En attente",
-    "RUNNING": "Craquage...",
-    "STOPPED": "Arrêter",
-    "COMPLETE": "Compléter",
+    "RUNNING": "En cours",
+    "STOPPED": "Arrêté",
+    "COMPLETE": "Terminé",
     "ERROR": "Erreur",
     "UNKNOWN": "Inconnu",
-    "FOUND": "Trouver",
-    "NOT_FOUND": "Pas trouver"
+    "FOUND": "Trouvé",
+    "NOT_FOUND": "Non trouvé",
+    "CRACKING": "Craquage"
   }
 }

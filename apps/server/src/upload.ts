@@ -225,16 +225,17 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
       // Create DB entry only after we have the final ID (post-processing)
 
       if (isLargeFile) {
-        // For large files, skip processing to avoid crashes
+        // For large files, create the DB record immediately using the
+        // temporary upload ID so we can respond quickly to the client and
+        // avoid request timeouts (504). Then trigger the S3->EFS copy in the
+        // background, asking the cluster to write the file using the same
+        // target ID so DB and EFS stay consistent.
         console.log(
-          "[upload.complete] large file detected - skipping processing to prevent crash"
-        );
-        console.log(
-          "[upload.complete] TODO: implement background processing for files > 2GB"
+          "[upload.complete] large file - creating DB record and scheduling S3->EFS copy"
         );
 
-        // For large files, we won't process immediately. Create a DB record now.
         wordlistID = wordlistId;
+
         await prisma.$transaction(async (tx: PrismaTransaction) => {
           await tx.wordlist.create({
             data: {
@@ -246,38 +247,42 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
           });
         });
 
-        // For large files, trigger copy from S3 to EFS
-        console.log(
-          "[upload.complete] triggering S3 to EFS copy for large file"
-        );
-        try {
-          const copyResponse = await fetch(
-            `${url}/upload/wordlist/copy-from-s3`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                bucket: bucketName,
-                key: s3Key,
-              }),
-            }
-          );
-          if (!copyResponse.ok) {
-            console.error(
-              "[upload.complete] failed to trigger S3 copy",
-              await copyResponse.text()
+        // Fire-and-forget the copy request so the HTTP client isn't blocked.
+        (async () => {
+          try {
+            const copyResponse = await fetch(
+              `${url}/upload/wordlist/copy-from-s3`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  bucket: bucketName,
+                  key: s3Key,
+                  targetID: wordlistID,
+                }),
+              }
             );
-          } else {
-            const copiedWordlistID = await copyResponse.json();
-            console.log("[upload.complete] S3 copy completed", {
-              copiedWordlistID,
-            });
+
+            if (!copyResponse.ok) {
+              console.error(
+                "[upload.complete] background S3 copy failed",
+                await copyResponse.text()
+              );
+            } else {
+              console.log("[upload.complete] background S3 copy triggered");
+            }
+          } catch (err) {
+            console.error(
+              "[upload.complete] error triggering background S3 copy",
+              err
+            );
           }
-        } catch (err) {
-          console.error("[upload.complete] error triggering S3 copy", err);
-        }
+        })();
+
+        // Respond now; the copy will continue asynchronously
+        return { wordlistID };
       } else {
         // For smaller files, use streaming approach
         console.log("[upload.complete] streaming to cluster for small file");
@@ -342,6 +347,205 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
     "/wordlists/complete",
     { preHandler: checkPermission("wordlists:add") },
     completeHandler
+  );
+
+  // === Rules upload endpoints (mirror wordlist behavior) ===
+  instance.post(
+    "/rule",
+    {
+      preHandler: checkPermission("rules:add"),
+    },
+    async (request: FastifyRequest) => {
+      const { prisma } = request.server;
+
+      if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST" });
+
+      const multipart = await request.file();
+      if (multipart === undefined) throw new TRPCError({ code: "BAD_REQUEST" });
+
+      const fileName = path.basename(multipart.filename);
+      const tempPath = path.join("/tmp", `upload-${Date.now()}-${fileName}`);
+
+      // Stream file to disk
+      await pipeline(multipart.file, fs.createWriteStream(tempPath));
+
+      // Compute checksum
+      const hash = crypto.createHash("sha256");
+      const fileStream = fs.createReadStream(tempPath);
+      for await (const chunk of fileStream) {
+        hash.update(chunk);
+      }
+      const checksum = hash.digest("hex");
+
+      // Check for duplicate
+      if (
+        await prisma.rule.findFirst({
+          select: { RID: true },
+          where: { checksum },
+        })
+      ) {
+        fs.unlinkSync(tempPath);
+        throw new TRPCError({ code: "BAD_REQUEST" });
+      }
+
+      const readStream = fs.createReadStream(tempPath);
+      const stat = fs.statSync(tempPath);
+      const ruleID = await uploadRawToCluster(
+        `${url}/upload/rules/raw`,
+        readStream,
+        stat.size
+      );
+
+      fs.unlinkSync(tempPath);
+
+      if (!ruleID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      return await prisma.$transaction(async (tx: PrismaTransaction) => {
+        await tx.rule.create({
+          data: {
+            RID: ruleID,
+            name: fileName,
+            size: BigInt(stat.size),
+            checksum,
+          },
+        });
+
+        return ruleID;
+      });
+    }
+  );
+
+  // S3-complete handler for rules
+  const completeRuleHandler = async (request: FastifyRequest) => {
+    const { prisma } = request.server;
+    const { ruleId, s3Key } = request.body as {
+      ruleId: string;
+      s3Key: string;
+    };
+
+    if (!ruleId || !s3Key) {
+      throw new TRPCError({ code: "BAD_REQUEST" });
+    }
+
+    const bucketName = getInitializedBucketName();
+    const s3Client = createS3Client(config);
+
+    try {
+      console.log("[upload.rule.complete] start", {
+        bucketName,
+        s3Key,
+        ruleId,
+      });
+
+      const getCommand = new GetObjectCommand({
+        Bucket: bucketName,
+        Key: s3Key,
+      });
+
+      const response = await s3Client.send(getCommand);
+
+      if (!response.Body) {
+        console.error("[upload.rule.complete] empty body from S3", {
+          bucketName,
+          s3Key,
+        });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      }
+
+      const checksum =
+        (response.Metadata?.checksum as string | undefined) ?? "";
+      const contentLength = response.ContentLength || 0;
+      const fileSizeGB = contentLength / (1024 * 1024 * 1024);
+      const isLargeFile = fileSizeGB > 2;
+
+      console.log("[upload.rule.complete] file analysis", {
+        fileSize: contentLength,
+        fileSizeGB: fileSizeGB.toFixed(2),
+        isLargeFile,
+        approach: isLargeFile ? "direct-s3" : "streaming",
+      });
+
+      let finalRuleID: string;
+
+      if (isLargeFile) {
+        finalRuleID = ruleId;
+        await prisma.$transaction(async (tx: PrismaTransaction) => {
+          await tx.rule.create({
+            data: {
+              RID: finalRuleID,
+              name: s3Key.split("/").pop() ?? finalRuleID,
+              size: BigInt(contentLength),
+              checksum,
+            },
+          });
+        });
+
+        // Trigger S3 -> EFS copy on cluster side
+        try {
+          const copyResponse = await fetch(`${url}/upload/rules/copy-from-s3`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ bucket: bucketName, key: s3Key }),
+          });
+          if (!copyResponse.ok) {
+            console.error(
+              "[upload.rule.complete] failed to trigger S3 copy",
+              await copyResponse.text()
+            );
+          } else {
+            const copiedRuleID = await copyResponse.json();
+            console.log("[upload.rule.complete] S3 copy completed", {
+              copiedRuleID,
+            });
+          }
+        } catch (err) {
+          console.error("[upload.rule.complete] error triggering S3 copy", err);
+        }
+      } else {
+        const nodeStream = response.Body as Readable;
+        finalRuleID = await uploadRawToCluster(
+          `${url}/upload/rules/raw`,
+          nodeStream,
+          contentLength
+        );
+
+        await prisma.$transaction(async (tx: PrismaTransaction) => {
+          await tx.rule.create({
+            data: {
+              RID: finalRuleID,
+              name: s3Key.split("/").pop() ?? finalRuleID,
+              size: BigInt(contentLength),
+              checksum,
+            },
+          });
+        });
+      }
+
+      console.log("[upload.rule.complete] processing complete", {
+        finalRuleID,
+        approach: isLargeFile ? "direct-s3" : "streaming",
+      });
+
+      if (!finalRuleID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      return { ruleID: finalRuleID };
+    } catch (error) {
+      console.error("[upload.rule.complete] error", error);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
+    }
+  };
+
+  instance.post(
+    "/rule/complete",
+    { preHandler: checkPermission("rules:add") },
+    completeRuleHandler
+  );
+
+  instance.post(
+    "/rules/complete",
+    { preHandler: checkPermission("rules:add") },
+    completeRuleHandler
   );
 
   next();

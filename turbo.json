@@ -1,9 +1,15 @@
 {
-  "$schema": "https://turbo.build/schema.json",
-  "globalDependencies": ["**/.env.*local"],
   "tasks": {
+    "typecheck": {
+      "cache": false,
+      "passThroughEnv": ["CI"]
+    },
     "build": {
       "dependsOn": ["^build"],
+      "env": ["BACKEND_HOST", "BACKEND_PORT"]
+    },
+    "@repo/server#build": {
+      "dependsOn": ["typecheck", "^build"],
       "env": ["BACKEND_HOST", "BACKEND_PORT"]
     },
     "dev": {

@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 
 import { STATUS } from "@repo/api";
@@ -24,7 +25,7 @@ export const hashRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         await tx.project.update({
           where: {
             PID: projectID,
@@ -62,7 +63,10 @@ export const hashRouter = t.router({
         });
 
         const seenHashMap = Object.fromEntries(
-          seenHashes.map((hash) => [hash.hash, hash.value ?? ""])
+          seenHashes.map((hash: { hash: string; value: string | null }) => [
+            hash.hash,
+            hash.value ?? "",
+          ])
         );
 
         const outHashes = await tx.hash.createManyAndReturn({
@@ -85,7 +89,10 @@ export const hashRouter = t.router({
         });
 
         const outHashMap = Object.fromEntries(
-          outHashes.map((hash) => [hash.hash, hash.HID])
+          outHashes.map((hash: { hash: string; HID: string }) => [
+            hash.hash,
+            hash.HID,
+          ])
         );
 
         return data.map((hash) => outHashMap[hashValueMap[hash.hash]!] ?? null);
@@ -104,7 +111,7 @@ export const hashRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         await tx.project.update({
           where: {
             PID: projectID,

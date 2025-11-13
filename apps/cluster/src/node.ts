@@ -11,6 +11,10 @@ import {
 import { FileSystemCluster } from "./filesystem";
 
 export class NodeCluster extends FileSystemCluster<NodeClusterConfig> {
+  public async listRules(): Promise<string[]> {
+    // NodeCluster stores rules locally, so delegate to FileSystemCluster
+    return super.listRules();
+  }
   public getName(): string {
     return "node";
   }

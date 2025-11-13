@@ -59,11 +59,13 @@ export const instanceRouter = t.router({
         wordlistID: z.string(),
         hashType: z.number().int().min(0),
         hashes: z.string().array(),
+        ruleID: z.string().optional(),
       })
     )
     .output(z.boolean())
     .mutation(async (opts) => {
-      const { instanceID, jobID, wordlistID, hashType, hashes } = opts.input;
+      const { instanceID, jobID, wordlistID, hashType, hashes, ruleID } =
+        opts.input;
 
       const { cluster } = opts.ctx;
 
@@ -72,7 +74,8 @@ export const instanceRouter = t.router({
         jobID,
         wordlistID,
         hashType,
-        hashes
+        hashes,
+        ruleID
       );
     }),
   deleteJobs: publicProcedure

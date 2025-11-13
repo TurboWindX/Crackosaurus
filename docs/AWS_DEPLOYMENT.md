@@ -192,8 +192,8 @@ S3_ROLE_ARN=arn:aws:iam::ACCOUNT_ID:role/CrackosaurusServerRole
 ```bash
 NODE_ENV=production
 CLUSTER_TYPE=external
-CLUSTER_INSTANCE_ROOT=/data/instances
-CLUSTER_WORDLIST_ROOT=/data/wordlists
+CLUSTER_INSTANCE_ROOT=/crackodata/instances
+CLUSTER_WORDLIST_ROOT=/crackodata/wordlists
 ```
 
 ## 5. ECS Deployment (Recommended)

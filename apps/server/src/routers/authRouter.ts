@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import bcrypt from "bcrypt";
 import { z } from "zod";
@@ -57,7 +58,7 @@ export const authRouter = t.router({
       const { username, password } = opts.input;
       const { request, prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.findUnique({
           select: {
             ID: true,

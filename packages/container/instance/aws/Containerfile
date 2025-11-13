@@ -21,6 +21,8 @@ RUN npm install
 
 COPY --from=builder /app/out/full .
 
+COPY --from=builder /app/turbo.json ./turbo.json
+
 RUN NODE_ENV=production turbo run build --filter=@repo/instance
 
 FROM base AS build

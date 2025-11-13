@@ -13,3 +13,7 @@ export function getWordlistPath(
 ): string {
   return path.join(wordlistRoot, wordlist);
 }
+
+// Re-export rule folder helper for backward-compatible imports
+export { createRuleFolder } from "./rule";
+export { getRulePath } from "./rule";

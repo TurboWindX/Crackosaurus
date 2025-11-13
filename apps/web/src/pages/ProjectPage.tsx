@@ -8,6 +8,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
 import { Status } from "@repo/api";
+import { INSTANCE_TYPES } from "@repo/app-config/instance-types";
 import { HASH_TYPES, getHashName } from "@repo/hashcat/data";
 import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
@@ -19,6 +20,7 @@ import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
 import { HashTypeSelect } from "@repo/ui/hashes";
+import { RuleSelect } from "@repo/ui/rules";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 import { UserSelect } from "@repo/ui/users";
@@ -67,7 +69,9 @@ const HashDataTable = ({
   const [viewOpen, setViewOpen] = useState(false);
   const [viewHashID, setViewHashID] = useState<string | null>(null);
   const viewHash = useMemo(
-    () => values?.find((hash) => hash.HID === viewHashID)?.value,
+    () =>
+      values?.find((hash: { HID: string | null }) => hash.HID === viewHashID)
+        ?.value,
     [viewHashID]
   );
 
@@ -121,23 +125,38 @@ const HashDataTable = ({
       <DataTable
         singular={t("item.hash.singular")}
         plural={t("item.hash.plural")}
-        values={values ?? []}
+        values={(values ?? []).map((v) => ({
+          ...v,
+          status: v.status as Status,
+          updatedAt: new Date(v.updatedAt),
+          value: v.value ?? undefined,
+        }))}
         head={[
           t("item.hash.singular"),
           t("item.type.singular"),
           t("item.status"),
           t("item.time.update"),
         ]}
-        valueKey={({ HID }) => HID}
+        valueKey={(value) => (value as { HID: string }).HID}
         isLoading={isLoading}
-        row={({ hash, hashType, status, updatedAt }) => [
-          <div className="max-w-32 truncate md:max-w-64 lg:max-w-[50vw]">
-            {hash}
-          </div>,
-          getHashName(hashType),
-          <StatusBadge status={status as Status} />,
-          <RelativeTime time={updatedAt} />,
-        ]}
+        row={(value: {
+          HID: string;
+          hash: string;
+          hashType: number;
+          status: Status;
+          updatedAt: Date;
+          value?: string;
+        }) => {
+          const { hash, hashType, status, updatedAt } = value;
+          return [
+            <div className="max-w-32 truncate md:max-w-64 lg:max-w-[50vw]">
+              {hash}
+            </div>,
+            getHashName(hashType),
+            <StatusBadge status={status as Status} />,
+            <RelativeTime time={updatedAt} />,
+          ];
+        }}
         rowClick={
           hasPermission("hashes:view")
             ? ({ HID }) => {
@@ -311,9 +330,11 @@ const PendingJobsSection = ({ projectID, jobs }: PendingJobsSectionProps) => {
             })}{" "}
             ({pendingJobs.length})
           </h3>
-          <Button size="sm" onClick={handleApproveAll}>
-            {t("action.approve.all", { defaultValue: "Approve All Jobs" })}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={handleApproveAll}>
+              {t("action.approve.all", { defaultValue: "Approve All Jobs" })}
+            </Button>
+          </div>
         </div>
         <div className="space-y-2">
           {pendingJobs.map((job) => (
@@ -492,13 +513,17 @@ const UserDataTable = ({
       plural={t("item.user.plural")}
       values={values ?? []}
       head={[t("item.user.singular")]}
-      valueKey={({ ID }) => ID}
-      row={({ username }) => [username]}
+      valueKey={(value) => (value as { ID: string }).ID}
+      row={(value: { ID: string; username?: string }) => [value.username]}
       isLoading={isLoading}
-      searchFilter={({ username }, search) =>
-        username.toLowerCase().includes(search)
-      }
-      sort={(a, b) => a.username.localeCompare(b.username)}
+      searchFilter={(
+        value: { ID: string; username?: string },
+        search: string
+      ) => (value.username ?? "").toLowerCase().includes(search)}
+      sort={(
+        a: { ID: string; username?: string },
+        b: { ID: string; username?: string }
+      ) => (a.username ?? "").localeCompare(b.username ?? "")}
       addValidate={() => newUserID.length > 0}
       addDialog={
         <>
@@ -506,7 +531,9 @@ const UserDataTable = ({
             value={newUserID}
             onValueChange={(userID) => setNewUserID(userID)}
             filter={({ ID }) =>
-              (values ?? []).every((member) => ID !== member.ID) === true
+              (values ?? []).every(
+                (member: { ID: string }) => ID !== member.ID
+              ) === true
             }
           />
         </>
@@ -526,7 +553,7 @@ const UserDataTable = ({
       onRemove={async (users) => {
         await removeUsers({
           projectID,
-          userIDs: users.map(({ ID }) => ID),
+          userIDs: users.map((user) => (user as { ID: string }).ID),
         });
         return true;
       }}
@@ -555,9 +582,13 @@ const LaunchButton = ({
 
   const [instanceType, setInstanceType] = useState("");
   const [wordlistID, setWordlistID] = useState("");
+  const [ruleID, setRuleID] = useState("");
 
   const todoHashes = useMemo(
-    () => (hashes ?? []).filter((hash) => typeof hash.value !== "string"),
+    () =>
+      (hashes ?? []).filter(
+        (hash: { value?: string | null }) => typeof hash.value !== "string"
+      ),
     [hashes]
   );
   const hasTodoHashes = useMemo(() => todoHashes.length > 0, [todoHashes]);
@@ -596,120 +627,8 @@ const LaunchButton = ({
     onError: handleError,
   });
 
-  // Available GPU instance types (organized by family)
-  const instanceTypes = [
-    // G6 - Latest generation NVIDIA L4 GPUs (DEFAULT and pretty much the best in terms of cost/performance)
-    // especially the 12xlarge which is 1/3 price of 48xlarge but 50% performance of it)
-    { value: "g6.xlarge", label: "g6.xlarge (1x NVIDIA L4, 4 vCPU, 16GB RAM)" },
-    {
-      value: "g6.2xlarge",
-      label: "g6.2xlarge (1x NVIDIA L4, 8 vCPU, 32GB RAM)",
-    },
-    {
-      value: "g6.4xlarge",
-      label: "g6.4xlarge (1x NVIDIA L4, 16 vCPU, 64GB RAM)",
-    },
-    {
-      value: "g6.8xlarge",
-      label: "g6.8xlarge (1x NVIDIA L4, 32 vCPU, 128GB RAM)",
-    },
-    {
-      value: "g6.12xlarge",
-      label: "g6.12xlarge (4x NVIDIA L4, 48 vCPU, 192GB RAM)",
-    },
-    {
-      value: "g6.16xlarge",
-      label: "g6.16xlarge (1x NVIDIA L4, 64 vCPU, 256GB RAM)",
-    },
-    {
-      value: "g6.24xlarge",
-      label: "g6.24xlarge (4x NVIDIA L4, 96 vCPU, 384GB RAM)",
-    },
-    {
-      value: "g6.48xlarge",
-      label: "g6.48xlarge (8x NVIDIA L4, 192 vCPU, 768GB RAM) - RECOMMENDED",
-    },
-
-    // G5 - NVIDIA A10G GPUs
-    {
-      value: "g5.xlarge",
-      label: "g5.xlarge (1x NVIDIA A10G, 4 vCPU, 16GB RAM)",
-    },
-    {
-      value: "g5.2xlarge",
-      label: "g5.2xlarge (1x NVIDIA A10G, 8 vCPU, 32GB RAM)",
-    },
-    {
-      value: "g5.4xlarge",
-      label: "g5.4xlarge (1x NVIDIA A10G, 16 vCPU, 64GB RAM)",
-    },
-    {
-      value: "g5.8xlarge",
-      label: "g5.8xlarge (1x NVIDIA A10G, 32 vCPU, 128GB RAM)",
-    },
-    {
-      value: "g5.12xlarge",
-      label: "g5.12xlarge (4x NVIDIA A10G, 48 vCPU, 192GB RAM)",
-    },
-    {
-      value: "g5.16xlarge",
-      label: "g5.16xlarge (1x NVIDIA A10G, 64 vCPU, 256GB RAM)",
-    },
-    {
-      value: "g5.24xlarge",
-      label: "g5.24xlarge (4x NVIDIA A10G, 96 vCPU, 384GB RAM)",
-    },
-    {
-      value: "g5.48xlarge",
-      label: "g5.48xlarge (8x NVIDIA A10G, 192 vCPU, 768GB RAM)",
-    },
-
-    // G4dn - NVIDIA T4 GPUs (Cost-effective but older)
-    {
-      value: "g4dn.xlarge",
-      label: "g4dn.xlarge (1x NVIDIA T4, 4 vCPU, 16GB RAM)",
-    },
-    {
-      value: "g4dn.2xlarge",
-      label: "g4dn.2xlarge (1x NVIDIA T4, 8 vCPU, 32GB RAM)",
-    },
-    {
-      value: "g4dn.4xlarge",
-      label: "g4dn.4xlarge (1x NVIDIA T4, 16 vCPU, 64GB RAM)",
-    },
-    {
-      value: "g4dn.8xlarge",
-      label: "g4dn.8xlarge (1x NVIDIA T4, 32 vCPU, 128GB RAM)",
-    },
-    {
-      value: "g4dn.12xlarge",
-      label: "g4dn.12xlarge (4x NVIDIA T4, 48 vCPU, 192GB RAM)",
-    },
-    {
-      value: "g4dn.16xlarge",
-      label: "g4dn.16xlarge (1x NVIDIA T4, 64 vCPU, 256GB RAM)",
-    },
-
-    // P3 - NVIDIA V100 GPUs (High performance)
-    {
-      value: "p3.2xlarge",
-      label: "p3.2xlarge (1x NVIDIA V100, 8 vCPU, 61GB RAM)",
-    },
-    {
-      value: "p3.8xlarge",
-      label: "p3.8xlarge (4x NVIDIA V100, 32 vCPU, 244GB RAM)",
-    },
-    {
-      value: "p3.16xlarge",
-      label: "p3.16xlarge (8x NVIDIA V100, 64 vCPU, 488GB RAM)",
-    },
-
-    // P5 - NVIDIA H100 GPUs (Latest, most powerful but really expensive and not efficient really)
-    {
-      value: "p5.48xlarge",
-      label: "p5.48xlarge (8x NVIDIA H100, 192 vCPU, 2TB RAM) - ULTIMATE",
-    },
-  ];
+  // Use shared instance-types to keep UI and server in sync
+  const instanceTypes = INSTANCE_TYPES as { value: string; label: string }[];
 
   // Set default instance type to g6.48xlarge
   if (!instanceType && open) {
@@ -737,14 +656,19 @@ const LaunchButton = ({
         onSubmit={async (e) => {
           e.preventDefault();
 
-          const hashTypes = [
-            ...new Set(todoHashes.map(({ hashType }) => hashType)),
-          ];
+          const hashTypes = Array.from(
+            new Set(
+              todoHashes.map((h: { hashType?: number | string }) =>
+                Number(h.hashType)
+              )
+            )
+          ) as number[];
 
           await requestJobs({
             instanceType,
             data: hashTypes.map((hashType) => ({
               wordlistID,
+              ruleID: ruleID || undefined,
               hashType,
               projectIDs: [projectID],
             })),
@@ -762,6 +686,7 @@ const LaunchButton = ({
 
           setInstanceType("");
           setWordlistID("");
+          setRuleID("");
           setOpen(false);
         }}
       >
@@ -789,6 +714,7 @@ const LaunchButton = ({
           </p>
         </div>
         <WordlistSelect value={wordlistID} onValueChange={setWordlistID} />
+        <RuleSelect value={ruleID} onValueChange={setRuleID} />
         <Button disabled={!isValid}>{t("action.launch.text")}</Button>
       </form>
     </DrawerDialog>

@@ -2,7 +2,11 @@ import path from "path";
 import { z } from "zod";
 
 import { CLUSTER_DEFAULT_PORT, DEFAULT_HOST } from "./host";
-import { DEFAULT_INSTANCE_ROOT, DEFAULT_WORDLIST_ROOT } from "./path";
+import {
+  DEFAULT_INSTANCE_ROOT,
+  DEFAULT_RULE_ROOT,
+  DEFAULT_WORDLIST_ROOT,
+} from "./path";
 
 const CLUSTER_ENV = {
   clusterHost: "CLUSTER_HOST",
@@ -12,6 +16,7 @@ const CLUSTER_ENV = {
   hashcatPath: "CLUSTER_HASHCAT_PATH",
   instanceRoot: "CLUSTER_INSTANCE_ROOT",
   wordlistRoot: "CLUSTER_WORDLIST_ROOT",
+  ruleRoot: "CLUSTER_RULE_ROOT",
   instanceInterval: "CLUSTER_INSTANCE_INTERVAL",
   instanceCooldown: "CLUSTER_INSTANCE_COOLDOWN",
   stepFunctionArn: "CLUSTER_STEP_FUNCTION",
@@ -31,7 +36,7 @@ export const CLUSTER_TYPE = {
 const FILESYSTEM_CLUSTER_CONFIG = z.object({
   instanceRoot: z.string(),
   wordlistRoot: z.string(),
-  jobQueueUrl: z.string().optional(),
+  ruleRoot: z.string(),
 });
 export type FileSystemClusterConfig = z.infer<typeof FILESYSTEM_CLUSTER_CONFIG>;
 
@@ -86,7 +91,8 @@ function loadFileSystemConfig(): FileSystemClusterConfig {
       process.env[CLUSTER_ENV.instanceRoot] ?? DEFAULT_INSTANCE_ROOT,
     wordlistRoot:
       process.env[CLUSTER_ENV.wordlistRoot] ?? DEFAULT_WORDLIST_ROOT,
-    jobQueueUrl: process.env[CLUSTER_ENV.jobQueueUrl],
+    ruleRoot: process.env[CLUSTER_ENV.ruleRoot] ?? DEFAULT_RULE_ROOT,
+    // jobQueueUrl: process.env[CLUSTER_ENV.jobQueueUrl], // Removed
   };
 }
 
@@ -156,12 +162,12 @@ function envFileSystemClusterConfig(config: FileSystemClusterConfig) {
   const env: Record<string, string> = {
     [CLUSTER_ENV.instanceRoot]: config.instanceRoot,
     [CLUSTER_ENV.wordlistRoot]: config.wordlistRoot,
+    [CLUSTER_ENV.ruleRoot]: config.ruleRoot,
   };
-
-  if (config.jobQueueUrl) {
-    env[CLUSTER_ENV.jobQueueUrl] = config.jobQueueUrl;
-  }
-
+  // Removed jobQueueUrl from env mappings
+  // if (config.jobQueueUrl) {
+  //   env[CLUSTER_ENV.jobQueueUrl] = config.jobQueueUrl;
+  // }
   return env;
 }
 

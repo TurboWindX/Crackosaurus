@@ -316,6 +316,37 @@ export function UploadProvider({
         throw error;
       }
     },
+    rule: async (file, onProgress, abortSignal) => {
+      // Simple multipart/form-data upload to server /upload/rule endpoint.
+      try {
+        const form = new FormData();
+        form.append("file", file, file.name);
+
+        // Basic progress reporting using fetch streams is limited in browsers.
+        // We'll do a simple approach: call the endpoint and rely on server-side processing.
+        const resp = await fetch(`${url}/upload/rule`, {
+          method: "POST",
+          credentials: "include",
+          body: form,
+          signal: abortSignal,
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => "");
+          throw new Error(`Rule upload failed: ${resp.status} ${text}`);
+        }
+
+        const result = await resp.text();
+        // server returns the rule ID as plain text in existing handlers
+        return result;
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          throw new Error("Upload aborted");
+        }
+        console.error("Rule upload failed", err);
+        throw err;
+      }
+    },
   };
 
   return (

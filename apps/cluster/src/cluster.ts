@@ -21,7 +21,8 @@ export abstract class Cluster<TConfig = undefined> {
     instanceID: string,
     wordlist: string,
     hashType: number,
-    hashes: string[]
+    hashes: string[],
+    rule?: string
   ): Promise<string | null>;
 
   public abstract createJobWithID(
@@ -29,7 +30,8 @@ export abstract class Cluster<TConfig = undefined> {
     jobID: string,
     wordlist: string,
     hashType: number,
-    hashes: string[]
+    hashes: string[],
+    rule?: string
   ): Promise<boolean>;
 
   public abstract deleteJob(
@@ -41,8 +43,20 @@ export abstract class Cluster<TConfig = undefined> {
 
   public abstract createWordlistFromStream(
     stream: NodeJS.ReadableStream,
-    options?: { originBucket?: string; originKey?: string }
+    options?: { originBucket?: string; originKey?: string; targetID?: string }
   ): Promise<string | null>;
 
   public abstract deleteWordlist(wordlistID: string): Promise<boolean>;
+
+  // Rules support: simple text files passed to hashcat with -r
+  public abstract createRule(data: Buffer): Promise<string | null>;
+
+  public abstract createRuleFromStream(
+    stream: NodeJS.ReadableStream
+  ): Promise<string | null>;
+
+  public abstract deleteRule(ruleID: string): Promise<boolean>;
+
+  // List all available rules
+  public abstract listRules(): Promise<string[]>;
 }

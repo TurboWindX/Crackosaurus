@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as ecs from "aws-cdk-lib/aws-ecs";
+import * as efs from "aws-cdk-lib/aws-efs";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as s3 from "aws-cdk-lib/aws-s3";
@@ -26,6 +27,8 @@ export interface ServerServiceProps {
   discoveryRegion?: string;
   clusterHost?: string;
   clusterPort?: string;
+  accessPointId?: string;
+  fileSystem: efs.IFileSystem;
 }
 
 export class ServerService extends Construct {
@@ -44,10 +47,26 @@ export class ServerService extends Construct {
       taskRole: props.taskRole,
     });
 
+    // Add EFS volume for shared storage
+    const efsVolume = {
+      name: "efs-volume",
+      efsVolumeConfiguration: {
+        fileSystemId: props.fileSystem.fileSystemId,
+        transitEncryption: "ENABLED",
+        authorizationConfig: {
+          iam: "ENABLED",
+          accessPointId: props.accessPointId,
+        },
+      },
+    };
+    taskDef.addVolume(efsVolume);
+
     // Build environment map (non-secret values)
     const env: { [key: string]: string } = {
       NODE_ENV: "production",
       S3_BUCKET_NAME: props.wordlistsBucket.bucketName,
+      STORAGE_TYPE: "filesystem",
+      STORAGE_PATH: "/crackodata",
       CLUSTER_DISCOVERY_TYPE: "cloud_map",
       CLUSTER_DISCOVERY_NAMESPACE: props.discoveryNamespace ?? "",
       CLUSTER_DISCOVERY_SERVICE: props.discoveryService ?? "cluster",
@@ -82,6 +101,11 @@ export class ServerService extends Construct {
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: "server" }),
       environment: env,
       secrets,
+    });
+    container.addMountPoints({
+      sourceVolume: "efs-volume",
+      containerPath: "/crackodata",
+      readOnly: false,
     });
 
     container.addPortMappings({ containerPort: 8080 });

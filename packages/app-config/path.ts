@@ -1,16 +1,6 @@
-import os from "os";
-import path from "path";
+// Path-related defaults for container filesystem locations
 
-const tmpRoot = os.tmpdir();
-
-export const DEFAULT_INSTANCE_ROOT = path.join(
-  tmpRoot,
-  "crackosaurus",
-  "instances"
-);
-
-export const DEFAULT_WORDLIST_ROOT = path.join(
-  tmpRoot,
-  "crackosaurus",
-  "wordlists"
-);
+// Container-facing defaults: inside containers the EFS access point is mounted at /crackodata
+export const DEFAULT_INSTANCE_ROOT = "/crackodata/instances";
+export const DEFAULT_WORDLIST_ROOT = "/crackodata/wordlists";
+export const DEFAULT_RULE_ROOT = "/crackodata/rules";

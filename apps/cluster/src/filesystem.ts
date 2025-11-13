@@ -17,6 +17,13 @@ import {
   writeWordlistFile,
   writeWordlistFileFromStream,
 } from "@repo/filesystem/cluster";
+import { scheduleTempFileCleanup } from "@repo/filesystem/cluster";
+import {
+  deleteRuleFile,
+  writeRuleFile,
+  writeRuleFileFromStream,
+} from "@repo/filesystem/cluster";
+import { createRuleFolder } from "@repo/filesystem/wordlist";
 import { createWordlistFolder } from "@repo/filesystem/wordlist";
 
 import { Cluster } from "./cluster";
@@ -28,7 +35,11 @@ export abstract class FileSystemCluster<
 
   public async load(): Promise<boolean> {
     await createClusterFolder(this.config.instanceRoot);
+    // Start periodic cleanup of stale temp files under the instance root.
+    // This helps remove .tmp-* artifacts left by interrupted writers.
+    void scheduleTempFileCleanup(this.config.instanceRoot);
     await createWordlistFolder(this.config.wordlistRoot);
+    await createRuleFolder(this.config.ruleRoot);
 
     Promise.all(
       (await getClusterFolderInstances(this.config.instanceRoot)).map(
@@ -46,29 +57,10 @@ export abstract class FileSystemCluster<
             instanceMetadata
           );
 
-          const activeJobs = (
-            await Promise.all(
-              (
-                await getInstanceFolderJobs(
-                  this.config.instanceRoot,
-                  instanceID
-                )
-              ).map(async (jobID) => {
-                const jobMetadata = await getJobMetadata(
-                  this.config.instanceRoot,
-                  instanceID,
-                  jobID
-                );
-
-                return !(
-                  jobMetadata.status === STATUS.Complete ||
-                  jobMetadata.status === STATUS.Stopped
-                );
-              })
-            )
-          ).some((_) => _);
-
-          if (activeJobs) await this.run(instanceID);
+          // Do not auto-start instances on service load. Instances should only
+          // be started explicitly (for example when an admin approves a job
+          // and the server requests a new instance). Auto-starting on load
+          // caused unexpected EC2 instance launches during redeploys.
         }
       )
     );
@@ -116,7 +108,8 @@ export abstract class FileSystemCluster<
     instanceID: string,
     wordlist: string,
     hashType: number,
-    hashes: string[]
+    hashes: string[],
+    rule?: string
   ): Promise<string | null> {
     console.log(`[Cluster] createJob called with instanceID: ${instanceID}`);
     const jobID = crypto.randomUUID();
@@ -126,7 +119,8 @@ export abstract class FileSystemCluster<
       jobID,
       wordlist,
       hashType,
-      hashes
+      hashes,
+      rule
     ))
       ? jobID
       : null;
@@ -137,19 +131,11 @@ export abstract class FileSystemCluster<
     jobID: string,
     wordlist: string,
     hashType: number,
-    hashes: string[]
+    hashes: string[],
+    rule?: string
   ): Promise<boolean> {
     console.log(
       `[Cluster] createJobWithID called with instanceID: ${instanceID}, jobID: ${jobID}`
-    );
-
-    await createJobFolder(this.config.instanceRoot, instanceID, jobID, {
-      wordlist,
-      hashes,
-      hashType,
-    });
-    console.log(
-      `[Cluster] Job ${jobID} created in ${this.config.instanceRoot}/${instanceID}/jobs/`
     );
 
     const instanceMetadata = await getInstanceMetadata(
@@ -161,17 +147,22 @@ export abstract class FileSystemCluster<
       JSON.stringify(instanceMetadata)
     );
 
-    // Launch GPU worker if instance is not currently running
-    // This allows re-launching workers for instances that completed/stopped
-    if (
-      instanceMetadata.status !== STATUS.Running &&
-      instanceMetadata.status !== STATUS.Error
-    ) {
-      console.log(
-        `[Cluster] Auto-launching GPU worker for instance ${instanceID} (status: ${instanceMetadata.status}, type: ${instanceMetadata.type})`
-      );
-      await this.run(instanceID);
-    }
+    await createJobFolder(this.config.instanceRoot, instanceID, jobID, {
+      wordlist,
+      hashes,
+      hashType,
+      rule,
+      instanceType: instanceMetadata.type,
+    });
+    console.log(
+      `[Cluster] Job ${jobID} created in ${this.config.instanceRoot}/${instanceID}/jobs/ with instanceType: ${instanceMetadata.type}`
+    );
+
+    // Do not auto-launch workers here. Instance lifecycle (start) should be
+    // controlled explicitly via `createInstance` which calls `run` for cloud
+    // providers. This avoids unexpected instance startups when jobs are only
+    // being created in the filesystem (for example during DB migrations or
+    // service redeploys).
 
     return true;
   }
@@ -205,9 +196,12 @@ export abstract class FileSystemCluster<
 
   public async createWordlistFromStream(
     stream: NodeJS.ReadableStream,
-    options: { originBucket?: string; originKey?: string } | undefined
+    options:
+      | { originBucket?: string; originKey?: string; targetID?: string }
+      | undefined
   ): Promise<string | null> {
-    const wordlistID = crypto.randomUUID();
+    const desiredID = options?.targetID;
+    const wordlistID = desiredID ?? crypto.randomUUID();
 
     // options is intentionally optional for filesystem-backed clusters; reference
     // it to avoid linter complaints when callers pass origin metadata.
@@ -222,9 +216,44 @@ export abstract class FileSystemCluster<
     return wordlistID;
   }
 
+  // Rules: store rule files on the same filesystem storage as wordlists so
+  // instances can fetch them by path. Rules are simple text files for hashcat.
+  public async createRule(data: Buffer): Promise<string | null> {
+    const ruleID = crypto.randomUUID();
+
+    await writeRuleFile(this.config.ruleRoot, ruleID, data);
+
+    return ruleID;
+  }
+
+  public async createRuleFromStream(
+    stream: NodeJS.ReadableStream
+  ): Promise<string | null> {
+    const ruleID = crypto.randomUUID();
+
+    await writeRuleFileFromStream(this.config.ruleRoot, ruleID, stream);
+
+    return ruleID;
+  }
+
+  public async deleteRule(ruleID: string): Promise<boolean> {
+    await deleteRuleFile(this.config.ruleRoot, ruleID);
+    return true;
+  }
+
+  public async listRules(): Promise<string[]> {
+    const fs = await import("fs/promises");
+    try {
+      const files = await fs.readdir(this.config.ruleRoot);
+      // Optionally filter for .rule files if needed
+      return files;
+    } catch {
+      return [];
+    }
+  }
+
   public async deleteWordlist(wordlistID: string): Promise<boolean> {
     await deleteWordlistFile(this.config.wordlistRoot, wordlistID);
-
     return true;
   }
 }

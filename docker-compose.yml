@@ -34,14 +34,14 @@ services:
       dockerfile: packages/container/instance/docker/Containerfile
     environment:
       INSTANCE_ID: docker
-      INSTANCE_ROOT: /data/instances
-      WORDLIST_ROOT: /data/wordlists
+      INSTANCE_ROOT: /crackodata/instances
+      WORDLIST_ROOT: /crackodata/wordlists
     user: 0:0
     networks:
       - app
     volumes:
-      - instances:/data/instances
-      - wordlists:/data/wordlists
+      - instances:/crackodata/instances
+      - wordlists:/crackodata/wordlists
     deploy:
       resources:
         reservations:
@@ -61,14 +61,14 @@ services:
     environment:
       CLUSTER_HOST: cluster
       CLUSTER_TYPE: external
-      CLUSTER_INSTANCE_ROOT: /data/instances
-      CLUSTER_WORDLIST_ROOT: /data/wordlists
+      CLUSTER_INSTANCE_ROOT: /crackodata/instances
+      CLUSTER_WORDLIST_ROOT: /crackodata/wordlists
     user: 0:0
     networks:
       - app
     volumes:
-      - instances:/data/instances
-      - wordlists:/data/wordlists
+      - instances:/crackodata/instances
+      - wordlists:/crackodata/wordlists
   server:
     container_name: server
     restart: always

@@ -283,17 +283,20 @@ export class CrackosaurusStack extends cdk.Stack {
       securityGroup: efsSecurityGroup, // Dedicated security group for EFS
     });
 
-    new efs.AccessPoint(this, "AccessPoint", {
+    // Create an EFS Access Point with UID/GID 1001 to match the container 'server' user
+    // The server image creates a system user with UID/GID 1001, so the access point
+    // should map files to that POSIX user to allow creating and writing under /crackodata.
+    const accessPoint = new efs.AccessPoint(this, "AccessPoint", {
       fileSystem,
-      path: "/data",
+      path: "/crackodata", // Ensures /crackodata exists and is owned by UID/GID 1001
       createAcl: {
-        ownerGid: "1000",
-        ownerUid: "1000",
+        ownerGid: "1001",
+        ownerUid: "1001",
         permissions: "755",
       },
       posixUser: {
-        gid: "1000",
-        uid: "1000",
+        gid: "1001",
+        uid: "1001",
       },
     });
 
@@ -312,7 +315,8 @@ export class CrackosaurusStack extends cdk.Stack {
       vpc,
       subnets: vpc.privateSubnets, // Pass all private subnets for multi-AZ support
       fileSystem,
-      fileSystemPath: "/data",
+      fileSystemPath: "/crackodata",
+      accessPointId: accessPoint.accessPointId,
       securityGroup: gpuSecurityGroup, // Pass GPU security group
       cooldown: 60, // seconds to wait before checking job status
       interval: 10, // seconds between checks
@@ -553,17 +557,12 @@ export class CrackosaurusStack extends cdk.Stack {
       })
     );
 
-    // Allow Step Functions execution and SQS only if the instance stack exists
+    // Allow Step Functions execution only if the instance stack exists
     if (instanceStack) {
       // Allow Step Functions execution for cluster (to start GPU instances)
       instanceStack.stepFunction.grantStartExecution(clusterRole);
 
-      // Allow SQS for server (to send jobs)
-      instanceStack.jobQueue.grantSendMessages(serverRole);
-
-      // Allow SQS for cluster (to send and receive jobs)
-      instanceStack.jobQueue.grantSendMessages(clusterRole);
-      instanceStack.jobQueue.grantConsumeMessages(clusterRole);
+      // SQS removed: no queue grants
     }
 
     // Allow EC2 terminate for cluster only (to delete GPU instances)
@@ -690,8 +689,7 @@ export class CrackosaurusStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
     });
 
-    //Grants instead of addtopolicy for instanceStack resources
-    instanceStack.jobQueue.grantSendMessages(taskRole);
+    // SQS removed: no job queue grants for Fargate task role
 
     // Allow task to read DB credentials
     dbCredentials.grantRead(taskRole);
@@ -769,10 +767,9 @@ export class CrackosaurusStack extends cdk.Stack {
         discoveryRegion: this.region,
         clusterHost: clusterConfig.clusterHost as string | undefined,
         clusterPort: clusterPortDefault,
-        // Pass Instance Stack resources so Fargate cluster tasks can start Step Functions
         stepFunctionArn: instanceStack?.stepFunction.stateMachineArn,
-        jobQueueUrl: instanceStack?.jobQueue.queueUrl,
         fileSystem,
+        accessPointId: accessPoint.accessPointId,
       }
     );
 
@@ -798,13 +795,15 @@ export class CrackosaurusStack extends cdk.Stack {
         dbHost: dbCluster.clusterEndpoint.hostname,
         dbSecretArn: dbCredentials.secretArn,
         wordlistsBucket,
-        imageTag: serverImageTag, // This will be 'bleeding' if set by context/config
+        imageTag: serverImageTag,
         desiredCount: serverDesiredCount,
         discoveryNamespace: clusterDiscoveryNamespace,
         discoveryService: clusterDiscoveryService,
         discoveryRegion: this.region,
         clusterHost: clusterHostDefault,
         clusterPort: clusterPortDefault,
+        accessPointId: accessPoint.accessPointId,
+        fileSystem: fileSystem, // <-- add this line
       }
     );
 
@@ -867,7 +866,7 @@ export class CrackosaurusStack extends cdk.Stack {
       "/tmp/mount-efs.sh",
       "",
       "# Create data directories",
-      "mkdir -p /mnt/efs/wordlists /mnt/efs/instances /mnt/efs/jobs",
+      "mkdir -p /mnt/efs/crackodata/wordlists /mnt/efs/crackodata/instances /mnt/efs/jobs",
       "groupadd -g 1001 cluster || true",
       "useradd -u 1001 -g 1001 -m cluster || true",
       "chown -R 1001:1001 /mnt/efs",
@@ -896,7 +895,7 @@ export class CrackosaurusStack extends cdk.Stack {
       'echo "Prisma migrations complete"',
       "",
       "# Run server container",
-      `docker run -d --name crackosaurus-server --restart unless-stopped -p 8080:8080 -v /mnt/efs:/data -e NODE_ENV=production -e DATABASE_PROVIDER=postgresql -e DATABASE_PATH="\${DATABASE_URL}" -e STORAGE_TYPE=filesystem -e STORAGE_PATH=/data -e CLUSTER_TYPE=external -e CLUSTER_DISCOVERY_TYPE=cloud_map -e CLUSTER_DISCOVERY_NAMESPACE=${environmentName}.crackosaurus.local -e CLUSTER_DISCOVERY_SERVICE=cluster -e CLUSTER_DISCOVERY_REGION=\${AWS_REGION} -e CLUSTER_HOST=cluster.${environmentName}.crackosaurus.local -e CLUSTER_PORT=13337 -e USE_WEB_HOST=true -e AWS_REGION=\${AWS_REGION} $ECR_REGISTRY/crackosaurus/server:$IMAGE_TAG`,
+      `docker run -d --name crackosaurus-server --restart unless-stopped -p 8080:8080 -v /mnt/efs:/crackodata -e NODE_ENV=production -e DATABASE_PROVIDER=postgresql -e DATABASE_PATH="\${DATABASE_URL}" -e STORAGE_TYPE=filesystem -e STORAGE_PATH=/crackodata -e CLUSTER_TYPE=external -e CLUSTER_DISCOVERY_TYPE=cloud_map -e CLUSTER_DISCOVERY_NAMESPACE=${environmentName}.crackosaurus.local -e CLUSTER_DISCOVERY_SERVICE=cluster -e CLUSTER_DISCOVERY_REGION=\${AWS_REGION} -e CLUSTER_HOST=cluster.${environmentName}.crackosaurus.local -e CLUSTER_PORT=13337 -e USE_WEB_HOST=true -e AWS_REGION=\${AWS_REGION} $ECR_REGISTRY/crackosaurus/server:$IMAGE_TAG`,
       "",
       "echo 'EC2 instance setup complete'"
     );
@@ -950,7 +949,7 @@ export class CrackosaurusStack extends cdk.Stack {
         "useradd -u 1001 -g 1001 -m cluster || true",
         "",
         "# Create data directories and set ownership",
-        "mkdir -p /mnt/efs/wordlists /mnt/efs/instances /mnt/efs/jobs",
+        "mkdir -p /mnt/efs/crackodata/wordlists /mnt/efs/crackodata/instances /mnt/efs/jobs",
         "chown -R 1001:1001 /mnt/efs",
         ""
       );
@@ -973,20 +972,19 @@ export class CrackosaurusStack extends cdk.Stack {
         "  --name crackosaurus-cluster \\",
         "  --restart unless-stopped \\",
         "  -p 13337:13337 \\",
-        "  -v /mnt/efs:/data \\",
+        "  -v /mnt/efs:/crackodata \\",
         '  -e NODE_ENV="production" \\',
         '  -e DATABASE_PROVIDER="postgresql" \\',
         '  -e DATABASE_PATH="$DATABASE_URL" \\',
         '  -e STORAGE_TYPE="filesystem" \\',
-        '  -e STORAGE_PATH="/data" \\',
+        '  -e STORAGE_PATH="/crackodata" \\',
         '  -e CLUSTER_TYPE="aws" \\',
         '  -e CLUSTER_HOST="0.0.0.0" \\',
         '  -e CLUSTER_PORT="13337" \\',
         '  -e AWS_REGION="$AWS_REGION" \\',
         `  -e CLUSTER_STEP_FUNCTION="${instanceStack!.stepFunction.stateMachineArn}" \\`,
-        `  -e CLUSTER_JOB_QUEUE_URL="${instanceStack!.jobQueue.queueUrl}" \\`,
-        '  -e CLUSTER_INSTANCE_ROOT="/data/instances" \\',
-        '  -e CLUSTER_WORDLIST_ROOT="/data/wordlists" \\',
+        '  -e CLUSTER_INSTANCE_ROOT="/crackodata/instances" \\',
+        '  -e CLUSTER_WORDLIST_ROOT="/crackodata/wordlists" \\',
         '  -e CLUSTER_DISCOVERY_TYPE="cloud_map" \\',
         `  -e CLUSTER_DISCOVERY_NAMESPACE="${environmentName}.crackosaurus.local" \\`,
         '  -e CLUSTER_DISCOVERY_SERVICE="cluster" \\',

@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
@@ -34,7 +35,7 @@ export const userRouter = t.router({
       if (!hasPermission("users:get") && userID !== currentUserID)
         throw new TRPCError({ code: "UNAUTHORIZED" });
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         return await tx.user.findUniqueOrThrow({
           select: {
             ID: true,
@@ -76,7 +77,7 @@ export const userRouter = t.router({
     .query(async (opts) => {
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         return await tx.user.findMany({
           select: {
             ID: true,
@@ -99,7 +100,7 @@ export const userRouter = t.router({
     .query(async (opts) => {
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         return await tx.user.findMany({
           select: {
             ID: true,
@@ -125,7 +126,7 @@ export const userRouter = t.router({
       if ((permissions ?? []).some((permission) => !hasPermission(permission)))
         throw new TRPCError({ code: "UNAUTHORIZED" });
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.create({
           select: {
             ID: true,
@@ -160,7 +161,7 @@ export const userRouter = t.router({
       )
         throw new TRPCError({ code: "UNAUTHORIZED" });
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const { count } = await tx.user.deleteMany({
           where: {
             ID: {
@@ -199,7 +200,7 @@ export const userRouter = t.router({
       if (userID === currentUserID)
         throw new TRPCError({ code: "BAD_REQUEST" });
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.findUniqueOrThrow({
           select: {
             permissions: true,
@@ -244,7 +245,7 @@ export const userRouter = t.router({
       if (userID === currentUserID)
         throw new TRPCError({ code: "BAD_REQUEST" });
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.findUniqueOrThrow({
           select: {
             permissions: true,
@@ -287,7 +288,7 @@ export const userRouter = t.router({
       if (!hasPermission("users:edit") && userID !== currentUserID)
         throw new TRPCError({ code: "UNAUTHORIZED" });
 
-      return await prisma.$transaction(async (tx) => {
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // Check if old password is valid or bypass
         if (!hasPermission("users:edit")) {
           const user = await tx.user.findUniqueOrThrow({

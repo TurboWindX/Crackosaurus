@@ -196,6 +196,7 @@ export const instanceRouter = t.router({
             wordlistID: z.string(),
             hashType: z.number().int().min(0),
             projectIDs: z.string().array(),
+            ruleID: z.string().optional(),
           })
           .array(),
       })
@@ -208,6 +209,7 @@ export const instanceRouter = t.router({
 
       const projectIDs = data.flatMap((job) => job.projectIDs);
       const wordlistIDs = data.map((job) => job.wordlistID);
+      const ruleIDs = data.map((job) => job.ruleID).filter(Boolean) as string[];
 
       return await prisma.$transaction(async (tx: typeof prisma) => {
         await tx.instance.findUniqueOrThrow({
@@ -255,6 +257,14 @@ export const instanceRouter = t.router({
             },
           },
         });
+        const ruleIDSet = new Set<string>();
+        if (ruleIDs.length > 0) {
+          const rules = await tx.rule.findMany({
+            select: { RID: true },
+            where: { RID: { in: ruleIDs } },
+          });
+          rules.forEach((r: { RID: string }) => ruleIDSet.add(r.RID));
+        }
         const wordlistIDSet = new Set(
           wordlists.map((wordlist: { WID: string }) => wordlist.WID)
         );
@@ -300,11 +310,12 @@ export const instanceRouter = t.router({
           ) as [(typeof data)[number], { HID: string }[], string][];
 
         await Promise.all(
-          jobData.map(([{ wordlistID }, hashes, JID]) =>
+          jobData.map(([{ wordlistID, ruleID }, hashes, JID]) =>
             tx.job.create({
               data: {
                 JID,
                 wordlistId: wordlistID,
+                ruleId: ruleID && ruleIDSet.has(ruleID) ? ruleID : undefined,
                 instanceId: instanceID,
                 hashes: {
                   connect: hashes.map(({ HID }) => ({ HID })),

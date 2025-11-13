@@ -2,6 +2,8 @@ import * as AWS from "aws-sdk";
 
 import { STATUS } from "@repo/api";
 import { type AWSClusterConfig } from "@repo/app-config/cluster";
+import { INSTANCE_TYPE_VALUES } from "@repo/app-config/instance-types";
+import { DEFAULT_INSTANCE_TYPE } from "@repo/app-config/instance-types";
 import {
   getInstanceMetadata,
   writeInstanceMetadata,
@@ -9,11 +11,14 @@ import {
 
 import { FileSystemCluster } from "./filesystem";
 
-const DEFAULT_TYPE = "p3.2xlarge";
+const DEFAULT_TYPE = DEFAULT_INSTANCE_TYPE;
 
-export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
+export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
+  public async listRules(): Promise<string[]> {
+    // AWSCluster stores rules in EFS, so delegate to FileSystemCluster
+    return super.listRules();
+  }
   private stepFunctions!: AWS.StepFunctions;
-  private sqs!: AWS.SQS;
   private s3!: AWS.S3;
 
   public getName(): string {
@@ -21,46 +26,8 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
   }
 
   public getTypes(): string[] {
-    return [
-      // P3 - V100 GPUs (older generation, good for general compute)
-      "p3.2xlarge", // 1x V100 (16GB)
-      DEFAULT_TYPE, // p3.2xlarge is default
-      "p3.8xlarge", // 4x V100 (64GB)
-      "p3.16xlarge", // 8x V100 (128GB)
-      "p3dn.24xlarge", // 8x V100 (256GB) with 100 Gbps networking
-
-      // P4 - A100 GPUs (latest, most powerful)
-      "p4d.24xlarge", // 8x A100 (320GB)
-
-      // G5 - A10G GPUs (best price/performance for inference and training)
-      "g5.xlarge", // 1x A10G (24GB)
-      "g5.2xlarge", // 1x A10G (24GB)
-      "g5.4xlarge", // 1x A10G (24GB)
-      "g5.8xlarge", // 1x A10G (24GB)
-      "g5.12xlarge", // 4x A10G (96GB)
-      "g5.16xlarge", // 1x A10G (24GB)
-      "g5.24xlarge", // 4x A10G (96GB)
-      "g5.48xlarge", // 8x A10G (192GB)
-
-      // G4dn - T4 GPUs (cost-effective for smaller workloads)
-      "g4dn.xlarge", // 1x T4 (16GB)
-      "g4dn.2xlarge", // 1x T4 (16GB)
-      "g4dn.4xlarge", // 1x T4 (16GB)
-      "g4dn.8xlarge", // 1x T4 (16GB)
-      "g4dn.12xlarge", // 4x T4 (64GB)
-      "g4dn.16xlarge", // 1x T4 (16GB)
-      "g4dn.metal", // 8x T4 (128GB)
-
-      // G3 - M60 GPUs (legacy, not recommended for new deployments)
-      "g3.4xlarge", // 1x M60 (8GB)
-      "g3.8xlarge", // 2x M60 (16GB)
-      "g3.16xlarge", // 4x M60 (32GB)
-
-      // Testing/development (non-GPU)
-      "t3.small", // For testing without GPU
-      "t3.medium",
-      "t3.large",
-    ];
+    // Use canonical list from shared config so UI and server stay in sync
+    return INSTANCE_TYPE_VALUES.concat([DEFAULT_TYPE]);
   }
 
   private loadCredentials(): Promise<boolean> {
@@ -77,7 +44,6 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     if (!(await this.loadCredentials())) return false;
 
     this.stepFunctions = new AWS.StepFunctions();
-    this.sqs = new AWS.SQS();
     this.s3 = new AWS.S3();
 
     return true;
@@ -166,7 +132,8 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
    */
   public async copyWordlistFromS3ToEFS(
     s3Bucket: string,
-    s3Key: string
+    s3Key: string,
+    targetID?: string
   ): Promise<string | null> {
     if (!this.s3) {
       this.s3 = new AWS.S3();
@@ -175,11 +142,20 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
       const s3Stream = this.s3
         .getObject({ Bucket: s3Bucket, Key: s3Key })
         .createReadStream();
-      // Use the origin info so the S3 object is deleted after copy
-      const wordlistID = await this.createWordlistFromStream(s3Stream, {
+      // Use the origin info so the S3 object is deleted after copy.
+      // Pass through an optional targetID so the server can request a specific
+      // final filename on EFS (avoids mismatched IDs between DB and EFS).
+      const opts: {
+        originBucket: string;
+        originKey: string;
+        targetID?: string;
+      } = {
         originBucket: s3Bucket,
         originKey: s3Key,
-      });
+      };
+      if (targetID) opts.targetID = targetID;
+
+      const wordlistID = await this.createWordlistFromStream(s3Stream, opts);
       if (wordlistID) {
         console.log(
           `[AWSCluster] Successfully copied wordlist from S3 (${s3Bucket}/${s3Key}) to EFS as ${wordlistID}`
@@ -192,6 +168,35 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
       return wordlistID;
     } catch (err) {
       console.error(`[AWSCluster] Error copying wordlist from S3 to EFS:`, err);
+      return null;
+    }
+  }
+
+  public async copyRuleFromS3ToEFS(
+    s3Bucket: string,
+    s3Key: string
+  ): Promise<string | null> {
+    if (!this.s3) {
+      this.s3 = new AWS.S3();
+    }
+    try {
+      const s3Stream = this.s3
+        .getObject({ Bucket: s3Bucket, Key: s3Key })
+        .createReadStream();
+
+      const ruleID = await this.createRuleFromStream(s3Stream);
+      if (ruleID) {
+        console.log(
+          `[AWSCluster] Successfully copied rule from S3 (${s3Bucket}/${s3Key}) to EFS as ${ruleID}`
+        );
+      } else {
+        console.error(
+          `[AWSCluster] Failed to copy rule from S3 (${s3Bucket}/${s3Key}) to EFS`
+        );
+      }
+      return ruleID;
+    } catch (err) {
+      console.error(`[AWSCluster] Error copying rule from S3 to EFS:`, err);
       return null;
     }
   }
@@ -218,7 +223,7 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
 
     try {
       if (!this.config.stepFunctionArn) {
-        throw new Error("Step Function ARN not configured for AWSCluster");
+        throw new Error("Step Function ARN not configured for AwsCluster");
       }
 
       const result = await this.stepFunctions
@@ -320,10 +325,17 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     instanceID: string,
     wordlist: string,
     hashType: number,
-    hashes: string[]
+    hashes: string[],
+    rule?: string
   ): Promise<string | null> {
     // Call parent to create job folder and metadata
-    const jobID = await super.createJob(instanceID, wordlist, hashType, hashes);
+    const jobID = await super.createJob(
+      instanceID,
+      wordlist,
+      hashType,
+      hashes,
+      rule
+    );
 
     if (!jobID) {
       console.log(
@@ -332,29 +344,8 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
       return null;
     }
 
-    // Send SQS notification if queue URL is configured
-    if (this.config.jobQueueUrl) {
-      try {
-        await this.sqs
-          .sendMessage({
-            QueueUrl: this.config.jobQueueUrl,
-            MessageBody: JSON.stringify({
-              instanceID,
-              jobID,
-            }),
-          })
-          .promise();
-        console.log(
-          `[AWS Cluster] Sent SQS notification for job ${jobID} on instance ${instanceID}`
-        );
-      } catch (e) {
-        console.error(`[AWS Cluster] Failed to send SQS message:`, e);
-      }
-    } else {
-      console.log(
-        `[AWS Cluster] No SQS queue URL configured, skipping notification`
-      );
-    }
+    // Job metadata written to EFS by parent FileSystemCluster.createJob;
+    // instances will discover pending jobs by scanning EFS.
 
     return jobID;
   }
@@ -364,7 +355,8 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
     jobID: string,
     wordlist: string,
     hashType: number,
-    hashes: string[]
+    hashes: string[],
+    rule?: string
   ): Promise<boolean> {
     // Call parent to create job folder and metadata with specified ID
     const result = await super.createJobWithID(
@@ -372,7 +364,8 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
       jobID,
       wordlist,
       hashType,
-      hashes
+      hashes,
+      rule
     );
 
     if (!result) {
@@ -382,29 +375,9 @@ export class AWSCluster extends FileSystemCluster<AWSClusterConfig> {
       return false;
     }
 
-    // Send SQS notification if queue URL is configured
-    if (this.config.jobQueueUrl) {
-      try {
-        await this.sqs
-          .sendMessage({
-            QueueUrl: this.config.jobQueueUrl,
-            MessageBody: JSON.stringify({
-              instanceID,
-              jobID,
-            }),
-          })
-          .promise();
-        console.log(
-          `[AWS Cluster] Sent SQS notification for job ${jobID} on instance ${instanceID}`
-        );
-      } catch (e) {
-        console.error(`[AWS Cluster] Failed to send SQS message:`, e);
-      }
-    } else {
-      console.log(
-        `[AWS Cluster] No SQS queue URL configured, skipping notification`
-      );
-    }
+    // Send SQS notification
+    // SQS removed: the job metadata has already been written to EFS by the
+    // filesystem layer; instances will scan EFS for pending jobs.
 
     return true;
   }

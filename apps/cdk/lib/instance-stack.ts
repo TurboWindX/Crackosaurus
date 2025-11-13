@@ -1,4 +1,5 @@
-import { DockerImage, Duration } from "aws-cdk-lib";
+// This is for the GPU ec2 instances that get created to process jobs
+import { DockerImage } from "aws-cdk-lib";
 import {
   ISubnet,
   IVpc,
@@ -15,7 +16,6 @@ import {
   ServicePrincipal,
 } from "aws-cdk-lib/aws-iam";
 import { Asset } from "aws-cdk-lib/aws-s3-assets";
-import { Queue } from "aws-cdk-lib/aws-sqs";
 import {
   DefinitionBody,
   JsonPath,
@@ -35,6 +35,7 @@ export interface InstanceStackConfig {
 }
 
 export interface InstanceStackProps extends InstanceStackConfig {
+  accessPointId?: string;
   prefix?: string;
   vpc: IVpc;
   subnets: ISubnet[]; // Changed from subnet to subnets array for multi-AZ support
@@ -50,7 +51,7 @@ interface UserDataTemplateProps {
   fileSystemPath: string;
   instanceEnvString: string;
   scriptPath: string;
-  queueUrl: string;
+  accessPointId?: string;
 }
 
 export class InstanceStack extends Construct {
@@ -58,7 +59,7 @@ export class InstanceStack extends Construct {
   public readonly instanceRole: Role;
   public readonly instanceSG: SecurityGroup;
   public readonly asset: Asset;
-  public readonly jobQueue: Queue;
+  // jobQueue removed - SQS is no longer used
 
   public static readonly NAME = "instance";
 
@@ -71,12 +72,7 @@ export class InstanceStack extends Construct {
     const tag = (v: string) =>
       prefix !== undefined ? `${prefix}-${v}` : undefined;
 
-    // Create SQS queue for job notifications
-    this.jobQueue = new Queue(this, "job-queue", {
-      queueName: tag("job-queue"),
-      visibilityTimeout: Duration.minutes(15), // Time worker has to process job
-      receiveMessageWaitTime: Duration.seconds(20), // Long polling
-    });
+    // SQS queue removed - instances will use EFS scanning instead
 
     // Use provided security group or create a new one
     this.instanceSG =
@@ -116,9 +112,7 @@ export class InstanceStack extends Construct {
 
     props.fileSystem.grantReadWrite(this.instanceRole);
 
-    // Grant SQS permissions to instance role
-    this.jobQueue.grantConsumeMessages(this.instanceRole);
-    this.jobQueue.grantSendMessages(this.instanceRole);
+    // Previously granted SQS permissions; removed since queue no longer exists
 
     this.asset = new Asset(this, "package", {
       path: __dirname,
@@ -165,6 +159,7 @@ export class InstanceStack extends Construct {
           UserData: JsonPath.base64Encode(
             JsonPath.format(
               this.getUserDataTemplate(props),
+              JsonPath.stringAt("$.instanceID"),
               JsonPath.stringAt("$.instanceID")
             )
           ),
@@ -269,10 +264,12 @@ export class InstanceStack extends Construct {
     const instanceEnv = envInstanceConfig({
       instanceID: formatTag,
       hashcatPath: hashcatPath,
-      instanceRoot: path.posix.join("/mnt/efs", "instances"),
-      wordlistRoot: path.posix.join("/mnt/efs", "wordlists"),
+      instanceRoot: path.posix.join("/mnt/efs/crackodata", "instances"),
+      wordlistRoot: path.posix.join("/mnt/efs/crackodata", "wordlists"),
+      ruleRoot: path.posix.join("/mnt/efs/crackodata", "rules"),
       instanceCooldown: props.cooldown ?? 60,
       instanceInterval: props.interval ?? 10,
+      // SQS queue URL removed - not included in instance env
     });
 
     const instanceEnvString = Object.entries(instanceEnv)
@@ -289,7 +286,7 @@ export class InstanceStack extends Construct {
       fileSystemPath: props.fileSystemPath,
       instanceEnvString,
       scriptPath,
-      queueUrl: this.jobQueue.queueUrl,
+      accessPointId: props.accessPointId,
     };
 
     return this.getUserDataTemplateAmazonLinux(templateProps);
@@ -321,17 +318,18 @@ export class InstanceStack extends Construct {
     curl -fsSL -o- https://rpm.nodesource.com/setup_20.x | bash
     dnf install nodejs -y
 
-    # Mount EFS
-    mkdir -p /mnt/efs
-    mount -t efs -o tls,iam ${props.fileSystemId}:/ /mnt/efs
-    
+    # Mount EFS at /mnt/efs/crackodata so EC2 and containers use the same canonical path
+    mkdir -p /mnt/efs/crackodata
+    mount -t efs -o tls,iam,accesspoint=${props.accessPointId} ${props.fileSystemId}:/crackodata /mnt/efs/crackodata
+    ls -laR /mnt/efs/crackodata
+
     # Create worker user with same UID/GID as cluster container (1001:1001)
     groupadd -g 1001 worker || true
     useradd -u 1001 -g 1001 -m worker || true
     
     # Create and set permissions for app directories
-    mkdir -p /mnt/efs/instances /mnt/efs/wordlists
-    chown 1001:1001 -R /mnt/efs/instances /mnt/efs/wordlists
+  mkdir -p /mnt/efs/crackodata/instances /mnt/efs/crackodata/wordlists /mnt/efs/crackodata/rules
+  chown 1001:1001 -R /mnt/efs/crackodata/instances /mnt/efs/crackodata/wordlists /mnt/efs/crackodata/rules
 
     # Install App
     aws s3 cp ${props.s3ObjectUrl} /tmp/package.zip
@@ -350,7 +348,8 @@ export class InstanceStack extends Construct {
     echo "=== Starting Instance Application ==="
     INSTANCE_ID="{}"
     echo "Instance ID: $INSTANCE_ID"
-    su worker -c 'INSTANCE_ID='$INSTANCE_ID' JOB_QUEUE_URL="${props.queueUrl}" HASHCAT_PATH="${props.hashcatPath}" INSTANCE_ROOT="/mnt/efs/instances" WORDLIST_ROOT="/mnt/efs/wordlists" INSTANCE_INTERVAL="10" INSTANCE_COOLDOWN="60" node ${props.scriptPath} 2>&1 | tee /tmp/session.log'
+  # Use the generated instance env string which includes RULE_ROOT when present
+  su worker -c '${props.instanceEnvString} node ${props.scriptPath} 2>&1 | tee /tmp/session.log'
     echo "=== Instance Application Exited with code: $? ==="
 
     # Stop Instance

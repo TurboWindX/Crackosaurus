@@ -16,6 +16,7 @@ import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
 import { HashTypeSelect } from "@repo/ui/hashes";
+import { RuleSelect } from "@repo/ui/rules";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
 import { WordlistSelect } from "@repo/ui/wordlists";
@@ -36,6 +37,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
     wordlistID: "",
     hashType: HASH_TYPES.plaintext,
     projectIDs: [],
+    ruleID: undefined,
   });
 
   const queryClient = useQueryClient();
@@ -91,15 +93,27 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
     <DataTable
       singular={t("item.job.singular")}
       plural={t("item.job.plural")}
-      values={values ?? []}
+      values={(values ?? []).map((v) => ({
+        ...v,
+        status: v.status as Status,
+        updatedAt: new Date(v.updatedAt),
+      }))}
       head={[t("item.job.singular"), t("item.status"), t("item.time.update")]}
       isLoading={isLoading}
-      sort={(a, b) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
-      row={({ JID, status, updatedAt }) => [
-        JID,
-        <StatusBadge status={status as Status} />,
-        <RelativeTime time={updatedAt} />,
-      ]}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      sort={(a: any, b: any) => (a.updatedAt <= b.updatedAt ? 1 : -1)}
+      row={(value) => {
+        const { JID, status, updatedAt } = value as {
+          JID: string;
+          status: Status;
+          updatedAt: Date;
+        };
+        return [
+          JID,
+          <StatusBadge status={status as Status} />,
+          <RelativeTime time={updatedAt} />,
+        ];
+      }}
       addDialog={
         <>
           <HashTypeSelect
@@ -110,6 +124,17 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
             value={newJob.wordlistID}
             onValueChange={(wordlistID) => setNewJob({ ...newJob, wordlistID })}
           />
+          <div className="mt-2">
+            <label className="mb-1 block text-sm font-medium">
+              Optional Rule
+            </label>
+            <RuleSelect
+              value={newJob.ruleID ?? null}
+              onValueChange={(v) =>
+                setNewJob({ ...newJob, ruleID: v || undefined })
+              }
+            />
+          </div>
           <MultiSelect
             label={t("item.project.singular")}
             values={(projectList ?? []).map(({ PID, name }) => [PID, name])}

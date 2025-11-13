@@ -9,6 +9,7 @@ interface HashcatConfig {
   outputFile: string;
   hashType: number;
   wordlistFile: string;
+  ruleFile?: string;
   cwd?: string;
   stdio?: "inherit";
 }
@@ -19,10 +20,11 @@ export function hashcat({
   outputFile,
   hashType,
   wordlistFile,
+  ruleFile,
   cwd,
   stdio,
 }: HashcatConfig) {
-  const args = [
+  const args: string[] = [
     "-a",
     "0",
     "-m",
@@ -33,6 +35,11 @@ export function hashcat({
     inputFile,
     wordlistFile,
   ];
+
+  // If a rule file is provided, append the -r option
+  if (ruleFile) {
+    args.push("-r", ruleFile);
+  }
 
   console.log("[Hashcat] Spawning hashcat process");
   console.log("[Hashcat] Executable:", exePath);

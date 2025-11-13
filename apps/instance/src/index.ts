@@ -1,18 +1,21 @@
 import * as AWS from "aws-sdk";
-import { type ChildProcess } from "child_process";
+import { type ChildProcess, execSync } from "child_process";
+import fs from "fs";
 import process from "process";
 
 import { STATUS } from "@repo/api";
 import {
   createInstanceFolder,
+  getInstanceFolderJobs,
   getInstanceMetadata,
   getJobHashPath,
   getJobMetadata,
   getJobOutputPath,
+  scheduleTempFileCleanup,
   writeInstanceMetadata,
   writeJobMetadata,
 } from "@repo/filesystem/cluster";
-import { getWordlistPath } from "@repo/filesystem/wordlist";
+import { getRulePath, getWordlistPath } from "@repo/filesystem/wordlist";
 import { hashcat } from "@repo/hashcat/exe";
 
 import config from "./config";
@@ -82,100 +85,57 @@ async function innerMain(): Promise<ExitCase> {
     let jobProcess: ChildProcess | null = null;
     const jobQueue: { jobID: string; retryCount: number }[] = [];
 
-    // Initialize SQS client for receiving job notifications
-    const sqs = new AWS.SQS({ region: "ca-central-1" });
-    console.log(
-      `[Instance ${config.instanceID}] SQS queue URL: ${config.jobQueueUrl}`
-    );
-
-    // SQS polling function
-    const pollSQS = async () => {
-      if (!config.jobQueueUrl) {
-        console.log(
-          `[Instance ${config.instanceID}] No SQS queue URL configured, skipping poll`
-        );
-        return;
-      }
-
+    // Instead of SQS we scan the instance job folder on disk and pick up any
+    // pending jobs. This relies on atomic job creation (temp -> rename) to
+    // avoid races.
+    const scanJobsOnDisk = async () => {
       try {
-        const result = await sqs
-          .receiveMessage({
-            QueueUrl: config.jobQueueUrl,
-            MaxNumberOfMessages: 10, // Process up to 10 jobs at once
-            WaitTimeSeconds: 20, // Long polling
-            VisibilityTimeout: 900, // 15 minutes (matches queue config)
-          })
-          .promise();
-
-        if (result.Messages && result.Messages.length > 0) {
-          console.log(
-            `[Instance ${config.instanceID}] Received ${result.Messages.length} SQS messages`
-          );
-
-          for (const message of result.Messages) {
-            try {
-              const body = JSON.parse(message.Body || "{}");
-              const messageInstanceID = body.instanceID;
-              const messageJobID = body.jobID;
-
-              // Only process messages for this instance
-              if (messageInstanceID === config.instanceID) {
-                console.log(
-                  `[Instance ${config.instanceID}] Adding job ${messageJobID} to queue from SQS`
-                );
-
-                // Add to job queue if not already present
-                if (!jobQueue.some((job) => job.jobID === messageJobID)) {
-                  jobQueue.push({ jobID: messageJobID, retryCount: 0 });
-                }
-
-                // Delete message from queue since we're processing it
-                await sqs
-                  .deleteMessage({
-                    QueueUrl: config.jobQueueUrl,
-                    ReceiptHandle: message.ReceiptHandle!,
-                  })
-                  .promise();
-
-                console.log(
-                  `[Instance ${config.instanceID}] Deleted SQS message for job ${messageJobID}`
-                );
-              } else {
-                console.log(
-                  `[Instance ${config.instanceID}] Ignoring job ${messageJobID} for different instance ${messageInstanceID}, making visible immediately`
-                );
-
-                // Make message immediately visible again so the correct instance can pick it up
-                await sqs
-                  .changeMessageVisibility({
-                    QueueUrl: config.jobQueueUrl,
-                    ReceiptHandle: message.ReceiptHandle!,
-                    VisibilityTimeout: 0,
-                  })
-                  .promise();
-              }
-            } catch (err) {
-              console.error(
-                `[Instance ${config.instanceID}] Error processing SQS message:`,
-                err
-              );
+        const jobs = await getInstanceFolderJobs(
+          config.instanceRoot,
+          config.instanceID
+        );
+        for (const jid of jobs) {
+          // Skip if already queued
+          if (jobQueue.some((j) => j.jobID === jid)) continue;
+          try {
+            const meta = await getJobMetadata(
+              config.instanceRoot,
+              config.instanceID,
+              jid
+            );
+            if (meta.status === STATUS.Pending) {
+              jobQueue.push({ jobID: jid, retryCount: 0 });
             }
+          } catch {
+            // Ignore missing/invalid metadata; job processing loop will retry
           }
         }
-      } catch (err) {
+      } catch (e) {
         console.error(
-          `[Instance ${config.instanceID}] Error polling SQS:`,
-          err
+          `[Instance ${config.instanceID}] Failed scanning jobs:`,
+          e
         );
       }
     };
+
+    // Do an initial scan of jobs already present on disk (in case they were
+    // created before the instance agent started).
+    await scanJobsOnDisk();
+
+    // Start periodic cleanup of stale temp files created by atomic writers.
+    // Default cleanup interval and max age are 10 minutes.
+    void scheduleTempFileCleanup(
+      config.instanceRoot,
+      10 * 60 * 1000,
+      10 * 60 * 1000
+    );
 
     let lastRun = new Date().getTime();
     let hasProcessedAnyJob = false; // Track if we've ever processed a job
 
     const interval = setInterval(async () => {
-      // Poll SQS for new job notifications
-      await pollSQS();
+      // Scan EFS for new job folders
+      await scanJobsOnDisk();
 
       // Check for instance status updates
       instanceMetadata = await getInstanceMetadata(
@@ -188,46 +148,37 @@ async function innerMain(): Promise<ExitCase> {
       else if (instanceMetadata.status === STATUS.Error)
         return resolve(EXIT_CASE.Error);
 
-      let retryCount = 0; // Initialize retry count for the current job
-
       if (jobID === null) {
         const nextJob = jobQueue.shift();
-
         if (nextJob === undefined) {
-          // Use different cooldown periods based on whether we've processed jobs
-          // If we've never processed a job, wait 5 minutes for initial job creation
-          // If we have processed jobs, use the configured cooldown (default 60s)
+          // ...existing code...
           const effectiveCooldown = hasProcessedAnyJob
             ? config.instanceCooldown
-            : 300; // 5 minutes for initial wait
-
+            : 300;
           if (
             effectiveCooldown >= 0 &&
             new Date().getTime() - lastRun > effectiveCooldown * 1000
           ) {
             instanceMetadata.status = STATUS.Pending;
-
             await writeInstanceMetadata(
               config.instanceRoot,
               config.instanceID,
               instanceMetadata
             );
-
             console.log(
               `[Instance ${config.instanceID}] Cooldown (waited ${effectiveCooldown}s, hasProcessedAnyJob: ${hasProcessedAnyJob})`
             );
-
             clearInterval(interval);
             resolve(EXIT_CASE.Cooldown);
           }
-
           return;
         } else {
           lastRun = new Date().getTime();
-          hasProcessedAnyJob = true; // Mark that we've started processing at least one job
+          hasProcessedAnyJob = true;
         }
-
         jobID = nextJob.jobID;
+        // Track retryCount for this job
+        jobQueue.unshift(nextJob); // Put it back so we can update retryCount if needed
       }
 
       console.log(
@@ -257,16 +208,37 @@ async function innerMain(): Promise<ExitCase> {
           `[Instance ${config.instanceID}] [DEBUG] Job metadata status: ${jobMetadata.status}, STATUS.Pending=${STATUS.Pending}`
         );
 
+        // Validate that job's instanceType matches this instance's type (defense in depth)
+        if (
+          jobMetadata.instanceType &&
+          jobMetadata.instanceType !== instanceMetadata.type
+        ) {
+          console.error(
+            `[Instance ${config.instanceID}] [Job ${jobID}] Job requires instanceType '${jobMetadata.instanceType}' but this instance is type '${instanceMetadata.type}'. Skipping job.`
+          );
+          jobID = null;
+          return;
+        }
+
         // If status is UNKNOWN, the job folder might not be visible yet (EFS propagation delay)
         // Put job back in queue and try again next interval, up to maxRetries
         if (jobMetadata.status === STATUS.Unknown) {
-          retryCount++;
-          const maxRetries = 5; // Retry up to 5 times before giving up
+          // Find job in jobQueue to update retryCount
+          const jobIndex = jobQueue.findIndex((job) => job.jobID === jobID);
+          let retryCount = 1;
+          if (jobIndex !== -1) {
+            const existingJob = jobQueue[jobIndex];
+            if (existingJob) {
+              retryCount = existingJob.retryCount + 1;
+            }
+            jobQueue.splice(jobIndex, 1); // Remove old entry
+          }
+          const maxRetries = 5;
           if (retryCount < maxRetries) {
             console.log(
               `[Instance ${config.instanceID}] [DEBUG] Job metadata not ready yet (attempt ${retryCount}/${maxRetries}), putting back in queue`
             );
-            jobQueue.unshift({ jobID, retryCount }); // Put back at front of queue
+            jobQueue.unshift({ jobID, retryCount });
             jobID = null;
             return;
           } else {
@@ -297,6 +269,47 @@ async function innerMain(): Promise<ExitCase> {
           jobMetadata
         );
 
+        const wordlistFile = getWordlistPath(
+          config.wordlistRoot,
+          jobMetadata.wordlist
+        );
+
+        const ruleFile =
+          jobMetadata.rule && config.ruleRoot
+            ? getRulePath(config.ruleRoot, jobMetadata.rule)
+            : undefined;
+
+        // If the expected wordlist file doesn't exist, capture a full EFS
+        // recursive listing and write it to a log file for easier debugging.
+        if (!fs.existsSync(wordlistFile)) {
+          try {
+            console.error(
+              `[Instance ${config.instanceID}] [Job ${jobID}] Wordlist file not found: ${wordlistFile}`
+            );
+            const listing = execSync("ls -laR /mnt/efs", {
+              encoding: "utf8",
+              maxBuffer: 20 * 1024 * 1024,
+            });
+            console.log(
+              `[Instance ${config.instanceID}] [Job ${jobID}] EFS recursive listing:\n${listing}`
+            );
+            try {
+              fs.writeFileSync(
+                `/var/log/efs-listing-${config.instanceID}-${jobID}.log`,
+                listing
+              );
+            } catch (e) {
+              console.error(
+                `[Instance ${config.instanceID}] Failed to write EFS listing to /var/log: ${String(e)}`
+              );
+            }
+          } catch (e) {
+            console.error(
+              `[Instance ${config.instanceID}] Failed to capture EFS listing: ${String(e)}`
+            );
+          }
+        }
+
         jobProcess = hashcat({
           exePath: config.hashcatPath,
           inputFile: getJobHashPath(
@@ -310,10 +323,8 @@ async function innerMain(): Promise<ExitCase> {
             jobID
           ),
           hashType: jobMetadata.hashType,
-          wordlistFile: getWordlistPath(
-            config.wordlistRoot,
-            jobMetadata.wordlist
-          ),
+          wordlistFile,
+          ruleFile,
         });
       } else if (jobProcess && jobProcess.exitCode !== null) {
         const jobMetadata = await getJobMetadata(

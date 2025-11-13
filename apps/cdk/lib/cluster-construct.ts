@@ -22,8 +22,8 @@ export interface ClusterServiceProps {
   clusterHost?: string;
   clusterPort?: string;
   stepFunctionArn?: string;
-  jobQueueUrl?: string;
   fileSystem: efs.IFileSystem;
+  accessPointId?: string;
 }
 
 export class ClusterService extends Construct {
@@ -49,6 +49,7 @@ export class ClusterService extends Construct {
         transitEncryption: "ENABLED",
         authorizationConfig: {
           iam: "ENABLED",
+          accessPointId: props.accessPointId,
         },
       },
     };
@@ -62,8 +63,8 @@ export class ClusterService extends Construct {
         CLUSTER_HOST: props.clusterHost ?? "0.0.0.0",
         CLUSTER_PORT: props.clusterPort ?? "13337",
         CLUSTER_TYPE: "aws",
-        CLUSTER_INSTANCE_ROOT: "/data/instances",
-        CLUSTER_WORDLIST_ROOT: "/data/wordlists",
+        CLUSTER_INSTANCE_ROOT: "/crackodata/instances",
+        CLUSTER_WORDLIST_ROOT: "/crackodata/wordlists",
         CLUSTER_DISCOVERY_TYPE: "cloud_map",
         CLUSTER_DISCOVERY_NAMESPACE: props.discoveryNamespace ?? "",
         CLUSTER_DISCOVERY_SERVICE: props.discoveryService ?? "cluster",
@@ -71,15 +72,13 @@ export class ClusterService extends Construct {
         ...(props.stepFunctionArn
           ? { CLUSTER_STEP_FUNCTION: props.stepFunctionArn }
           : {}),
-        ...(props.jobQueueUrl
-          ? { CLUSTER_JOB_QUEUE_URL: props.jobQueueUrl }
-          : {}),
+        // jobQueueUrl removed - no SQS wiring
       },
     });
 
     container.addMountPoints({
       sourceVolume: "efs-volume",
-      containerPath: "/data",
+      containerPath: "/crackodata",
       readOnly: false,
     });
 
