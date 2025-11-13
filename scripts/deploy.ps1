@@ -75,18 +75,42 @@ foreach ($repo in $repos) {
 # Build and push images with the dynamic tag
 Write-Host "`nBuilding server image..." -ForegroundColor Yellow
 docker build --build-arg DATABASE_PROVIDER=$DatabaseProvider --build-arg BACKEND_HOST=$BackendHost --build-arg BACKEND_PORT=$BackendPort -t $REGISTRY/crackosaurus/server:$ImageTag -f packages/container/server/Containerfile .
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to build server image" -ForegroundColor Red
+    exit 1
+}
 Write-Host "Pushing server image $REGISTRY/crackosaurus/server:$ImageTag..." -ForegroundColor Yellow
 docker push $REGISTRY/crackosaurus/server:$ImageTag
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to push server image" -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "`nBuilding cluster image..." -ForegroundColor Yellow
 docker build --build-arg DATABASE_PROVIDER=$DatabaseProvider -t $REGISTRY/crackosaurus/cluster:$ImageTag -f packages/container/cluster/Containerfile .
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to build cluster image" -ForegroundColor Red
+    exit 1
+}
 Write-Host "Pushing cluster image $REGISTRY/crackosaurus/cluster:$ImageTag..." -ForegroundColor Yellow
 docker push $REGISTRY/crackosaurus/cluster:$ImageTag
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to push cluster image" -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "`nBuilding prisma image..." -ForegroundColor Yellow
 docker build --build-arg DATABASE_PROVIDER=$DatabaseProvider -t $REGISTRY/crackosaurus/prisma:$ImageTag -f packages/container/prisma/Containerfile .
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to build prisma image" -ForegroundColor Red
+    exit 1
+}
 Write-Host "Pushing prisma image $REGISTRY/crackosaurus/prisma:$ImageTag..." -ForegroundColor Yellow
 docker push $REGISTRY/crackosaurus/prisma:$ImageTag
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Failed to push prisma image" -ForegroundColor Red
+    exit 1
+}
 
 Write-Host "`n=== All images built and pushed successfully! ===" -ForegroundColor Green
 
