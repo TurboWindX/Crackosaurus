@@ -99,6 +99,7 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
    * Should be called after job folders are created.
    */
   public async launchInstance(instanceID: string): Promise<void> {
+    console.log(`[AWS Cluster] launchInstance() called with instanceID: ${instanceID}`);
     await this.run(instanceID);
   }
 

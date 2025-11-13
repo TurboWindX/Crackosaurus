@@ -175,9 +175,11 @@ export const jobRouter = t.router({
 
         // Create instance folder only (don't launch EC2 yet)
         // This allows us to create the job folder before the instance starts
+        console.log(`[JobRouter] Creating instance folder for job ${jobID} with type ${job.instanceType}`);
         const tag = await cluster.instance.createFolder.mutate({
           instanceType: job.instanceType,
         });
+        console.log(`[JobRouter] Created instance folder with tag: ${tag}`);
         if (!tag) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
         const instance = await tx.instance.create({
