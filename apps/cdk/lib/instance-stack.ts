@@ -160,7 +160,7 @@ export class InstanceStack extends Construct {
             JsonPath.format(
               this.getUserDataTemplate(props),
               JsonPath.stringAt("$.instanceID"),
-              JsonPath.stringAt("$.instanceID")
+              JsonPath.stringAt("$.instanceType")
             )
           ),
           EbsOptimized: false,
@@ -263,6 +263,7 @@ export class InstanceStack extends Construct {
 
     const instanceEnv = envInstanceConfig({
       instanceID: formatTag,
+      instanceType: formatTag,
       hashcatPath: hashcatPath,
       instanceRoot: path.posix.join("/mnt/efs/crackodata", "instances"),
       wordlistRoot: path.posix.join("/mnt/efs/crackodata", "wordlists"),

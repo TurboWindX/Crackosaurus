@@ -68,37 +68,11 @@ async function innerMain(): Promise<ExitCase> {
     } else if (instanceMetadata.status === STATUS.Unknown) {
       console.log(`[DEBUG] Instance is UNKNOWN, creating instance folder`);
       
-        // Detect instance type from EC2 metadata
-  let detectedType: string = "external";
-  try {
-    // Use IMDSv2 token-based authentication
-    const metadata = new AWS.MetadataService({
-      httpOptions: { timeout: 5000 },
-      maxRetries: 3,
-      // Force IMDSv2
-      ec2MetadataV1Disabled: true,
-    });
-    
-    // Fetch instance type using IMDSv2
-    const instanceType = await new Promise<string>((resolve, reject) => {
-      metadata.request("/latest/meta-data/instance-type", (err, data) => {
-        if (err) reject(err);
-        else resolve(data);
-      });
-    });
-    detectedType = instanceType;
-    console.log(`[DEBUG] Detected EC2 instance type: ${detectedType}`);
-  } catch (err) {
-    console.error(
-      `[DEBUG] Failed to fetch EC2 instance type, using 'external':`,
-      err
-    );
-  }
-      
+      // Use instance type from config (passed as environment variable from CDK)
       await createInstanceFolder(config.instanceRoot, config.instanceID, {
-        type: detectedType,
+        type: config.instanceType,
       });
-      console.log(`[DEBUG] Instance folder created with type: ${detectedType}`);
+      console.log(`[DEBUG] Instance folder created with type: ${config.instanceType}`);
 
       instanceMetadata = await getInstanceMetadata(
         config.instanceRoot,
