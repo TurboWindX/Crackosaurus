@@ -347,8 +347,6 @@ export class InstanceStack extends Construct {
 
     # Run App (output to both console and log file)
     echo "=== Starting Instance Application ==="
-    INSTANCE_ID="{}"
-    echo "Instance ID: $INSTANCE_ID"
   # Use the generated instance env string which includes RULE_ROOT when present
   su worker -c '${props.instanceEnvString} node ${props.scriptPath} 2>&1 | tee /tmp/session.log'
     echo "=== Instance Application Exited with code: $? ==="
