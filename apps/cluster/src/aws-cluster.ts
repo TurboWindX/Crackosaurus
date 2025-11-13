@@ -100,6 +100,19 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
    */
   public async launchInstance(instanceID: string): Promise<void> {
     console.log(`[AWS Cluster] launchInstance() called with instanceID: ${instanceID}`);
+    
+    // Verify the instance folder exists before launching EC2
+    // This ensures EFS has propagated the folder creation
+    const metadata = await getInstanceMetadata(
+      this.config.instanceRoot,
+      instanceID
+    );
+    console.log(`[AWS Cluster] Verified instance folder exists with metadata:`, JSON.stringify(metadata));
+    
+    if (metadata.status === STATUS.Unknown) {
+      throw new Error(`Instance folder ${instanceID} not found on EFS before launch`);
+    }
+    
     await this.run(instanceID);
   }
 
