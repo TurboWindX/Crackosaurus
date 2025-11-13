@@ -81,23 +81,19 @@ export const wordlistRouter = t.router({
             name: true,
             size: true,
             checksum: true,
+            createdAt: true,
             updatedAt: true,
           },
         });
 
-        return rows.map(
-          (row: {
-            WID: string;
-            name: string | null;
-            size: bigint;
-            checksum: string;
-            createdAt: Date;
-            updatedAt: Date;
-          }) => ({
-            ...row,
-            size: Number(row.size as unknown as bigint),
-          })
-        );
+        return rows.map((row: any) => ({
+          WID: row.WID,
+          name: row.name || "Unnamed",
+          size: Number(row.size),
+          checksum: row.checksum,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        }));
       });
     }),
   getList: permissionProcedure(["wordlists:get"])

@@ -1,3 +1,4 @@
+import { Prisma, PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
 import { z } from "zod";
@@ -5,6 +6,11 @@ import { z } from "zod";
 import { STATUS } from "@repo/api";
 
 import { permissionProcedure, t } from "../plugins/trpc";
+
+type TransactionClient = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
+>;
 
 export const instanceRouter = t.router({
   get: permissionProcedure(["instances:get"])
@@ -34,7 +40,7 @@ export const instanceRouter = t.router({
 
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         return await tx.instance.findUniqueOrThrow({
           include: {
             jobs: true,
@@ -59,7 +65,7 @@ export const instanceRouter = t.router({
     .query(async (opts) => {
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         return await tx.instance.findMany({
           select: {
             IID: true,
@@ -82,8 +88,11 @@ export const instanceRouter = t.router({
     .query(async (opts) => {
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         return await tx.instance.findMany({
+          where: {
+            visible: true,
+          },
           select: {
             IID: true,
             name: true,
@@ -111,7 +120,7 @@ export const instanceRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         const tag = await cluster.instance.create.mutate({
           instanceType: type,
         });
@@ -143,7 +152,7 @@ export const instanceRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         const instances = await tx.instance.findMany({
           select: {
             IID: true,
@@ -211,7 +220,7 @@ export const instanceRouter = t.router({
       const wordlistIDs = data.map((job) => job.wordlistID);
       const ruleIDs = data.map((job) => job.ruleID).filter(Boolean) as string[];
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         await tx.instance.findUniqueOrThrow({
           where: {
             IID: instanceID,
@@ -244,7 +253,7 @@ export const instanceRouter = t.router({
           },
         });
         const projectMap = Object.fromEntries(
-          projects.map((project: { PID: string }) => [project.PID, project])
+          projects.map((project: { PID: any; }) => [project.PID, project])
         );
 
         const wordlists = await tx.wordlist.findMany({
@@ -343,7 +352,7 @@ export const instanceRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         const instance = await tx.instance.findUniqueOrThrow({
           select: {
             IID: true,
@@ -400,3 +409,5 @@ export const instanceRouter = t.router({
 });
 
 export type InstanceRouter = typeof instanceRouter;
+
+

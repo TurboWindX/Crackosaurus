@@ -1,6 +1,12 @@
+import { PrismaClient } from "@prisma/client";
 import { z } from "zod";
 
 import { permissionProcedure, t } from "../plugins/trpc";
+
+type TransactionClient = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
+>;
 
 export const projectRouter = t.router({
   get: permissionProcedure(["auth"])
@@ -71,7 +77,7 @@ export const projectRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         return await tx.project.findUniqueOrThrow({
           select: {
             PID: true,
@@ -168,7 +174,7 @@ export const projectRouter = t.router({
     .query(async (opts) => {
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         const projects = await tx.project.findMany({
           select: {
             PID: true,
@@ -208,40 +214,15 @@ export const projectRouter = t.router({
         });
 
         // Calculate pending jobs count per project
-        return projects.map(
-          (project: {
-            PID: string;
-            name: string;
-            updatedAt: Date;
-            hashes: {
-              flatMap: (arg0: (hash: unknown) => unknown) => {
-                (): unknown;
-                new (): unknown;
-                filter: {
-                  (arg0: (job: unknown) => boolean): {
-                    (): unknown;
-                    new (): unknown;
-                    length: number;
-                  };
-                  new (): unknown;
-                };
-              };
-            };
-            members: unknown;
-          }) => ({
-            PID: project.PID,
-            name: project.name,
-            updatedAt: project.updatedAt,
-            pendingJobsCount: project.hashes
-              .flatMap((hash: unknown) => (hash as { jobs: unknown[] }).jobs)
-              .filter(
-                (job: unknown) =>
-                  (job as { approvalStatus: string }).approvalStatus ===
-                  "PENDING"
-              ).length,
-            members: project.members,
-          })
-        );
+        return projects.map((project: any) => ({
+          PID: project.PID,
+          name: project.name,
+          updatedAt: project.updatedAt,
+          pendingJobsCount: project.hashes
+            .flatMap((hash: any) => hash.jobs)
+            .filter((job: any) => job.approvalStatus === "PENDING").length,
+          members: project.members,
+        }));
       });
     }),
   getList: permissionProcedure(["auth"])
@@ -256,7 +237,7 @@ export const projectRouter = t.router({
     .query(async (opts) => {
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         return await tx.project.findMany({
           select: {
             PID: true,
@@ -286,7 +267,7 @@ export const projectRouter = t.router({
 
       const { prisma, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         const project = await tx.project.create({
           select: {
             PID: true,
@@ -316,7 +297,7 @@ export const projectRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         const projects = await tx.project.findMany({
           select: {
             PID: true,
@@ -367,7 +348,7 @@ export const projectRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         await tx.project.update({
           where: {
             PID: projectID,
@@ -402,7 +383,7 @@ export const projectRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         await tx.project.update({
           where: {
             PID: projectID,
@@ -429,3 +410,5 @@ export const projectRouter = t.router({
 });
 
 export type ProjectRouter = typeof projectRouter;
+
+

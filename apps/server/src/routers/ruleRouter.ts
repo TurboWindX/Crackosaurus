@@ -62,22 +62,18 @@ export const ruleRouter = t.router({
             name: true,
             size: true,
             checksum: true,
+            createdAt: true,
             updatedAt: true,
           },
         });
-        return rows.map(
-          (row: {
-            RID: string;
-            name: string | null;
-            size: bigint;
-            checksum: string;
-            createdAt: Date;
-            updatedAt: Date;
-          }) => ({
-            ...row,
-            size: Number(row.size),
-          })
-        );
+        return rows.map((row: any) => ({
+          RID: row.RID,
+          name: row.name || "Unnamed",
+          size: Number(row.size),
+          checksum: row.checksum,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        }));
       });
     }),
 

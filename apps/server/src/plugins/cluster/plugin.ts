@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { type CreateTRPCProxyClient } from "@trpc/client";
 import fp from "fastify-plugin";
 
@@ -8,6 +8,10 @@ import type { AppRouter } from "@repo/cluster";
 import { trpc } from "./trpc";
 
 type ClusterTRPC = CreateTRPCProxyClient<AppRouter>;
+type TransactionClient = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
+>;
 
 export type ClusterPluginConfig = {
   pollingRateMs: number;
@@ -40,7 +44,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
   }
 
   try {
-    await prisma.$transaction(async (tx: PrismaClient) => {
+    await prisma.$transaction(async (tx: TransactionClient) => {
       const instanceSelect = {
         IID: true,
         tag: true,
@@ -220,3 +224,5 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
     // ignore error
   }
 }
+
+

@@ -1,3 +1,4 @@
+import { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
 import { z } from "zod";
@@ -5,6 +6,11 @@ import { z } from "zod";
 import { STATUS } from "@repo/api";
 
 import { permissionProcedure, t } from "../plugins/trpc";
+
+type TransactionClient = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
+>;
 
 export const jobRouter = t.router({
   // Create pending job requests (called from project UI)
@@ -29,9 +35,9 @@ export const jobRouter = t.router({
 
       const projectIDs = data.flatMap((job) => job.projectIDs);
       const wordlistIDs = data.map((job) => job.wordlistID);
-      const ruleIDs = data.map((job) => job.ruleID).filter(Boolean) as string[];
+      const ruleIDs = data.flatMap((job) => job.ruleID).filter(Boolean);
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         const projects = await tx.project.findMany({
           select: {
             PID: true,
@@ -48,7 +54,7 @@ export const jobRouter = t.router({
         });
 
         const projectMap = Object.fromEntries(
-          projects.map((p: { PID: string }) => [p.PID, p])
+          projects.map((p: any) => [p.PID, p])
         );
 
         const wordlists = await tx.wordlist.findMany({
@@ -136,7 +142,7 @@ export const jobRouter = t.router({
       const { jobID } = opts.input;
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         const job = await tx.job.findUniqueOrThrow({
           where: { JID: jobID },
           select: {
@@ -158,6 +164,12 @@ export const jobRouter = t.router({
           throw new TRPCError({
             code: "BAD_REQUEST",
             message: "Job not pending",
+          });
+
+        if (!job.instanceType)
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Job missing instance type",
           });
 
         // Create a fresh instance for this approved job. We intentionally do
@@ -214,6 +226,12 @@ export const jobRouter = t.router({
           if (!visible) {
             // Target instance not found in cluster after waiting. Create a fresh
             // cluster instance and update DB to point to the new tag.
+            if (!job.instanceType)
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: "Job missing instance type",
+              });
+
             const newTag = await cluster.instance.create.mutate({
               instanceType: job.instanceType,
             });
@@ -258,7 +276,7 @@ export const jobRouter = t.router({
       const { jobIDs } = opts.input;
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: typeof prisma) => {
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         // Get all jobs to be approved
         const jobs = await tx.job.findMany({
           where: { JID: { in: jobIDs }, approvalStatus: "PENDING" },
@@ -284,6 +302,7 @@ export const jobRouter = t.router({
         const jobsByType = jobs.reduce(
           (acc: Record<string, typeof jobs>, job: (typeof jobs)[0]) => {
             const type = job.instanceType;
+            if (!type) return acc; // Skip jobs without instance type
             if (!acc[type]) acc[type] = [];
             acc[type].push(job);
             return acc;
@@ -298,6 +317,8 @@ export const jobRouter = t.router({
           typeof jobs,
         ][]) {
           for (const job of typeJobs) {
+            if (!job.instanceType) continue; // Skip jobs without instance type
+
             // Create a fresh instance for each job (one job == one instance)
             const tag = await cluster.instance.create.mutate({
               instanceType: job.instanceType,
@@ -345,6 +366,13 @@ export const jobRouter = t.router({
               const visible = await waitForVisibility(instance.tag);
               if (!visible) {
                 // If not visible, attempt to recreate a fresh instance tag and update DB.
+                if (!job.instanceType) {
+                  throw new TRPCError({
+                    code: "BAD_REQUEST",
+                    message: "Job missing instance type",
+                  });
+                }
+
                 const newTag = await cluster.instance.create.mutate({
                   instanceType: job.instanceType,
                 });
@@ -387,3 +415,5 @@ export const jobRouter = t.router({
 });
 
 export type JobRouter = typeof jobRouter;
+
+
