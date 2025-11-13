@@ -252,7 +252,7 @@ export const jobRouter = t.router({
           await cluster.instance.createJobWithID.mutate({
             instanceID: instance.tag, // Use tag for cluster communication
             jobID,
-            wordlistID: job.wordlistId,
+            wordlistID: job.wordlistId!,
             hashType: job.hashes[0]?.hashType || 0, // All hashes should have same type
             hashes: hashStrings,
             ruleID: job.ruleId ?? undefined,
@@ -393,7 +393,7 @@ export const jobRouter = t.router({
               await cluster.instance.createJobWithID.mutate({
                 instanceID: instance.tag,
                 jobID: job.JID,
-                wordlistID: job.wordlistId,
+                wordlistID: job.wordlistId!,
                 hashType: job.hashes[0]?.hashType || 0,
                 hashes: hashStrings,
                 ruleID: job.ruleId ?? undefined,
