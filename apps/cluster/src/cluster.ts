@@ -15,6 +15,12 @@ export abstract class Cluster<TConfig = undefined> {
     instanceType?: string | null
   ): Promise<string | null>;
 
+  public abstract createInstanceFolder(
+    instanceType: string
+  ): Promise<string | null>;
+
+  public abstract launchInstance(instanceID: string): Promise<void>;
+
   public abstract deleteInstance(instanceID: string): Promise<boolean>;
 
   public abstract createJob(

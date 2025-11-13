@@ -16,6 +16,33 @@ export const instanceRouter = t.router({
       const { cluster } = opts.ctx;
       return await cluster.createInstance(instanceType);
     }),
+  createFolder: publicProcedure
+    .input(
+      z.object({
+        instanceType: z.string(),
+      })
+    )
+    .output(z.string().nullable())
+    .mutation(async (opts) => {
+      const { instanceType } = opts.input;
+
+      const { cluster } = opts.ctx;
+      return await cluster.createInstanceFolder(instanceType);
+    }),
+  launch: publicProcedure
+    .input(
+      z.object({
+        instanceID: z.string(),
+      })
+    )
+    .output(z.boolean())
+    .mutation(async (opts) => {
+      const { instanceID } = opts.input;
+
+      const { cluster } = opts.ctx;
+      await cluster.launchInstance(instanceID);
+      return true;
+    }),
   deleteMany: publicProcedure
     .input(
       z.object({

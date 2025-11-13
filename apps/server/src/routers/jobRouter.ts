@@ -173,11 +173,9 @@ export const jobRouter = t.router({
             message: "Job missing instance type",
           });
 
-        // Create a fresh instance for this approved job. We intentionally do
-        // NOT reuse pre-warmed instances: policy is one job == one EC2 GPU
-        // instance, created at approval time to avoid idle-costs and surprise
-        // launches on redeploy.
-        const tag = await cluster.instance.create.mutate({
+        // Create instance folder only (don't launch EC2 yet)
+        // This allows us to create the job folder before the instance starts
+        const tag = await cluster.instance.createFolder.mutate({
           instanceType: job.instanceType,
         });
         if (!tag) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
@@ -204,40 +202,10 @@ export const jobRouter = t.router({
         return { instance, job };
       });
 
-      // After DB transaction completes, create job folder in EFS
-      // This is done outside the transaction to avoid timeouts and to ensure
-      // DB changes are committed even if EFS operations are slow
+      // After DB transaction completes, create job folder in EFS BEFORE launching EC2
+      // This ensures the job exists when the instance starts polling
       const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
       try {
-        // Wait briefly for the cluster to report the new instance tag so
-        // createJobWithID doesn't race with instance startup and EFS visibility.
-        const waitForVisibility = async (
-          tagToCheck: string,
-          attempts = 20,
-          delayMs = 500
-        ) => {
-          for (let i = 0; i < attempts; i++) {
-            try {
-              const s = await cluster.info.status.query();
-              if (s && tagToCheck in s.instances) return true;
-            } catch {
-              // ignore transient errors and retry
-            }
-            await new Promise((r) => setTimeout(r, delayMs));
-          }
-          return false;
-        };
-
-        const visible = await waitForVisibility(instance.tag);
-        if (!visible) {
-          // Instance not visible in cluster after waiting. This is likely a transient
-          // issue - the instance is still starting up. Log the error but continue
-          // to create the job folder anyway.
-          console.error(
-            `[JobRouter] Instance ${instance.tag} not visible in cluster after waiting. Creating job folder anyway.`
-          );
-        }
-
         console.log(
           `[JobRouter] Creating job folder for job ${jobID} in instance ${instance.tag}`
         );
@@ -254,13 +222,35 @@ export const jobRouter = t.router({
         );
       } catch (e) {
         console.error(
-          `[JobRouter] Failed to send job ${jobID} to cluster for instance ${instance.tag}:`,
+          `[JobRouter] Failed to create job folder for job ${jobID} in instance ${instance.tag}:`,
           e
         );
         console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
         // Don't throw - DB changes are already committed, just log the error
         // The instance will be in "running" state but job won't be in EFS
         // Manual intervention may be needed
+        return false;
+      }
+
+      // NOW launch the EC2 instance after job folder is ready
+      try {
+        console.log(
+          `[JobRouter] Launching EC2 instance ${instance.tag} for job ${jobID}`
+        );
+        await cluster.instance.launch.mutate({
+          instanceID: instance.tag,
+        });
+        console.log(
+          `[JobRouter] Successfully launched EC2 instance ${instance.tag}`
+        );
+      } catch (e) {
+        console.error(
+          `[JobRouter] Failed to launch EC2 instance ${instance.tag}:`,
+          e
+        );
+        console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
+        // Job folder exists but instance won't launch - manual intervention needed
+        return false;
       }
 
       return true;
@@ -317,8 +307,8 @@ export const jobRouter = t.router({
           for (const job of typeJobs) {
             if (!job.instanceType) continue; // Skip jobs without instance type
 
-            // Create a fresh instance for each job (one job == one instance)
-            const tag = await cluster.instance.create.mutate({
+            // Create instance folder only (don't launch EC2 yet)
+            const tag = await cluster.instance.createFolder.mutate({
               instanceType: job.instanceType,
             });
             if (!tag) continue; // Skip if instance creation failed
@@ -348,10 +338,11 @@ export const jobRouter = t.router({
         return pairs;
       });
 
-      // After DB transaction completes, create job folders in EFS
-      // This is done outside the transaction to avoid timeouts
+      // After DB transaction completes, create job folders BEFORE launching instances
+      // This ensures jobs exist when instances start polling
       let totalApproved = 0;
       
+      // Step 1: Create all job folders
       await Promise.all(
         jobInstancePairs.map(async (pair: { job: any, instance: { tag: string } }) => {
           const { job, instance } = pair;
@@ -371,16 +362,44 @@ export const jobRouter = t.router({
             console.log(
               `[JobRouter] Successfully created job folder for job ${job.JID} in instance ${instance.tag}`
             );
-            totalApproved++;
           } catch (e) {
             console.error(
-              `[JobRouter] Failed to send job ${job.JID} to cluster for instance ${instance.tag}:`,
+              `[JobRouter] Failed to create job folder for job ${job.JID} in instance ${instance.tag}:`,
               e
             );
             console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
-            // Don't throw - DB changes are already committed, continue with other jobs
+            // Mark this pair as failed so we don't launch its instance
+            (pair as any).failed = true;
           }
         })
+      );
+
+      // Step 2: Launch all EC2 instances after job folders are ready
+      await Promise.all(
+        jobInstancePairs
+          .filter((pair: any) => !pair.failed)
+          .map(async (pair: { job: any, instance: { tag: string } }) => {
+            const { job, instance } = pair;
+            try {
+              console.log(
+                `[JobRouter] Launching EC2 instance ${instance.tag} for job ${job.JID}`
+              );
+              await cluster.instance.launch.mutate({
+                instanceID: instance.tag,
+              });
+              console.log(
+                `[JobRouter] Successfully launched EC2 instance ${instance.tag}`
+              );
+              totalApproved++;
+            } catch (e) {
+              console.error(
+                `[JobRouter] Failed to launch EC2 instance ${instance.tag} for job ${job.JID}:`,
+                e
+              );
+              console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
+              // Job folder exists but instance won't launch - manual intervention needed
+            }
+          })
       );
 
       return totalApproved;

@@ -49,9 +49,13 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
     return true;
   }
 
-  public async createInstance(instanceType: string): Promise<string | null> {
+  /**
+   * Create instance folder only, without launching EC2.
+   * Returns instanceID which can be used to create job folders before launching.
+   */
+  public async createInstanceFolder(instanceType: string): Promise<string | null> {
     // Call parent to create instance folder and metadata
-    const instanceID = await super.createInstance(instanceType);
+    const instanceID = await super.createInstanceFolder(instanceType);
 
     if (!instanceID) {
       console.log(
@@ -60,7 +64,6 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
       return null;
     }
 
-    // Start the Step Function to launch the EC2 instance
     // Validate instance type early so we fail fast with a clear message
     const supported = this.getTypes();
     if (!supported.includes(instanceType)) {
@@ -74,7 +77,6 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
           instanceID
         );
         metadata.status = STATUS.Error;
-        // Attach a best-effort error field without using `any`
         (metadata as Record<string, unknown>)["error"] =
           `Unsupported instance type: ${instanceType}`;
         await writeInstanceMetadata(
@@ -89,8 +91,22 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
       throw new Error(`Unsupported instance type: ${instanceType}`);
     }
 
-    await this.run(instanceID);
+    return instanceID;
+  }
 
+  /**
+   * Launch EC2 instance for an existing instance folder.
+   * Should be called after job folders are created.
+   */
+  public async launchInstance(instanceID: string): Promise<void> {
+    await this.run(instanceID);
+  }
+
+  public async createInstance(instanceType: string): Promise<string | null> {
+    const instanceID = await this.createInstanceFolder(instanceType);
+    if (!instanceID) return null;
+    
+    await this.launchInstance(instanceID);
     return instanceID;
   }
 

@@ -72,13 +72,27 @@ export abstract class FileSystemCluster<
     return getClusterFolderStatus(this.config.instanceRoot);
   }
 
-  public async createInstance(instanceType: string): Promise<string | null> {
+  public async createInstanceFolder(instanceType: string): Promise<string | null> {
     const instanceID = crypto.randomUUID();
 
     await createInstanceFolder(this.config.instanceRoot, instanceID, {
       type: instanceType,
     });
 
+    return instanceID;
+  }
+
+  public async launchInstance(instanceID: string): Promise<void> {
+    // Base FileSystemCluster doesn't have a launch mechanism
+    // Subclasses like AwsCluster override this to launch EC2 instances
+    await this.run(instanceID);
+  }
+
+  public async createInstance(instanceType: string): Promise<string | null> {
+    const instanceID = await this.createInstanceFolder(instanceType);
+    if (!instanceID) return null;
+    
+    await this.launchInstance(instanceID);
     return instanceID;
   }
 
