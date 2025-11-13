@@ -142,7 +142,8 @@ export const jobRouter = t.router({
       const { jobID } = opts.input;
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: TransactionClient) => {
+      // First, do all database operations in a transaction
+      const { instance, job } = await prisma.$transaction(async (tx: TransactionClient) => {
         const job = await tx.job.findUniqueOrThrow({
           where: { JID: jobID },
           select: {
@@ -200,56 +201,62 @@ export const jobRouter = t.router({
           },
         });
 
-        // Send job to cluster. Verify the cluster knows about this instance tag
-        const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
-        try {
-          // Wait briefly for the cluster to report the new instance tag so
-          // createJobWithID doesn't race with instance startup and EFS visibility.
-          const waitForVisibility = async (
-            tagToCheck: string,
-            attempts = 20,
-            delayMs = 500
-          ) => {
-            for (let i = 0; i < attempts; i++) {
-              try {
-                const s = await cluster.info.status.query();
-                if (s && tagToCheck in s.instances) return true;
-              } catch {
-                // ignore transient errors and retry
-              }
-              await new Promise((r) => setTimeout(r, delayMs));
+        return { instance, job };
+      });
+
+      // After DB transaction completes, create job folder in EFS
+      // This is done outside the transaction to avoid timeouts and to ensure
+      // DB changes are committed even if EFS operations are slow
+      const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
+      try {
+        // Wait briefly for the cluster to report the new instance tag so
+        // createJobWithID doesn't race with instance startup and EFS visibility.
+        const waitForVisibility = async (
+          tagToCheck: string,
+          attempts = 20,
+          delayMs = 500
+        ) => {
+          for (let i = 0; i < attempts; i++) {
+            try {
+              const s = await cluster.info.status.query();
+              if (s && tagToCheck in s.instances) return true;
+            } catch {
+              // ignore transient errors and retry
             }
-            return false;
-          };
-
-          const visible = await waitForVisibility(instance.tag);
-          if (!visible) {
-            // Instance not visible in cluster after waiting. This is likely a transient
-            // issue - the instance is still starting up. Log the error but don't create
-            // a second instance (which would cause duplicate instances).
-            console.error(
-              `[JobRouter] Instance ${instance.tag} not visible in cluster after waiting. Job will be picked up once instance reports to cluster.`
-            );
+            await new Promise((r) => setTimeout(r, delayMs));
           }
+          return false;
+        };
 
-          await cluster.instance.createJobWithID.mutate({
-            instanceID: instance.tag, // Use tag for cluster communication
-            jobID,
-            wordlistID: job.wordlistId!,
-            hashType: job.hashes[0]?.hashType || 0, // All hashes should have same type
-            hashes: hashStrings,
-            ruleID: job.ruleId ?? undefined,
-          });
-        } catch (e) {
+        const visible = await waitForVisibility(instance.tag);
+        if (!visible) {
+          // Instance not visible in cluster after waiting. This is likely a transient
+          // issue - the instance is still starting up. Log the error but continue
+          // to create the job folder anyway.
           console.error(
-            `[JobRouter] Failed to send job ${jobID} to cluster for instance ${instance.tag}:`,
-            e
+            `[JobRouter] Instance ${instance.tag} not visible in cluster after waiting. Creating job folder anyway.`
           );
-          throw e;
         }
 
-        return true;
-      });
+        await cluster.instance.createJobWithID.mutate({
+          instanceID: instance.tag, // Use tag for cluster communication
+          jobID,
+          wordlistID: job.wordlistId!,
+          hashType: job.hashes[0]?.hashType || 0, // All hashes should have same type
+          hashes: hashStrings,
+          ruleID: job.ruleId ?? undefined,
+        });
+      } catch (e) {
+        console.error(
+          `[JobRouter] Failed to send job ${jobID} to cluster for instance ${instance.tag}:`,
+          e
+        );
+        // Don't throw - DB changes are already committed, just log the error
+        // The instance will be in "running" state but job won't be in EFS
+        // Manual intervention may be needed
+      }
+
+      return true;
     }),
 
   approveMany: permissionProcedure(["jobs:approve"])
@@ -259,7 +266,8 @@ export const jobRouter = t.router({
       const { jobIDs } = opts.input;
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: TransactionClient) => {
+      // First, do all database operations in a transaction
+      const jobInstancePairs = await prisma.$transaction(async (tx: TransactionClient) => {
         // Get all jobs to be approved
         const jobs = await tx.job.findMany({
           where: { JID: { in: jobIDs }, approvalStatus: "PENDING" },
@@ -279,7 +287,7 @@ export const jobRouter = t.router({
           },
         });
 
-        if (jobs.length === 0) return 0;
+        if (jobs.length === 0) return [];
 
         // Group jobs by instance type for efficient instance assignment
         const jobsByType = jobs.reduce(
@@ -293,7 +301,7 @@ export const jobRouter = t.router({
           {} as Record<string, typeof jobs>
         );
 
-        let totalApproved = 0;
+        const pairs: Array<{ job: typeof jobs[0], instance: { tag: string } }> = [];
 
         for (const [, typeJobs] of Object.entries(jobsByType) as [
           string,
@@ -326,57 +334,42 @@ export const jobRouter = t.router({
               },
             });
 
-            const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
-            try {
-              // Wait briefly for the cluster to report the new instance tag
-              const waitForVisibility = async (
-                tagToCheck: string,
-                attempts = 20,
-                delayMs = 500
-              ) => {
-                for (let i = 0; i < attempts; i++) {
-                  try {
-                    const s = await cluster.info.status.query();
-                    if (s && tagToCheck in s.instances) return true;
-                  } catch {
-                    // ignore transient errors and retry
-                  }
-                  await new Promise((r) => setTimeout(r, delayMs));
-                }
-                return false;
-              };
-
-              const visible = await waitForVisibility(instance.tag);
-              if (!visible) {
-                // Instance not visible in cluster after waiting. This is likely a transient
-                // issue - the instance is still starting up. Log the error but don't create
-                // a second instance (which would cause duplicate instances).
-                console.error(
-                  `[JobRouter] Instance ${instance.tag} not visible in cluster after waiting. Job will be picked up once instance reports to cluster.`
-                );
-              }
-
-              await cluster.instance.createJobWithID.mutate({
-                instanceID: instance.tag,
-                jobID: job.JID,
-                wordlistID: job.wordlistId!,
-                hashType: job.hashes[0]?.hashType || 0,
-                hashes: hashStrings,
-                ruleID: job.ruleId ?? undefined,
-              });
-            } catch (e) {
-              console.error(
-                `[JobRouter] Failed to send job ${job.JID} to cluster for instance ${tag}:`,
-                e
-              );
-            }
-
-            totalApproved++;
+            pairs.push({ job, instance: { tag: instance.tag } });
           }
         }
 
-        return totalApproved;
+        return pairs;
       });
+
+      // After DB transaction completes, create job folders in EFS
+      // This is done outside the transaction to avoid timeouts
+      let totalApproved = 0;
+      
+      await Promise.all(
+        jobInstancePairs.map(async (pair: { job: any, instance: { tag: string } }) => {
+          const { job, instance } = pair;
+          const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
+          try {
+            await cluster.instance.createJobWithID.mutate({
+              instanceID: instance.tag,
+              jobID: job.JID,
+              wordlistID: job.wordlistId!,
+              hashType: job.hashes[0]?.hashType || 0,
+              hashes: hashStrings,
+              ruleID: job.ruleId ?? undefined,
+            });
+            totalApproved++;
+          } catch (e) {
+            console.error(
+              `[JobRouter] Failed to send job ${job.JID} to cluster for instance ${instance.tag}:`,
+              e
+            );
+            // Don't throw - DB changes are already committed, continue with other jobs
+          }
+        })
+      );
+
+      return totalApproved;
     }),
 });
 
