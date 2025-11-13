@@ -1,3 +1,4 @@
+# Dockerfile for the AWS builds of the Crackosaurus instance service
 FROM docker.io/node:20-alpine AS base
 
 RUN apk update
