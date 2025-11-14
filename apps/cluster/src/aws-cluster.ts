@@ -53,7 +53,9 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
    * Create instance folder only, without launching EC2.
    * Returns instanceID which can be used to create job folders before launching.
    */
-  public async createInstanceFolder(instanceType: string): Promise<string | null> {
+  public async createInstanceFolder(
+    instanceType: string
+  ): Promise<string | null> {
     // Call parent to create instance folder and metadata
     const instanceID = await super.createInstanceFolder(instanceType);
 
@@ -99,40 +101,49 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
    * Should be called after job folders are created.
    */
   public async launchInstance(instanceID: string): Promise<void> {
-    console.log(`[AWS Cluster] launchInstance() called with instanceID: ${instanceID}`);
-    
+    console.log(
+      `[AWS Cluster] launchInstance() called with instanceID: ${instanceID}`
+    );
+
     // Verify the instance folder exists before launching EC2
     // Retry a few times to account for EFS propagation delays
     let metadata = await getInstanceMetadata(
       this.config.instanceRoot,
       instanceID
     );
-    
+
     let attempts = 0;
     const maxAttempts = 10;
     while (metadata.status === STATUS.Unknown && attempts < maxAttempts) {
-      console.log(`[AWS Cluster] Instance folder not found yet, waiting 500ms (attempt ${attempts + 1}/${maxAttempts})...`);
-      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log(
+        `[AWS Cluster] Instance folder not found yet, waiting 500ms (attempt ${attempts + 1}/${maxAttempts})...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 500));
       metadata = await getInstanceMetadata(
         this.config.instanceRoot,
         instanceID
       );
       attempts++;
     }
-    
-    console.log(`[AWS Cluster] Verified instance folder exists with metadata:`, JSON.stringify(metadata));
-    
+
+    console.log(
+      `[AWS Cluster] Verified instance folder exists with metadata:`,
+      JSON.stringify(metadata)
+    );
+
     if (metadata.status === STATUS.Unknown) {
-      throw new Error(`Instance folder ${instanceID} not found on EFS after ${maxAttempts} attempts`);
+      throw new Error(
+        `Instance folder ${instanceID} not found on EFS after ${maxAttempts} attempts`
+      );
     }
-    
+
     await this.run(instanceID);
   }
 
   public async createInstance(instanceType: string): Promise<string | null> {
     const instanceID = await this.createInstanceFolder(instanceType);
     if (!instanceID) return null;
-    
+
     await this.launchInstance(instanceID);
     return instanceID;
   }

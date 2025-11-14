@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { type CreateTRPCProxyClient } from "@trpc/client";
 import fp from "fastify-plugin";
 
@@ -99,7 +99,7 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
                 select: instanceSelect,
                 where: { tag: instanceTag },
               });
-              
+
               if (existing) {
                 instanceDB = existing;
                 instanceSearch[instanceTag] = existing; // Cache it
@@ -228,5 +228,3 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
     // ignore error
   }
 }
-
-

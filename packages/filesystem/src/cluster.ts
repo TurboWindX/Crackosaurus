@@ -349,10 +349,15 @@ export async function createInstanceFolder(
     if (fs.existsSync("/proc/mounts")) {
       const mounts = fs.readFileSync("/proc/mounts", "utf8");
       console.log(`[filesystem] Full /proc/mounts for debugging:\n${mounts}`);
-      
+
       const isOnMountedFs = mounts.split("\n").some((line) => {
         // Look for the instanceRoot or common efs mount points in mounts
-        return line.includes(instanceRoot) || line.includes("/crackodata") || line.includes("/mnt/efs") || line.includes("efs");
+        return (
+          line.includes(instanceRoot) ||
+          line.includes("/crackodata") ||
+          line.includes("/mnt/efs") ||
+          line.includes("efs")
+        );
       });
       if (!isOnMountedFs) {
         console.warn(
@@ -360,7 +365,9 @@ export async function createInstanceFolder(
             "This can mean the process will write to a container-local filesystem instead of EFS."
         );
       } else {
-        console.log(`[filesystem] Confirmed instanceRoot (${instanceRoot}) is on a mounted filesystem`);
+        console.log(
+          `[filesystem] Confirmed instanceRoot (${instanceRoot}) is on a mounted filesystem`
+        );
       }
     }
   } catch (e) {

@@ -86,7 +86,7 @@ export const wordlistRouter = t.router({
           },
         });
 
-        return rows.map((row: any) => ({
+        return rows.map((row: { WID: string; name: string | null; size: bigint; checksum: string; createdAt: Date; updatedAt: Date }) => ({
           WID: row.WID,
           name: row.name || "Unnamed",
           size: Number(row.size),

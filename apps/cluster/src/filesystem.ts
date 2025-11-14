@@ -72,7 +72,9 @@ export abstract class FileSystemCluster<
     return getClusterFolderStatus(this.config.instanceRoot);
   }
 
-  public async createInstanceFolder(instanceType: string): Promise<string | null> {
+  public async createInstanceFolder(
+    instanceType: string
+  ): Promise<string | null> {
     const instanceID = crypto.randomUUID();
 
     await createInstanceFolder(this.config.instanceRoot, instanceID, {
@@ -91,7 +93,7 @@ export abstract class FileSystemCluster<
   public async createInstance(instanceType: string): Promise<string | null> {
     const instanceID = await this.createInstanceFolder(instanceType);
     if (!instanceID) return null;
-    
+
     await this.launchInstance(instanceID);
     return instanceID;
   }

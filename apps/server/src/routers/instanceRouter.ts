@@ -1,4 +1,4 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
 import { z } from "zod";
@@ -283,7 +283,7 @@ export const instanceRouter = t.router({
           },
         });
         const projectMap = Object.fromEntries(
-          projects.map((project: { PID: any; }) => [project.PID, project])
+          projects.map((project: { PID: string }) => [project.PID, project])
         );
 
         const wordlists = await tx.wordlist.findMany({
@@ -439,5 +439,3 @@ export const instanceRouter = t.router({
 });
 
 export type InstanceRouter = typeof instanceRouter;
-
-

@@ -214,13 +214,13 @@ export const projectRouter = t.router({
         });
 
         // Calculate pending jobs count per project
-        return projects.map((project: any) => ({
+        return projects.map((project: { PID: string; name: string; updatedAt: Date; hashes: { jobs: { approvalStatus: string }[] }[]; members: unknown[] }) => ({
           PID: project.PID,
           name: project.name,
           updatedAt: project.updatedAt,
           pendingJobsCount: project.hashes
-            .flatMap((hash: any) => hash.jobs)
-            .filter((job: any) => job.approvalStatus === "PENDING").length,
+            .flatMap((hash: { jobs: { approvalStatus: string }[] }) => hash.jobs)
+            .filter((job: { approvalStatus: string }) => job.approvalStatus === "PENDING").length,
           members: project.members,
         }));
       });
@@ -410,5 +410,3 @@ export const projectRouter = t.router({
 });
 
 export type ProjectRouter = typeof projectRouter;
-
-

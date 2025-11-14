@@ -35,7 +35,9 @@ export const jobRouter = t.router({
 
       const projectIDs = data.flatMap((job) => job.projectIDs);
       const wordlistIDs = data.map((job) => job.wordlistID);
-      const ruleIDs = data.flatMap((job) => job.ruleID).filter((id): id is string => id !== undefined);
+      const ruleIDs = data
+        .flatMap((job) => job.ruleID)
+        .filter((id): id is string => id !== undefined);
 
       return await prisma.$transaction(async (tx: TransactionClient) => {
         const projects = await tx.project.findMany({
@@ -54,7 +56,7 @@ export const jobRouter = t.router({
         });
 
         const projectMap = Object.fromEntries(
-          projects.map((p: any) => [p.PID, p])
+          projects.map((p: { PID: string }) => [p.PID, p])
         );
 
         const wordlists = await tx.wordlist.findMany({
@@ -143,66 +145,70 @@ export const jobRouter = t.router({
       const { prisma, cluster } = opts.ctx;
 
       // First, do all database operations in a transaction
-      const { instance, job } = await prisma.$transaction(async (tx: TransactionClient) => {
-        const job = await tx.job.findUniqueOrThrow({
-          where: { JID: jobID },
-          select: {
-            JID: true,
-            wordlistId: true,
-            ruleId: true,
-            instanceType: true,
-            approvalStatus: true,
-            hashes: {
-              select: {
-                HID: true,
-                hash: true,
-                hashType: true,
+      const { instance, job } = await prisma.$transaction(
+        async (tx: TransactionClient) => {
+          const job = await tx.job.findUniqueOrThrow({
+            where: { JID: jobID },
+            select: {
+              JID: true,
+              wordlistId: true,
+              ruleId: true,
+              instanceType: true,
+              approvalStatus: true,
+              hashes: {
+                select: {
+                  HID: true,
+                  hash: true,
+                  hashType: true,
+                },
               },
             },
-          },
-        });
-        if (job.approvalStatus !== "PENDING")
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Job not pending",
+          });
+          if (job.approvalStatus !== "PENDING")
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Job not pending",
+            });
+
+          if (!job.instanceType)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Job missing instance type",
+            });
+
+          // Create instance folder only (don't launch EC2 yet)
+          // This allows us to create the job folder before the instance starts
+          console.log(
+            `[JobRouter] Creating instance folder for job ${jobID} with type ${job.instanceType}`
+          );
+          const tag = await cluster.instance.createFolder.mutate({
+            instanceType: job.instanceType,
+          });
+          console.log(`[JobRouter] Created instance folder with tag: ${tag}`);
+          if (!tag) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+          const instance = await tx.instance.create({
+            data: {
+              name: `Auto-created for job ${jobID.slice(0, 8)}`,
+              tag,
+              type: job.instanceType,
+              status: "RUNNING", // optimistic: cluster will start it
+            },
           });
 
-        if (!job.instanceType)
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Job missing instance type",
+          // Update job with instance assignment and approval
+          await tx.job.update({
+            where: { JID: jobID },
+            data: {
+              approvalStatus: "APPROVED",
+              instanceId: instance.IID,
+              updatedAt: new Date(),
+            },
           });
 
-        // Create instance folder only (don't launch EC2 yet)
-        // This allows us to create the job folder before the instance starts
-        console.log(`[JobRouter] Creating instance folder for job ${jobID} with type ${job.instanceType}`);
-        const tag = await cluster.instance.createFolder.mutate({
-          instanceType: job.instanceType,
-        });
-        console.log(`[JobRouter] Created instance folder with tag: ${tag}`);
-        if (!tag) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-
-        const instance = await tx.instance.create({
-          data: {
-            name: `Auto-created for job ${jobID.slice(0, 8)}`,
-            tag,
-            type: job.instanceType,
-            status: "RUNNING", // optimistic: cluster will start it
-          },
-        });
-
-        // Update job with instance assignment and approval
-        await tx.job.update({
-          where: { JID: jobID },
-          data: {
-            approvalStatus: "APPROVED",
-            instanceId: instance.IID,
-            updatedAt: new Date(),
-          },
-        });
-
-        return { instance, job };
-      });
+          return { instance, job };
+        }
+      );
 
       // After DB transaction completes, create job folder in EFS BEFORE launching EC2
       // This ensures the job exists when the instance starts polling
@@ -266,121 +272,131 @@ export const jobRouter = t.router({
       const { prisma, cluster } = opts.ctx;
 
       // First, do all database operations in a transaction
-      const jobInstancePairs = await prisma.$transaction(async (tx: TransactionClient) => {
-        // Get all jobs to be approved
-        const jobs = await tx.job.findMany({
-          where: { JID: { in: jobIDs }, approvalStatus: "PENDING" },
-          select: {
-            JID: true,
-            wordlistId: true,
-            ruleId: true,
-            instanceType: true,
-            approvalStatus: true,
-            hashes: {
-              select: {
-                HID: true,
-                hash: true,
-                hashType: true,
+      const jobInstancePairs = await prisma.$transaction(
+        async (tx: TransactionClient) => {
+          // Get all jobs to be approved
+          const jobs = await tx.job.findMany({
+            where: { JID: { in: jobIDs }, approvalStatus: "PENDING" },
+            select: {
+              JID: true,
+              wordlistId: true,
+              ruleId: true,
+              instanceType: true,
+              approvalStatus: true,
+              hashes: {
+                select: {
+                  HID: true,
+                  hash: true,
+                  hashType: true,
+                },
               },
             },
-          },
-        });
+          });
 
-        if (jobs.length === 0) return [];
+          if (jobs.length === 0) return [];
 
-        // Group jobs by instance type for efficient instance assignment
-        const jobsByType = jobs.reduce(
-          (acc: Record<string, typeof jobs>, job: (typeof jobs)[0]) => {
-            const type = job.instanceType;
-            if (!type) return acc; // Skip jobs without instance type
-            if (!acc[type]) acc[type] = [];
-            acc[type].push(job);
-            return acc;
-          },
-          {} as Record<string, typeof jobs>
-        );
+          // Group jobs by instance type for efficient instance assignment
+          const jobsByType = jobs.reduce(
+            (acc: Record<string, typeof jobs>, job: (typeof jobs)[0]) => {
+              const type = job.instanceType;
+              if (!type) return acc; // Skip jobs without instance type
+              if (!acc[type]) acc[type] = [];
+              acc[type].push(job);
+              return acc;
+            },
+            {} as Record<string, typeof jobs>
+          );
 
-        const pairs: Array<{ job: typeof jobs[0], instance: { tag: string } }> = [];
+          const pairs: Array<{
+            job: (typeof jobs)[0];
+            instance: { tag: string };
+          }> = [];
 
-        for (const [, typeJobs] of Object.entries(jobsByType) as [
-          string,
-          typeof jobs,
-        ][]) {
-          for (const job of typeJobs) {
-            if (!job.instanceType) continue; // Skip jobs without instance type
+          for (const [, typeJobs] of Object.entries(jobsByType) as [
+            string,
+            typeof jobs,
+          ][]) {
+            for (const job of typeJobs) {
+              if (!job.instanceType) continue; // Skip jobs without instance type
 
-            // Create instance folder only (don't launch EC2 yet)
-            const tag = await cluster.instance.createFolder.mutate({
-              instanceType: job.instanceType,
-            });
-            if (!tag) continue; // Skip if instance creation failed
+              // Create instance folder only (don't launch EC2 yet)
+              const tag = await cluster.instance.createFolder.mutate({
+                instanceType: job.instanceType,
+              });
+              if (!tag) continue; // Skip if instance creation failed
 
-            const instance = await tx.instance.create({
-              data: {
-                name: `Auto-created for job ${job.JID.slice(0, 8)}`,
-                tag,
-                type: job.instanceType,
-                status: "RUNNING",
-              },
-            });
+              const instance = await tx.instance.create({
+                data: {
+                  name: `Auto-created for job ${job.JID.slice(0, 8)}`,
+                  tag,
+                  type: job.instanceType,
+                  status: "RUNNING",
+                },
+              });
 
-            await tx.job.update({
-              where: { JID: job.JID },
-              data: {
-                approvalStatus: "APPROVED",
-                instanceId: instance.IID,
-                updatedAt: new Date(),
-              },
-            });
+              await tx.job.update({
+                where: { JID: job.JID },
+                data: {
+                  approvalStatus: "APPROVED",
+                  instanceId: instance.IID,
+                  updatedAt: new Date(),
+                },
+              });
 
-            pairs.push({ job, instance: { tag: instance.tag } });
+              pairs.push({ job, instance: { tag: instance.tag } });
+            }
           }
-        }
 
-        return pairs;
-      });
+          return pairs;
+        }
+      );
 
       // After DB transaction completes, create job folders BEFORE launching instances
       // This ensures jobs exist when instances start polling
       let totalApproved = 0;
-      
+
       // Step 1: Create all job folders
       await Promise.all(
-        jobInstancePairs.map(async (pair: { job: any, instance: { tag: string } }) => {
-          const { job, instance } = pair;
-          const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
-          try {
-            console.log(
-              `[JobRouter] Creating job folder for job ${job.JID} in instance ${instance.tag}`
-            );
-            await cluster.instance.createJobWithID.mutate({
-              instanceID: instance.tag,
-              jobID: job.JID,
-              wordlistID: job.wordlistId!,
-              hashType: job.hashes[0]?.hashType || 0,
-              hashes: hashStrings,
-              ruleID: job.ruleId ?? undefined,
-            });
-            console.log(
-              `[JobRouter] Successfully created job folder for job ${job.JID} in instance ${instance.tag}`
-            );
-          } catch (e) {
-            console.error(
-              `[JobRouter] Failed to create job folder for job ${job.JID} in instance ${instance.tag}:`,
-              e
-            );
-            console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
-            // Mark this pair as failed so we don't launch its instance
-            (pair as any).failed = true;
+        jobInstancePairs.map(
+          async (pair: { job: { JID: string; wordlistId: string | null; ruleId: string | null; hashes: { hash: string; hashType: number }[] }; instance: { tag: string } }) => {
+            const { job, instance } = pair;
+            const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
+            try {
+              console.log(
+                `[JobRouter] Creating job folder for job ${job.JID} in instance ${instance.tag}`
+              );
+              await cluster.instance.createJobWithID.mutate({
+                instanceID: instance.tag,
+                jobID: job.JID,
+                wordlistID: job.wordlistId!,
+                hashType: job.hashes[0]?.hashType || 0,
+                hashes: hashStrings,
+                ruleID: job.ruleId ?? undefined,
+              });
+              console.log(
+                `[JobRouter] Successfully created job folder for job ${job.JID} in instance ${instance.tag}`
+              );
+            } catch (e) {
+              console.error(
+                `[JobRouter] Failed to create job folder for job ${job.JID} in instance ${instance.tag}:`,
+                e
+              );
+              console.error(
+                `[JobRouter] Error details:`,
+                JSON.stringify(e, null, 2)
+              );
+              // Mark this pair as failed so we don't launch its instance
+              (pair as { failed?: boolean }).failed = true;
+            }
           }
-        })
+        )
       );
 
       // Step 2: Launch all EC2 instances after job folders are ready
       await Promise.all(
         jobInstancePairs
-          .filter((pair: any) => !pair.failed)
-          .map(async (pair: { job: any, instance: { tag: string } }) => {
+          .filter((pair: { failed?: boolean }) => !pair.failed)
+          .map(async (pair: { job: { JID: string }; instance: { tag: string } }) => {
             const { job, instance } = pair;
             try {
               console.log(
@@ -398,7 +414,10 @@ export const jobRouter = t.router({
                 `[JobRouter] Failed to launch EC2 instance ${instance.tag} for job ${job.JID}:`,
                 e
               );
-              console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
+              console.error(
+                `[JobRouter] Error details:`,
+                JSON.stringify(e, null, 2)
+              );
               // Job folder exists but instance won't launch - manual intervention needed
             }
           })
@@ -409,5 +428,3 @@ export const jobRouter = t.router({
 });
 
 export type JobRouter = typeof jobRouter;
-
-

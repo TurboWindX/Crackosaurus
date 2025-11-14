@@ -19,14 +19,22 @@ try {
     const mounts = fs.readFileSync("/proc/mounts", "utf8");
     console.log("[Cluster] /proc/mounts contents (EFS/NFS mounts only):");
     mounts.split("\n").forEach((line) => {
-      if (line.includes("crackodata") || line.includes("efs") || line.includes("nfs")) {
+      if (
+        line.includes("crackodata") ||
+        line.includes("efs") ||
+        line.includes("nfs")
+      ) {
         console.log(`  ${line}`);
       }
     });
     const hasCrackodataMount = mounts.includes("/crackodata");
     if (!hasCrackodataMount) {
-      console.error("[Cluster] WARNING: No /crackodata mount found! EFS is not mounted!");
-      console.error("[Cluster] This will cause instance folders to be created in container-local storage.");
+      console.error(
+        "[Cluster] WARNING: No /crackodata mount found! EFS is not mounted!"
+      );
+      console.error(
+        "[Cluster] This will cause instance folders to be created in container-local storage."
+      );
     } else {
       console.log("[Cluster] ✓ /crackodata is mounted");
     }

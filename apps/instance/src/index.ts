@@ -73,12 +73,14 @@ async function innerMain(): Promise<ExitCase> {
       );
     } else if (instanceMetadata.status === STATUS.Unknown) {
       console.log(`[DEBUG] Instance is UNKNOWN, creating instance folder`);
-      
+
       // Use instance type from config (passed as environment variable from CDK)
       await createInstanceFolder(config.instanceRoot, config.instanceID, {
         type: config.instanceType,
       });
-      console.log(`[DEBUG] Instance folder created with type: ${config.instanceType}`);
+      console.log(
+        `[DEBUG] Instance folder created with type: ${config.instanceType}`
+      );
 
       instanceMetadata = await getInstanceMetadata(
         config.instanceRoot,
@@ -166,14 +168,14 @@ async function innerMain(): Promise<ExitCase> {
           const timeWaited = Math.floor(
             (new Date().getTime() - lastRun) / 1000
           );
-          
+
           if (timeWaited % 10 === 0) {
             // Log every 10 seconds
             console.log(
               `[Instance ${config.instanceID}] No jobs found. Waiting ${timeWaited}s/${effectiveCooldown}s before shutdown (hasProcessedAnyJob: ${hasProcessedAnyJob})`
             );
           }
-          
+
           if (
             effectiveCooldown >= 0 &&
             new Date().getTime() - lastRun > effectiveCooldown * 1000
