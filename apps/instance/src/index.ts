@@ -162,7 +162,7 @@ async function innerMain(): Promise<ExitCase> {
           // ...existing code...
           const effectiveCooldown = hasProcessedAnyJob
             ? config.instanceCooldown
-            : 300;
+            : 120; // 2 minutes if no jobs processed yet
           if (
             effectiveCooldown >= 0 &&
             new Date().getTime() - lastRun > effectiveCooldown * 1000

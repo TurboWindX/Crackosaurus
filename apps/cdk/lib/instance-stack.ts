@@ -322,10 +322,11 @@ export class InstanceStack extends Construct {
     # Mount EFS at /mnt/efs/crackodata so EC2 and containers use the same canonical path
     echo "=== Mounting EFS ===" | tee -a /var/log/userdata.log
     mkdir -p /mnt/efs/crackodata
-    echo "Attempting to mount EFS: ${props.fileSystemId}:/crackodata -> /mnt/efs/crackodata" | tee -a /var/log/userdata.log
+    echo "Attempting to mount EFS: ${props.fileSystemId}:/ -> /mnt/efs/crackodata" | tee -a /var/log/userdata.log
     echo "Access Point: ${props.accessPointId}" | tee -a /var/log/userdata.log
     
-    if mount -t efs -o tls,iam,accesspoint=${props.accessPointId} ${props.fileSystemId}:/crackodata /mnt/efs/crackodata; then
+    # When using access point, mount root (/) not the path - access point enforces the path
+    if mount -t efs -o tls,iam,accesspoint=${props.accessPointId} ${props.fileSystemId}:/ /mnt/efs/crackodata; then
         echo "✓ EFS mount successful" | tee -a /var/log/userdata.log
         ls -laR /mnt/efs/crackodata | tee -a /var/log/userdata.log
         mount | grep efs | tee -a /var/log/userdata.log
