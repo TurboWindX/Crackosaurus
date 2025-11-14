@@ -1,7 +1,8 @@
 {
-  "instanceID": "8f810ab4-f3ff-4204-af6b-821ae49f356d",
+  "instanceID": "5a2cc581-e16a-4a1e-a219-80925c98e13a",
   "instanceType": "g5.xlarge"
 }
+
 
 
 {
@@ -15,7 +16,7 @@
       "CapacityReservationSpecification": {
         "CapacityReservationPreference": "open"
       },
-      "ClientToken": "20c22c0b-6c04-4348-b378-18ad86faf49f",
+      "ClientToken": "3ff60145-15f9-466e-b1f2-0448e721417e",
       "CpuOptions": {
         "CoreCount": 2,
         "ThreadsPerCore": 2
@@ -32,9 +33,9 @@
         "Id": "AIPA6GBMEMSKNWTLXVJDY"
       },
       "ImageId": "ami-0c8c18efc7c9ed253",
-      "InstanceId": "i-0e27cce5f9679af8a",
+      "InstanceId": "i-0ab68af55752c5e7d",
       "InstanceType": "g5.xlarge",
-      "LaunchTime": "2025-11-14T00:51:10Z",
+      "LaunchTime": "2025-11-14T01:25:56Z",
       "MaintenanceOptions": {
         "AutoRecovery": "default",
         "RebootMigration": "default"
@@ -53,8 +54,8 @@
       "NetworkInterfaces": [
         {
           "Attachment": {
-            "AttachTime": "2025-11-14T00:51:10Z",
-            "AttachmentId": "eni-attach-09a5724168f1482fb",
+            "AttachTime": "2025-11-14T01:25:56Z",
+            "AttachmentId": "eni-attach-09d429dde589e4fce",
             "DeleteOnTermination": true,
             "DeviceIndex": 0,
             "NetworkCardIndex": 0,
@@ -69,19 +70,19 @@
           ],
           "InterfaceType": "interface",
           "Ipv6Addresses": [],
-          "MacAddress": "02:cb:5a:96:61:89",
-          "NetworkInterfaceId": "eni-09090b43807072cd3",
+          "MacAddress": "02:20:ed:81:b7:f5",
+          "NetworkInterfaceId": "eni-034e4e367c33b377a",
           "Operator": {
             "Managed": false
           },
           "OwnerId": "975050138772",
-          "PrivateDnsName": "ip-10-0-2-25.ca-central-1.compute.internal",
-          "PrivateIpAddress": "10.0.2.25",
+          "PrivateDnsName": "ip-10-0-2-154.ca-central-1.compute.internal",
+          "PrivateIpAddress": "10.0.2.154",
           "PrivateIpAddresses": [
             {
               "Primary": true,
-              "PrivateDnsName": "ip-10-0-2-25.ca-central-1.compute.internal",
-              "PrivateIpAddress": "10.0.2.25"
+              "PrivateDnsName": "ip-10-0-2-154.ca-central-1.compute.internal",
+              "PrivateIpAddress": "10.0.2.154"
             }
           ],
           "SourceDestCheck": true,
@@ -99,13 +100,13 @@
         "GroupName": "",
         "Tenancy": "default"
       },
-      "PrivateDnsName": "ip-10-0-2-25.ca-central-1.compute.internal",
+      "PrivateDnsName": "ip-10-0-2-154.ca-central-1.compute.internal",
       "PrivateDnsNameOptions": {
         "EnableResourceNameDnsAAAARecord": false,
         "EnableResourceNameDnsARecord": false,
         "HostnameType": "ip-name"
       },
-      "PrivateIpAddress": "10.0.2.25",
+      "PrivateIpAddress": "10.0.2.154",
       "ProductCodes": [],
       "PublicDnsName": "",
       "RootDeviceName": "/dev/xvda",
@@ -129,16 +130,16 @@
       "SubnetId": "subnet-075a9a987dc636233",
       "Tags": [
         {
+          "Key": "AvailabilityZone",
+          "Value": "ca-central-1a"
+        },
+        {
           "Key": "Type",
           "Value": "GPU"
         },
         {
           "Key": "Name",
-          "Value": "bleeding-instance-stack-8f810ab4-f3ff-4204-af6b-821ae49f356d"
-        },
-        {
-          "Key": "AvailabilityZone",
-          "Value": "ca-central-1a"
+          "Value": "bleeding-instance-stack-5a2cc581-e16a-4a1e-a219-80925c98e13a"
         },
         {
           "Key": "ManagedBy",
@@ -150,5 +151,5 @@
     }
   ],
   "OwnerId": "975050138772",
-  "ReservationId": "r-0bb4640f620417874"
+  "ReservationId": "r-0b310303827bf4458"
 }

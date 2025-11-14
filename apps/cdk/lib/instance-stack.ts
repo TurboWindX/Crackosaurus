@@ -320,9 +320,23 @@ export class InstanceStack extends Construct {
     dnf install nodejs -y
 
     # Mount EFS at /mnt/efs/crackodata so EC2 and containers use the same canonical path
+    echo "=== Mounting EFS ===" | tee -a /var/log/userdata.log
     mkdir -p /mnt/efs/crackodata
-    mount -t efs -o tls,iam,accesspoint=${props.accessPointId} ${props.fileSystemId}:/crackodata /mnt/efs/crackodata
-    ls -laR /mnt/efs/crackodata
+    echo "Attempting to mount EFS: ${props.fileSystemId}:/crackodata -> /mnt/efs/crackodata" | tee -a /var/log/userdata.log
+    echo "Access Point: ${props.accessPointId}" | tee -a /var/log/userdata.log
+    
+    if mount -t efs -o tls,iam,accesspoint=${props.accessPointId} ${props.fileSystemId}:/crackodata /mnt/efs/crackodata; then
+        echo "✓ EFS mount successful" | tee -a /var/log/userdata.log
+        ls -laR /mnt/efs/crackodata | tee -a /var/log/userdata.log
+        mount | grep efs | tee -a /var/log/userdata.log
+    else
+        echo "✗ EFS mount FAILED with exit code $?" | tee -a /var/log/userdata.log
+        echo "Checking EFS utils..." | tee -a /var/log/userdata.log
+        which mount.efs | tee -a /var/log/userdata.log
+        echo "Network connectivity check..." | tee -a /var/log/userdata.log
+        ping -c 3 ${props.fileSystemId}.efs.$AWS_REGION.amazonaws.com | tee -a /var/log/userdata.log
+        echo "Continuing without EFS mount - instance will fail" | tee -a /var/log/userdata.log
+    fi
 
     # Create worker user with same UID/GID as cluster container (1001:1001)
     groupadd -g 1001 worker || true

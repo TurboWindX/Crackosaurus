@@ -294,6 +294,7 @@ export class CrackosaurusStack extends cdk.Stack {
     // ===========================================
     const fileSystem = new efs.FileSystem(this, "FileSystem", {
       vpc,
+      vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }, // Mount targets in private subnets
       encrypted: true, // Encrypt EFS at rest
       lifecyclePolicy: efs.LifecyclePolicy.AFTER_14_DAYS,
       performanceMode: efs.PerformanceMode.GENERAL_PURPOSE,
