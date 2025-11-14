@@ -303,23 +303,12 @@ export class InstanceStack extends Construct {
     EC2_INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id --header "X-aws-ec2-metadata-token: $TOKEN")
     AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region --header "X-aws-ec2-metadata-token: $TOKEN")
 
-    # Install Packages
+    # Install minimal packages needed for EFS mount
+    echo "=== Installing EFS utilities ===" | tee -a /var/log/userdata.log
     yum update -y
     yum install -y aws-cli amazon-efs-utils nfs-utils
 
-    # Install Drivers
-    dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/amzn2023/x86_64/cuda-amzn2023.repo
-    dnf clean expire-cache
-    dnf update -y
-    dnf install -y kernel-devel kernel-modules-extra
-    dnf module install -y nvidia-driver:latest-dkms
-    dnf install -y cuda-toolkit
-
-    # Install Node
-    curl -fsSL -o- https://rpm.nodesource.com/setup_20.x | bash
-    dnf install nodejs -y
-
-    # Mount EFS at /mnt/efs/crackodata so EC2 and containers use the same canonical path
+    # Mount EFS EARLY - before heavy driver installs
     echo "=== Mounting EFS ===" | tee -a /var/log/userdata.log
     mkdir -p /mnt/efs/crackodata
     echo "Attempting to mount EFS: ${props.fileSystemId}:/ -> /mnt/efs/crackodata" | tee -a /var/log/userdata.log
@@ -338,6 +327,23 @@ export class InstanceStack extends Construct {
         ping -c 3 ${props.fileSystemId}.efs.$AWS_REGION.amazonaws.com | tee -a /var/log/userdata.log
         echo "Continuing without EFS mount - instance will fail" | tee -a /var/log/userdata.log
     fi
+    
+    # Sleep to allow log capture
+    echo "Waiting 10 seconds for log observation..." | tee -a /var/log/userdata.log
+    sleep 16
+    echo "Continuing with driver installation..." | tee -a /var/log/userdata.log
+
+    # Install Drivers (after EFS mount verification)
+    dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/amzn2023/x86_64/cuda-amzn2023.repo
+    dnf clean expire-cache
+    dnf update -y
+    dnf install -y kernel-devel kernel-modules-extra
+    dnf module install -y nvidia-driver:latest-dkms
+    dnf install -y cuda-toolkit
+
+    # Install Node
+    curl -fsSL -o- https://rpm.nodesource.com/setup_20.x | bash
+    dnf install nodejs -y
 
     # Create worker user with same UID/GID as cluster container (1001:1001)
     groupadd -g 1001 worker || true
