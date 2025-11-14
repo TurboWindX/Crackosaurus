@@ -4,12 +4,36 @@ import {
   fastifyTRPCPlugin,
 } from "@trpc/server/adapters/fastify";
 import Fastify from "fastify";
+import fs from "fs";
 
 import config from "./config";
 import { clusterPlugin } from "./plugins/cluster";
 import { createContext } from "./plugins/trpc/context";
 import { AppRouter, appRouter } from "./routers";
 import { upload } from "./upload";
+
+// Log mount information on startup to debug EFS mount issues
+console.log("[Cluster] Starting cluster service...");
+try {
+  if (fs.existsSync("/proc/mounts")) {
+    const mounts = fs.readFileSync("/proc/mounts", "utf8");
+    console.log("[Cluster] /proc/mounts contents (EFS/NFS mounts only):");
+    mounts.split("\n").forEach((line) => {
+      if (line.includes("crackodata") || line.includes("efs") || line.includes("nfs")) {
+        console.log(`  ${line}`);
+      }
+    });
+    const hasCrackodataMount = mounts.includes("/crackodata");
+    if (!hasCrackodataMount) {
+      console.error("[Cluster] WARNING: No /crackodata mount found! EFS is not mounted!");
+      console.error("[Cluster] This will cause instance folders to be created in container-local storage.");
+    } else {
+      console.log("[Cluster] ✓ /crackodata is mounted");
+    }
+  }
+} catch (e) {
+  console.error("[Cluster] Failed to read /proc/mounts:", e);
+}
 
 const fastify = Fastify({
   // allow large raw uploads (e.g., > 2 GiB)
