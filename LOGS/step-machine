@@ -1,0 +1,154 @@
+{
+  "instanceID": "8f810ab4-f3ff-4204-af6b-821ae49f356d",
+  "instanceType": "g5.xlarge"
+}
+
+
+{
+  "Groups": [],
+  "Instances": [
+    {
+      "AmiLaunchIndex": 0,
+      "Architecture": "x86_64",
+      "BlockDeviceMappings": [],
+      "BootMode": "uefi-preferred",
+      "CapacityReservationSpecification": {
+        "CapacityReservationPreference": "open"
+      },
+      "ClientToken": "20c22c0b-6c04-4348-b378-18ad86faf49f",
+      "CpuOptions": {
+        "CoreCount": 2,
+        "ThreadsPerCore": 2
+      },
+      "CurrentInstanceBootMode": "uefi",
+      "EbsOptimized": false,
+      "EnaSupport": true,
+      "EnclaveOptions": {
+        "Enabled": false
+      },
+      "Hypervisor": "xen",
+      "IamInstanceProfile": {
+        "Arn": "arn:aws:iam::975050138772:instance-profile/Crackosaurus-bleeding-instancestackprofileB577D5D5-BQiCln9DzNhD",
+        "Id": "AIPA6GBMEMSKNWTLXVJDY"
+      },
+      "ImageId": "ami-0c8c18efc7c9ed253",
+      "InstanceId": "i-0e27cce5f9679af8a",
+      "InstanceType": "g5.xlarge",
+      "LaunchTime": "2025-11-14T00:51:10Z",
+      "MaintenanceOptions": {
+        "AutoRecovery": "default",
+        "RebootMigration": "default"
+      },
+      "MetadataOptions": {
+        "HttpEndpoint": "enabled",
+        "HttpProtocolIpv6": "disabled",
+        "HttpPutResponseHopLimit": 2,
+        "HttpTokens": "required",
+        "InstanceMetadataTags": "disabled",
+        "State": "pending"
+      },
+      "Monitoring": {
+        "State": "disabled"
+      },
+      "NetworkInterfaces": [
+        {
+          "Attachment": {
+            "AttachTime": "2025-11-14T00:51:10Z",
+            "AttachmentId": "eni-attach-09a5724168f1482fb",
+            "DeleteOnTermination": true,
+            "DeviceIndex": 0,
+            "NetworkCardIndex": 0,
+            "Status": "attaching"
+          },
+          "Description": "",
+          "Groups": [
+            {
+              "GroupId": "sg-046f24c32c44d106e",
+              "GroupName": "Crackosaurus-bleeding-GpuSecurityGroup604AAE4B-4Aaq6uSDwS9B"
+            }
+          ],
+          "InterfaceType": "interface",
+          "Ipv6Addresses": [],
+          "MacAddress": "02:cb:5a:96:61:89",
+          "NetworkInterfaceId": "eni-09090b43807072cd3",
+          "Operator": {
+            "Managed": false
+          },
+          "OwnerId": "975050138772",
+          "PrivateDnsName": "ip-10-0-2-25.ca-central-1.compute.internal",
+          "PrivateIpAddress": "10.0.2.25",
+          "PrivateIpAddresses": [
+            {
+              "Primary": true,
+              "PrivateDnsName": "ip-10-0-2-25.ca-central-1.compute.internal",
+              "PrivateIpAddress": "10.0.2.25"
+            }
+          ],
+          "SourceDestCheck": true,
+          "Status": "in-use",
+          "SubnetId": "subnet-075a9a987dc636233",
+          "VpcId": "vpc-0fd8dbc074955b9aa"
+        }
+      ],
+      "Operator": {
+        "Managed": false
+      },
+      "Placement": {
+        "AvailabilityZone": "ca-central-1a",
+        "AvailabilityZoneId": "cac1-az1",
+        "GroupName": "",
+        "Tenancy": "default"
+      },
+      "PrivateDnsName": "ip-10-0-2-25.ca-central-1.compute.internal",
+      "PrivateDnsNameOptions": {
+        "EnableResourceNameDnsAAAARecord": false,
+        "EnableResourceNameDnsARecord": false,
+        "HostnameType": "ip-name"
+      },
+      "PrivateIpAddress": "10.0.2.25",
+      "ProductCodes": [],
+      "PublicDnsName": "",
+      "RootDeviceName": "/dev/xvda",
+      "RootDeviceType": "ebs",
+      "SecurityGroups": [
+        {
+          "GroupId": "sg-046f24c32c44d106e",
+          "GroupName": "Crackosaurus-bleeding-GpuSecurityGroup604AAE4B-4Aaq6uSDwS9B"
+        }
+      ],
+      "SourceDestCheck": true,
+      "State": {
+        "Code": 0,
+        "Name": "pending"
+      },
+      "StateReason": {
+        "Code": "pending",
+        "Message": "pending"
+      },
+      "StateTransitionReason": "",
+      "SubnetId": "subnet-075a9a987dc636233",
+      "Tags": [
+        {
+          "Key": "Type",
+          "Value": "GPU"
+        },
+        {
+          "Key": "Name",
+          "Value": "bleeding-instance-stack-8f810ab4-f3ff-4204-af6b-821ae49f356d"
+        },
+        {
+          "Key": "AvailabilityZone",
+          "Value": "ca-central-1a"
+        },
+        {
+          "Key": "ManagedBy",
+          "Value": "Crackosaurus"
+        }
+      ],
+      "VirtualizationType": "hvm",
+      "VpcId": "vpc-0fd8dbc074955b9aa"
+    }
+  ],
+  "OwnerId": "975050138772",
+  "ReservationId": "r-0bb4640f620417874"
+}

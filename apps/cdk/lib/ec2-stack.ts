@@ -187,7 +187,15 @@ export class CrackosaurusStack extends cdk.Stack {
       "Allow cluster-to-cluster communication"
     );
 
-    // EFS Security Group - For shared file system
+    // GPU Instance Security Group - For Step Functions managed instances
+    const gpuSecurityGroup = new ec2.SecurityGroup(this, "GpuSecurityGroup", {
+      vpc,
+      description: "Security group for GPU instances",
+      allowAllOutbound: true,
+    });
+    // GPU instances don't need inbound access - they pull jobs from SQS
+
+    // EFS Security Group - For shared file system (defined AFTER gpu so we can reference it)
     const efsSecurityGroup = new ec2.SecurityGroup(this, "EFSSecurityGroup", {
       vpc,
       description: "Security group for EFS file system",
@@ -203,14 +211,27 @@ export class CrackosaurusStack extends cdk.Stack {
       ec2.Port.tcp(2049),
       "Allow NFS from cluster instances"
     );
-
-    // GPU Instance Security Group - For Step Functions managed instances
-    const gpuSecurityGroup = new ec2.SecurityGroup(this, "GpuSecurityGroup", {
-      vpc,
-      description: "Security group for GPU instances",
-      allowAllOutbound: true,
-    });
-    // GPU instances don't need inbound access - they pull jobs from SQS
+    efsSecurityGroup.addIngressRule(
+      gpuSecurityGroup,
+      ec2.Port.tcp(2049),
+      "Allow NFS from GPU instances"
+    );
+    // Allow NFS responses back to server, cluster, and GPU instances
+    efsSecurityGroup.addEgressRule(
+      serverSecurityGroup,
+      ec2.Port.tcp(2049),
+      "Allow NFS responses to server instances"
+    );
+    efsSecurityGroup.addEgressRule(
+      clusterSecurityGroup,
+      ec2.Port.tcp(2049),
+      "Allow NFS responses to cluster instances"
+    );
+    efsSecurityGroup.addEgressRule(
+      gpuSecurityGroup,
+      ec2.Port.tcp(2049),
+      "Allow NFS responses to GPU instances"
+    );
 
     // RDS Security Group - For database
     const dbSecurityGroup = new ec2.SecurityGroup(this, "DBSecurityGroup", {
