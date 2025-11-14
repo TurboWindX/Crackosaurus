@@ -159,10 +159,21 @@ async function innerMain(): Promise<ExitCase> {
       if (jobID === null) {
         const nextJob = jobQueue.shift();
         if (nextJob === undefined) {
-          // ...existing code...
+          // No jobs available - check cooldown
           const effectiveCooldown = hasProcessedAnyJob
             ? config.instanceCooldown
             : 120; // 2 minutes if no jobs processed yet
+          const timeWaited = Math.floor(
+            (new Date().getTime() - lastRun) / 1000
+          );
+          
+          if (timeWaited % 10 === 0) {
+            // Log every 10 seconds
+            console.log(
+              `[Instance ${config.instanceID}] No jobs found. Waiting ${timeWaited}s/${effectiveCooldown}s before shutdown (hasProcessedAnyJob: ${hasProcessedAnyJob})`
+            );
+          }
+          
           if (
             effectiveCooldown >= 0 &&
             new Date().getTime() - lastRun > effectiveCooldown * 1000
@@ -174,7 +185,7 @@ async function innerMain(): Promise<ExitCase> {
               instanceMetadata
             );
             console.log(
-              `[Instance ${config.instanceID}] Cooldown (waited ${effectiveCooldown}s, hasProcessedAnyJob: ${hasProcessedAnyJob})`
+              `[Instance ${config.instanceID}] Cooldown complete (waited ${effectiveCooldown}s, hasProcessedAnyJob: ${hasProcessedAnyJob}) - shutting down`
             );
             clearInterval(interval);
             resolve(EXIT_CASE.Cooldown);

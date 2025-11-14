@@ -1,7 +1,0 @@
-[Sync] Updating job e71cba2e-f42a-4fa3-8f1c-897c5b0c8efe status: PENDING → STOPPED
-[JobRouter] Creating instance folder for job 498f3cb3-bae5-4d61-abfe-64bd194ad919 with type g5.xlarge
-[JobRouter] Created instance folder with tag: 8f810ab4-f3ff-4204-af6b-821ae49f356d
-[JobRouter] Creating job folder for job 498f3cb3-bae5-4d61-abfe-64bd194ad919 in instance 8f810ab4-f3ff-4204-af6b-821ae49f356d
-[JobRouter] Successfully created job folder for job 498f3cb3-bae5-4d61-abfe-64bd194ad919 in instance 8f810ab4-f3ff-4204-af6b-821ae49f356d
-[JobRouter] Launching EC2 instance 8f810ab4-f3ff-4204-af6b-821ae49f356d for job 498f3cb3-bae5-4d61-abfe-64bd194ad919
-[JobRouter] Successfully launched EC2 instance 8f810ab4-f3ff-4204-af6b-821ae49f356d
