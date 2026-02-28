@@ -82,6 +82,12 @@ export class ClusterService extends Construct {
       readOnly: false,
     });
 
+    // Expose cluster TRPC port
+    container.addPortMappings({
+      containerPort: 13337,
+      protocol: ecs.Protocol.TCP,
+    });
+
     this.service = new ecs.FargateService(this, "ClusterFargateService", {
       cluster: props.cluster,
       taskDefinition: taskDef,

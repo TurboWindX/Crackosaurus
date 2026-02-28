@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { publicProcedure, t } from "../plugins/trpc";
 import { authRouter, hashPassword } from "./authRouter";
+import { cascadeRouter } from "./cascadeRouter";
 import { hashRouter } from "./hashRouter";
 import { instanceRouter } from "./instanceRouter";
 import { jobRouter } from "./jobRouter";
@@ -17,8 +18,18 @@ export const appRouter = t.router({
   init: publicProcedure
     .input(
       z.object({
-        username: z.string(),
-        password: z.string(),
+        username: z
+          .string()
+          .min(1, "Username is required")
+          .max(255, "Username must be at most 255 characters")
+          .regex(
+            /^[a-zA-Z0-9._@-]+$/,
+            "Username may only contain letters, numbers, dots, hyphens, underscores, and @"
+          ),
+        password: z
+          .string()
+          .min(8, "Password must be at least 8 characters")
+          .max(1024, "Password must be at most 1024 characters"),
       })
     )
     .output(z.string())
@@ -26,30 +37,38 @@ export const appRouter = t.router({
       const { username, password } = opts.input;
       const { prisma } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        const firstUser = await tx.user.findFirst({
-          select: {
-            ID: true,
-          },
-        });
+      // Use a serializable transaction to prevent race conditions where two
+      // concurrent callers both see an empty user table and both create root accounts.
+      return await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          const firstUser = await tx.user.findFirst({
+            select: {
+              ID: true,
+            },
+          });
 
-        if (firstUser !== null) throw new TRPCError({ code: "UNAUTHORIZED" });
+          if (firstUser !== null) throw new TRPCError({ code: "UNAUTHORIZED" });
 
-        const user = await tx.user.create({
-          select: {
-            ID: true,
-          },
-          data: {
-            username,
-            password: await hashPassword(password),
-            permissions: "root",
-          },
-        });
+          const user = await tx.user.create({
+            select: {
+              ID: true,
+            },
+            data: {
+              username,
+              password: await hashPassword(password),
+              permissions: "root",
+            },
+          });
 
-        return user.ID;
-      });
+          return user.ID;
+        },
+        {
+          isolationLevel: "Serializable",
+        }
+      );
     }),
   auth: authRouter,
+  cascade: cascadeRouter,
   hash: hashRouter,
   instance: instanceRouter,
   project: projectRouter,

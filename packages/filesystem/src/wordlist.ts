@@ -11,7 +11,12 @@ export function getWordlistPath(
   wordlistRoot: string,
   wordlist: string
 ): string {
-  return path.join(wordlistRoot, wordlist);
+  const resolved = path.resolve(wordlistRoot, wordlist);
+  const root = path.resolve(wordlistRoot);
+  if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+    throw new Error(`Path traversal detected: ${wordlist}`);
+  }
+  return resolved;
 }
 
 // Re-export rule folder helper for backward-compatible imports

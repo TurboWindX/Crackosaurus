@@ -48,6 +48,30 @@ const fastify = Fastify({
   bodyLimit: 5 * 1024 * 1024 * 1024,
 });
 
+// ── Shared-secret authentication ──────────────────────────────────────────
+// When CLUSTER_SECRET is configured, every incoming request (except /ping)
+// must include a matching `Authorization: Bearer <secret>` header.
+const clusterSecret = config.secret;
+if (clusterSecret) {
+  console.log("[Cluster] Shared-secret authentication ENABLED");
+  fastify.addHook("onRequest", async (request, reply) => {
+    // Allow health-check probes through unauthenticated
+    if (request.url === "/ping") return;
+
+    const authHeader = request.headers.authorization;
+    if (!authHeader || authHeader !== `Bearer ${clusterSecret}`) {
+      reply.code(401).send({ error: "Unauthorized" });
+    }
+  });
+} else {
+  console.warn(
+    "[Cluster] \u26a0  WARNING: No CLUSTER_SECRET set \u2014 all endpoints are unauthenticated!"
+  );
+  console.warn(
+    "[Cluster]   Set CLUSTER_SECRET on both the server and cluster to enable authentication."
+  );
+}
+
 fastify.get("/ping", {}, () => "pong");
 
 // Accept raw octet-stream uploads as a stream

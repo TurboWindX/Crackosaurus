@@ -8,5 +8,10 @@ export function createRuleFolder(ruleRoot: string): void {
 }
 
 export function getRulePath(ruleRoot: string, rule: string): string {
-  return path.join(ruleRoot, rule);
+  const resolved = path.resolve(ruleRoot, rule);
+  const root = path.resolve(ruleRoot);
+  if (!resolved.startsWith(root + path.sep) && resolved !== root) {
+    throw new Error(`Path traversal detected: ${rule}`);
+  }
+  return resolved;
 }

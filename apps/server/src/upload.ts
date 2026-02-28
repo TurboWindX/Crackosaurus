@@ -14,6 +14,9 @@ import config from "./config";
 import { getInitializedBucketName } from "./plugins/s3Init";
 import { createS3Client } from "./utils/s3";
 
+/** Shared secret for authenticating server→cluster requests. */
+const clusterSecret = process.env.CLUSTER_SECRET || undefined;
+
 type PrismaTransaction = Omit<
   PrismaClient,
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
@@ -44,6 +47,7 @@ async function uploadRawToCluster(
   if (size !== undefined) headers["Content-Length"] = String(size);
   if (origin?.bucket) headers["x-origin-s3-bucket"] = origin.bucket;
   if (origin?.key) headers["x-origin-s3-key"] = origin.key;
+  if (clusterSecret) headers["Authorization"] = `Bearer ${clusterSecret}`;
 
   console.log("[uploadRawToCluster] starting request", {
     url,
@@ -256,6 +260,9 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
+                  ...(clusterSecret
+                    ? { Authorization: `Bearer ${clusterSecret}` }
+                    : {}),
                 },
                 body: JSON.stringify({
                   bucket: bucketName,
@@ -484,7 +491,12 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
         try {
           const copyResponse = await fetch(`${url}/upload/rules/copy-from-s3`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              ...(clusterSecret
+                ? { Authorization: `Bearer ${clusterSecret}` }
+                : {}),
+            },
             body: JSON.stringify({ bucket: bucketName, key: s3Key }),
           });
           if (!copyResponse.ok) {

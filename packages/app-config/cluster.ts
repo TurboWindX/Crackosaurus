@@ -12,6 +12,7 @@ const CLUSTER_ENV = {
   clusterHost: "CLUSTER_HOST",
   clusterPort: "CLUSTER_PORT",
   clusterType: "CLUSTER_TYPE",
+  clusterSecret: "CLUSTER_SECRET",
   scriptPath: "CLUSTER_SCRIPT_PATH",
   hashcatPath: "CLUSTER_HASHCAT_PATH",
   instanceRoot: "CLUSTER_INSTANCE_ROOT",
@@ -82,6 +83,8 @@ export const CLUSTER_CONFIG = z.object({
     port: z.number().int().min(0),
   }),
   type: CLUSTER_TYPE_CONFIG,
+  /** Shared secret for server↔cluster authentication. Required in production. */
+  secret: z.string().optional(),
 });
 export type ClusterConfig = z.infer<typeof CLUSTER_CONFIG>;
 
@@ -147,6 +150,7 @@ export function loadClusterConfig() {
       ),
     },
     type: loadClusterTypeConfig(clusterType),
+    secret: process.env[CLUSTER_ENV.clusterSecret] || undefined,
   } satisfies ClusterConfig);
 }
 
@@ -205,6 +209,7 @@ export function envClusterConfig(
     [CLUSTER_ENV.clusterHost]: config.host.name,
     [CLUSTER_ENV.clusterPort]: config.host.port.toString(),
     [CLUSTER_ENV.clusterType]: config.type.name,
+    ...(config.secret ? { [CLUSTER_ENV.clusterSecret]: config.secret } : {}),
     ...envClusterTypeConfig(config.type),
   };
 }

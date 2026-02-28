@@ -28,18 +28,20 @@ model Hash {
   hashType  Int
   status    String   @default("NOT_FOUND")
   value     String?
+  source    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 }
 
 model Wordlist {
-  WID       String   @id @default(uuid())
-  name      String?
-  size      BigInt
-  checksum  String
-  jobs      Job[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  WID          String        @id @default(uuid())
+  name         String?
+  size         BigInt
+  checksum     String
+  jobs         Job[]
+  cascadeSteps CascadeStep[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @default(now()) @updatedAt
 }
 
 model Instance {
@@ -65,6 +67,11 @@ model Job {
   status     String    @default("PENDING")
   approvalStatus String @default("PENDING")
   instanceType String?
+  attackMode   Int       @default(0)
+  mask         String?
+  cascadeId    String?
+  cascade      Cascade?  @relation(fields: [cascadeId], references: [CID])
+  cascadeStepIndex Int?
   submittedById String?
   submittedBy User? @relation("JobSubmittedBy", fields: [submittedById], references: [ID])
   approvedById String?
@@ -76,11 +83,50 @@ model Job {
 }
 
 model Rule {
-  RID       String   @id @default(uuid())
-  name      String?
-  size      BigInt
-  checksum  String
-  jobs      Job[]
+  RID          String        @id @default(uuid())
+  name         String?
+  size         BigInt
+  checksum     String
+  jobs         Job[]
+  cascadeSteps CascadeStep[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @default(now()) @updatedAt
+}
+
+model KnownHash {
+  id        String   @id @default(uuid())
+  hash      String
+  hashType  Int
+  plaintext String
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([hash, hashType])
+  @@index([hash, hashType])
+}
+
+model Cascade {
+  CID       String        @id @default(uuid())
+  name      String
+  steps     CascadeStep[]
+  jobs      Job[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @default(now()) @updatedAt
+}
+
+model CascadeStep {
+  CSID         String   @id @default(uuid())
+  cascadeId    String
+  cascade      Cascade  @relation(fields: [cascadeId], references: [CID])
+  order        Int
+  attackMode   Int      @default(0)
+  wordlistId   String?
+  wordlist     Wordlist? @relation(fields: [wordlistId], references: [WID])
+  ruleId       String?
+  rule         Rule?    @relation(fields: [ruleId], references: [RID])
+  mask         String?
+  instanceType String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@unique([cascadeId, order])
 }

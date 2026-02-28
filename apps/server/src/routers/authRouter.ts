@@ -23,7 +23,7 @@ export async function checkPassword(
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  const saltRounds = 8;
+  const saltRounds = 12;
 
   return bcrypt.hash(password, saltRounds);
 }
@@ -43,7 +43,9 @@ export const authRouter = t.router({
       return {
         uid: request.session.uid,
         username: request.session.username,
-        permissions: request.session.permissions.split(" ") as PermissionType[],
+        permissions: request.session.permissions
+          .split(" ")
+          .filter(Boolean) as PermissionType[],
       } as const;
     }),
   login: publicProcedure

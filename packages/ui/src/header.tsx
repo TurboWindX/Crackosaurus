@@ -2,6 +2,7 @@ import {
   ALargeSmallIcon,
   CpuIcon,
   FolderIcon,
+  LinkIcon,
   ListIcon,
   UserIcon,
   UsersIcon,
@@ -53,7 +54,7 @@ const LINKS: readonly HeaderLinkProps[] = [
     label: "item.instance.plural",
     path: "/instances",
     icon: <CpuIcon />,
-    permission: "instances:get",
+    permission: "root",
   },
   {
     label: "item.wordlist.plural",
@@ -66,6 +67,11 @@ const LINKS: readonly HeaderLinkProps[] = [
     path: "/rules",
     icon: <ListIcon />,
     permission: "rules:get",
+  },
+  {
+    label: "Cascades",
+    path: "/cascades",
+    icon: <LinkIcon />,
   },
   {
     label: "item.user.plural",

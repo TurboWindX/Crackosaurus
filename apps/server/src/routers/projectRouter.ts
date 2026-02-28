@@ -34,6 +34,7 @@ export const projectRouter = t.router({
             hashType: z.number().int().min(0),
             value: z.string().nullable().optional(),
             status: z.string(),
+            source: z.string().nullable().optional(),
             updatedAt: z.date(),
             jobs: z
               .object({
@@ -99,6 +100,7 @@ export const projectRouter = t.router({
                     hashType: true,
                     value: hasPermission("hashes:view"),
                     status: true,
+                    source: true,
                     updatedAt: true,
                     jobs: {
                       // If the current user lacks instances:jobs:get, only include jobs
@@ -202,7 +204,7 @@ export const projectRouter = t.router({
               },
             },
           },
-          where: hasPermission("root")
+          where: hasPermission("projects:get")
             ? undefined
             : {
                 members: {
@@ -214,15 +216,28 @@ export const projectRouter = t.router({
         });
 
         // Calculate pending jobs count per project
-        return projects.map((project: { PID: string; name: string; updatedAt: Date; hashes: { jobs: { approvalStatus: string }[] }[]; members: unknown[] }) => ({
-          PID: project.PID,
-          name: project.name,
-          updatedAt: project.updatedAt,
-          pendingJobsCount: project.hashes
-            .flatMap((hash: { jobs: { approvalStatus: string }[] }) => hash.jobs)
-            .filter((job: { approvalStatus: string }) => job.approvalStatus === "PENDING").length,
-          members: project.members,
-        }));
+        return projects.map(
+          (project: {
+            PID: string;
+            name: string;
+            updatedAt: Date;
+            hashes: { jobs: { approvalStatus: string }[] }[];
+            members?: { ID: string; username: string }[];
+          }) => ({
+            PID: project.PID,
+            name: project.name,
+            updatedAt: project.updatedAt,
+            pendingJobsCount: project.hashes
+              .flatMap(
+                (hash: { jobs: { approvalStatus: string }[] }) => hash.jobs
+              )
+              .filter(
+                (job: { approvalStatus: string }) =>
+                  job.approvalStatus === "PENDING"
+              ).length,
+            members: project.members,
+          })
+        );
       });
     }),
   getList: permissionProcedure(["auth"])
@@ -306,7 +321,7 @@ export const projectRouter = t.router({
             PID: {
               in: projectIDs,
             },
-            members: hasPermission("root")
+            members: hasPermission("projects:get")
               ? undefined
               : {
                   some: {
@@ -352,7 +367,7 @@ export const projectRouter = t.router({
         await tx.project.update({
           where: {
             PID: projectID,
-            members: hasPermission("root")
+            members: hasPermission("projects:get")
               ? undefined
               : {
                   some: {
@@ -387,7 +402,7 @@ export const projectRouter = t.router({
         await tx.project.update({
           where: {
             PID: projectID,
-            members: hasPermission("root")
+            members: hasPermission("projects:get")
               ? undefined
               : {
                   some: {

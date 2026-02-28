@@ -82,10 +82,15 @@ export function hasPermission(
   const permissionSet = Array.isArray(permissions)
     ? new Set(permissions)
     : new Set<PermissionType>(
-        (permissions ?? "").split(" ") as PermissionType[]
+        (permissions ?? "").split(" ").filter(Boolean) as PermissionType[]
       );
 
-  if (permissionSet.has(permission) || permissionSet.has("root")) return true;
+  if (
+    permissionSet.has(permission) ||
+    permissionSet.has("root") ||
+    permissionSet.has("*")
+  )
+    return true;
 
   const permissionSections = permission.split(":");
 

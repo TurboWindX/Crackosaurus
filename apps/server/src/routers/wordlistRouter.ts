@@ -86,14 +86,23 @@ export const wordlistRouter = t.router({
           },
         });
 
-        return rows.map((row: { WID: string; name: string | null; size: bigint; checksum: string; createdAt: Date; updatedAt: Date }) => ({
-          WID: row.WID,
-          name: row.name || "Unnamed",
-          size: Number(row.size),
-          checksum: row.checksum,
-          createdAt: row.createdAt,
-          updatedAt: row.updatedAt,
-        }));
+        return rows.map(
+          (row: {
+            WID: string;
+            name: string | null;
+            size: bigint;
+            checksum: string;
+            createdAt: Date;
+            updatedAt: Date;
+          }) => ({
+            WID: row.WID,
+            name: row.name || "Unnamed",
+            size: Number(row.size),
+            checksum: row.checksum,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+          })
+        );
       });
     }),
   getList: permissionProcedure(["wordlists:get"])
@@ -156,23 +165,24 @@ export const wordlistRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: PrismaTransaction) => {
-        const result = await cluster.wordlist.deleteMany.mutate({
-          wordlistIDs,
-        });
-
-        const deletedIDs = wordlistIDs.filter((_, index) => result[index]);
-
-        const { count } = await tx.wordlist.deleteMany({
-          where: {
-            WID: {
-              in: deletedIDs,
-            },
-          },
-        });
-
-        return count;
+      // Call cluster RPC outside the transaction to avoid the 5 s timeout
+      const result = await cluster.wordlist.deleteMany.mutate({
+        wordlistIDs,
       });
+
+      const deletedIDs = wordlistIDs.filter((_, index) => result[index]);
+
+      if (deletedIDs.length === 0) return 0;
+
+      const { count } = await prisma.wordlist.deleteMany({
+        where: {
+          WID: {
+            in: deletedIDs,
+          },
+        },
+      });
+
+      return count;
     }),
   getUploadUrl: permissionProcedure(["wordlists:add"])
     .input(

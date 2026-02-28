@@ -317,7 +317,8 @@ export class InstanceStack extends Construct {
     # When using access point, mount root (/) not the path - access point enforces the path
     if mount -t efs -o tls,iam,accesspoint=${props.accessPointId} ${props.fileSystemId}:/ /mnt/efs/crackodata; then
         echo "✓ EFS mount successful" | tee -a /var/log/userdata.log
-        ls -laR /mnt/efs/crackodata | tee -a /var/log/userdata.log
+        echo "Instance folders on EFS: $(ls /mnt/efs/crackodata/instances/ 2>/dev/null | wc -l)" | tee -a /var/log/userdata.log
+        ls -la /mnt/efs/crackodata/ | tee -a /var/log/userdata.log
         mount | grep efs | tee -a /var/log/userdata.log
     else
         echo "✗ EFS mount FAILED with exit code $?" | tee -a /var/log/userdata.log
@@ -327,10 +328,7 @@ export class InstanceStack extends Construct {
         ping -c 3 ${props.fileSystemId}.efs.$AWS_REGION.amazonaws.com | tee -a /var/log/userdata.log
         echo "Continuing without EFS mount - instance will fail" | tee -a /var/log/userdata.log
     fi
-    
-    # Sleep to allow log capture
-    echo "Waiting 10 seconds for log observation..." | tee -a /var/log/userdata.log
-    sleep 16
+
     echo "Continuing with driver installation..." | tee -a /var/log/userdata.log
 
     # Install Drivers (after EFS mount verification)
@@ -349,9 +347,13 @@ export class InstanceStack extends Construct {
     groupadd -g 1001 worker || true
     useradd -u 1001 -g 1001 -m worker || true
     
-    # Create and set permissions for app directories
+    # Ensure top-level EFS directories exist and are owned by worker.
+    # IMPORTANT: Do NOT recursively chown the entire instances/ tree — with
+    # thousands of stale folders this takes forever on EFS. The access point
+    # already enforces uid/gid 1001:1001 for new files. Only chown the
+    # top-level dirs and this instance's own folder.
   mkdir -p /mnt/efs/crackodata/instances /mnt/efs/crackodata/wordlists /mnt/efs/crackodata/rules
-  chown 1001:1001 -R /mnt/efs/crackodata/instances /mnt/efs/crackodata/wordlists /mnt/efs/crackodata/rules
+  chown 1001:1001 /mnt/efs/crackodata/instances /mnt/efs/crackodata/wordlists /mnt/efs/crackodata/rules
 
     # Install App
     aws s3 cp ${props.s3ObjectUrl} /tmp/package.zip

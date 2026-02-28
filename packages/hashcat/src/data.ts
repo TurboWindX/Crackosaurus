@@ -7,6 +7,9 @@ export const HASH_TYPES = {
   sha256: 1400,
   hmac_sha256: 1450,
   bcrypt: 3200,
+  netntlmv1: 5500,
+  des: 14000,
+  netntlmv1_nt: 27000,
   plaintext: 99999,
 } as const;
 
@@ -40,6 +43,13 @@ export function parseHashcatPot(data: string): Record<string, string> {
     data
       .split("\n")
       .filter((row) => row.trim().length > 0)
-      .map((row) => row.split(":"))
+      .map((row) => {
+        // Split on the LAST colon so hash formats containing colons
+        // (e.g. NTLMv1 "user::domain:lm:nt:challenge", DES "ct:salt")
+        // are kept intact as the key.
+        const lastColon = row.lastIndexOf(":");
+        if (lastColon === -1) return [row, ""];
+        return [row.substring(0, lastColon), row.substring(lastColon + 1)];
+      })
   );
 }

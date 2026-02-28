@@ -7,6 +7,7 @@ import cors from "@fastify/cors";
 import fastifyMultipart from "@fastify/multipart";
 import { fastifySession } from "@fastify/session";
 import fastifyStatic from "@fastify/static";
+import websocket from "@fastify/websocket";
 import {
   FastifyTRPCPluginOptions,
   fastifyTRPCPlugin,
@@ -17,6 +18,8 @@ import path from "path";
 
 import config from "./config";
 import { clusterPlugin } from "./plugins/cluster/plugin";
+import { jobStatusWebSocket } from "./plugins/jobStatusWebSocket";
+import { orchestratorPlugin } from "./plugins/orchestrator/plugin";
 import prismaPlugin from "./plugins/prisma";
 import s3InitPlugin from "./plugins/s3Init";
 import { createContext } from "./plugins/trpc/context";
@@ -30,11 +33,22 @@ const fastify = Fastify({
 fastify.get("/ping", {}, () => "pong");
 
 fastify.register(fastifyCookie);
+fastify.register(websocket);
+// COOKIE_SECURE overrides the default. In production the cookie should be Secure
+// when the ALB terminates TLS, but the current ALB is HTTP-only so we default
+// to false in production unless explicitly opted in via COOKIE_SECURE=true.
+const cookieSecure =
+  process.env.COOKIE_SECURE === "true" ||
+  process.env.COOKIE_SECURE === "1" ||
+  false;
+
 fastify.register(fastifySession, {
   cookieName: "CrackID",
   secret: config.secret,
   cookie: {
-    secure: false,
+    secure: cookieSecure,
+    httpOnly: true,
+    sameSite: "lax",
     maxAge: 3600000, // 1 hour in milliseconds
   },
 });
@@ -60,14 +74,37 @@ fastify.register(prismaPlugin);
 fastify.register(s3InitPlugin);
 
 fastify.register(clusterPlugin, {
-  pollingRateMs: 1000,
+  pollingRateMs: 5000, // Poll every 5s instead of 1s to reduce memory pressure
 });
+
+fastify.register(orchestratorPlugin, {
+  pollingRateMs: 10000, // Check for approved jobs every 10s (reduced to avoid spam when cluster unreachable)
+  maxConcurrent: 5, // Process up to 5 jobs in parallel
+});
+
+fastify.register(jobStatusWebSocket);
 
 const allowCORS = config.web.port !== config.host.port;
 fastify.register(cors, {
   credentials: true,
-  origin: (_origin, cb) => {
-    cb(null, allowCORS);
+  origin: (origin, cb) => {
+    if (!allowCORS) return cb(null, false);
+    // In production, only allow the configured web origin
+    if (config.environment === "production") {
+      const allowedOrigin = `https://${config.web.name}`;
+      cb(null, origin === allowedOrigin ? allowedOrigin : false);
+    } else {
+      // In development, allow any localhost origin
+      if (
+        !origin ||
+        origin.startsWith("http://localhost") ||
+        origin.startsWith("http://127.0.0.1")
+      ) {
+        cb(null, origin || true);
+      } else {
+        cb(null, false);
+      }
+    }
   },
 });
 

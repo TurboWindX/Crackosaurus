@@ -1,5 +1,5 @@
 import { DownloadIcon, ImportIcon, PlusIcon, TrashIcon } from "lucide-react";
-import { ReactNode, useMemo, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@repo/shadcn/components/ui/button";
@@ -208,6 +208,8 @@ export interface DataTableProps<T> {
   importAccept?: string[];
   importChildren?: ReactNode;
   onExport?: (values: T[]) => Promise<unknown[]>;
+  actions?: (selectedValues: T[], clearSelection: () => void) => ReactNode;
+  onSelectionChange?: (selectedValues: T[]) => void;
   preventAddDialogClose?: boolean;
   noAdd?: boolean;
   noRemove?: boolean;
@@ -236,6 +238,8 @@ export function DataTable<T>({
   importAccept,
   importChildren,
   onExport,
+  actions,
+  onSelectionChange,
   preventAddDialogClose = false,
   noAdd,
   noRemove,
@@ -268,6 +272,10 @@ export function DataTable<T>({
     [selects, searchValues, valueKey]
   );
 
+  useEffect(() => {
+    if (onSelectionChange) onSelectionChange(selectedValues);
+  }, [onSelectionChange, selectedValues]);
+
   const hasAdd = useMemo(
     () => addDialog !== undefined && onAdd !== undefined && !noAdd,
     [addDialog, onAdd, noAdd]
@@ -289,8 +297,9 @@ export function DataTable<T>({
   );
 
   const hasButtons = useMemo(
-    () => hasAdd || hasRemove || hasImport || hasExport,
-    [hasAdd, hasRemove, hasImport, hasExport]
+    () =>
+      hasAdd || hasRemove || hasImport || hasExport || actions !== undefined,
+    [hasAdd, hasRemove, hasImport, hasExport, actions]
   );
 
   const hasSelect = useMemo(
@@ -304,6 +313,8 @@ export function DataTable<T>({
     () => exportPrefix || "crackosaurus",
     [exportPrefix]
   );
+
+  const clearSelection = () => setSelects({});
 
   return (
     <div className="ui-grid ui-gap-2">
@@ -414,6 +425,7 @@ export function DataTable<T>({
               }}
             />
           )}
+          {actions !== undefined && actions(selectedValues, clearSelection)}
         </div>
       )}
       <div className="ui-max-w-[100vw] ui-overflow-x-hidden">

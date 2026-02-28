@@ -20,6 +20,14 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
   }
   private stepFunctions!: AWS.StepFunctions;
   private s3!: AWS.S3;
+  private ec2!: AWS.EC2;
+
+  // Cache for instance type availability (refreshed every 5 minutes)
+  private availabilityCache: {
+    data: Record<string, { available: boolean; azs: string[] }>;
+    timestamp: number;
+  } | null = null;
+  private static readonly AVAILABILITY_CACHE_TTL_MS = 5 * 60 * 1000;
 
   public getName(): string {
     return "aws";
@@ -30,22 +38,116 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
     return INSTANCE_TYPE_VALUES.concat([DEFAULT_TYPE]);
   }
 
+  /**
+   * Check which GPU instance types are actually offered in the current AWS
+   * region and in which AZs.  Results are cached for 5 minutes.
+   */
+  public async checkInstanceAvailability(): Promise<
+    Record<string, { available: boolean; azs: string[] }>
+  > {
+    // Return cached result if fresh
+    if (
+      this.availabilityCache &&
+      Date.now() - this.availabilityCache.timestamp <
+        AwsCluster.AVAILABILITY_CACHE_TTL_MS
+    ) {
+      return this.availabilityCache.data;
+    }
+
+    const types = this.getTypes();
+    const result: Record<string, { available: boolean; azs: string[] }> = {};
+    for (const t of types) {
+      result[t] = { available: false, azs: [] };
+    }
+
+    try {
+      // EC2 DescribeInstanceTypeOfferings tells us which types are offered
+      // per AZ in this region, paginated.
+      let nextToken: string | undefined;
+      do {
+        const resp = await this.ec2
+          .describeInstanceTypeOfferings({
+            LocationType: "availability-zone",
+            Filters: [
+              {
+                Name: "instance-type",
+                Values: types,
+              },
+            ],
+            NextToken: nextToken,
+          })
+          .promise();
+
+        for (const offering of resp.InstanceTypeOfferings ?? []) {
+          const t = offering.InstanceType;
+          const az = offering.Location;
+          if (t && result[t]) {
+            result[t].available = true;
+            if (az) result[t].azs.push(az);
+          }
+        }
+
+        nextToken = resp.NextToken;
+      } while (nextToken);
+
+      console.log(
+        `[AWS Cluster] Instance availability: ${
+          Object.entries(result).filter(([, v]) => v.available).length
+        }/${types.length} types available in region`
+      );
+    } catch (e) {
+      console.error(
+        "[AWS Cluster] Failed to check instance type availability:",
+        e
+      );
+      // On error, mark all as available so we don't block users
+      for (const t of types) {
+        result[t] = { available: true, azs: [] };
+      }
+    }
+
+    this.availabilityCache = { data: result, timestamp: Date.now() };
+    return result;
+  }
+
   private loadCredentials(): Promise<boolean> {
-    return new Promise((resolve) =>
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.error("[AWS Cluster] Credentials loading timed out after 5s");
+        resolve(false);
+      }, 5000);
+
       AWS.config.getCredentials((err) => {
-        if (err) resolve(false);
-        else resolve(true);
-      })
-    );
+        clearTimeout(timeout);
+        if (err) {
+          console.error("[AWS Cluster] Failed to load credentials:", err);
+          resolve(false);
+        } else {
+          console.log("[AWS Cluster] Successfully loaded AWS credentials");
+          resolve(true);
+        }
+      });
+    });
   }
 
   public async load(): Promise<boolean> {
-    if (!(await super.load())) return false;
-    if (!(await this.loadCredentials())) return false;
+    console.log("[AWS Cluster] Loading filesystem cluster...");
+    if (!(await super.load())) {
+      console.error("[AWS Cluster] Failed to load filesystem cluster");
+      return false;
+    }
+
+    console.log("[AWS Cluster] Loading AWS credentials...");
+    if (!(await this.loadCredentials())) {
+      console.error("[AWS Cluster] Failed to load AWS credentials");
+      return false;
+    }
 
     this.stepFunctions = new AWS.StepFunctions();
     this.s3 = new AWS.S3();
+    this.ec2 = new AWS.EC2();
 
+    console.log("[AWS Cluster] Successfully initialized AWS cluster");
     return true;
   }
 
@@ -380,7 +482,9 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
     wordlist: string,
     hashType: number,
     hashes: string[],
-    rule?: string
+    rule?: string,
+    attackMode?: number,
+    mask?: string
   ): Promise<string | null> {
     // Call parent to create job folder and metadata
     const jobID = await super.createJob(
@@ -388,7 +492,9 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
       wordlist,
       hashType,
       hashes,
-      rule
+      rule,
+      attackMode,
+      mask
     );
 
     if (!jobID) {
@@ -410,7 +516,10 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
     wordlist: string,
     hashType: number,
     hashes: string[],
-    rule?: string
+    rule?: string,
+    attackMode?: number,
+    mask?: string,
+    ntWordlist?: string[]
   ): Promise<boolean> {
     // Call parent to create job folder and metadata with specified ID
     const result = await super.createJobWithID(
@@ -419,7 +528,10 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
       wordlist,
       hashType,
       hashes,
-      rule
+      rule,
+      attackMode,
+      mask,
+      ntWordlist
     );
 
     if (!result) {

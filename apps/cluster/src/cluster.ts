@@ -28,7 +28,9 @@ export abstract class Cluster<TConfig = undefined> {
     wordlist: string,
     hashType: number,
     hashes: string[],
-    rule?: string
+    rule?: string,
+    attackMode?: number,
+    mask?: string
   ): Promise<string | null>;
 
   public abstract createJobWithID(
@@ -37,7 +39,10 @@ export abstract class Cluster<TConfig = undefined> {
     wordlist: string,
     hashType: number,
     hashes: string[],
-    rule?: string
+    rule?: string,
+    attackMode?: number,
+    mask?: string,
+    ntWordlist?: string[]
   ): Promise<boolean>;
 
   public abstract deleteJob(
@@ -65,4 +70,23 @@ export abstract class Cluster<TConfig = undefined> {
 
   // List all available rules
   public abstract listRules(): Promise<string[]>;
+
+  // Clean up stale instance folders (empty jobs, not running)
+  public abstract cleanupStaleInstances(): Promise<number>;
+
+  /**
+   * Check which instance types are available in the current region/AZs.
+   * Returns a map of instanceType → { available: boolean, azs: string[] }.
+   * Non-AWS clusters return all types as available.
+   */
+  public async checkInstanceAvailability(): Promise<
+    Record<string, { available: boolean; azs: string[] }>
+  > {
+    // Default: report all types as available (no cloud info)
+    const result: Record<string, { available: boolean; azs: string[] }> = {};
+    for (const t of this.getTypes()) {
+      result[t] = { available: true, azs: [] };
+    }
+    return result;
+  }
 }

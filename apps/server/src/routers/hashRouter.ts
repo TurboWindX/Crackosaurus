@@ -29,7 +29,7 @@ export const hashRouter = t.router({
         await tx.project.update({
           where: {
             PID: projectID,
-            members: hasPermission("root")
+            members: hasPermission("projects:get")
               ? undefined
               : {
                   some: {
@@ -49,6 +49,7 @@ export const hashRouter = t.router({
           ])
         );
 
+        // Check existing Hash records for previously found values (duplicate across projects)
         const seenHashes = await tx.hash.findMany({
           select: {
             hash: true,
@@ -62,12 +63,36 @@ export const hashRouter = t.router({
           },
         });
 
-        const seenHashMap = Object.fromEntries(
-          seenHashes.map((hash: { hash: string; value: string | null }) => [
-            hash.hash,
-            hash.value ?? "",
-          ])
-        );
+        // Track value + source separately so we can distinguish duplicates from shucked
+        const resolvedMap: Record<string, { value: string; source: string }> =
+          {};
+
+        for (const hash of seenHashes) {
+          resolvedMap[hash.hash] = {
+            value: hash.value ?? "",
+            source: "DUPLICATE",
+          };
+        }
+
+        // Also check KnownHash table (auto-learned from previous cracks)
+        const knownHashes = await tx.knownHash.findMany({
+          where: {
+            OR: data.map((hash) => ({
+              hash: toHashcatHash(hash.hashType, hash.hash),
+              hashType: hash.hashType,
+            })),
+          },
+          select: { hash: true, hashType: true, plaintext: true },
+        });
+
+        for (const known of knownHashes) {
+          if (!resolvedMap[known.hash]) {
+            resolvedMap[known.hash] = {
+              value: known.plaintext,
+              source: "KNOWN",
+            };
+          }
+        }
 
         const outHashes = await tx.hash.createManyAndReturn({
           select: {
@@ -76,13 +101,14 @@ export const hashRouter = t.router({
           },
           data: data.map((hash) => {
             const hashValue = hashValueMap[hash.hash]!;
-            const seenHash = seenHashMap[hashValue];
+            const resolved = resolvedMap[hashValue];
 
             return {
               hash: hashValue,
               hashType: hash.hashType,
-              value: seenHash,
-              status: seenHash ? STATUS.Found : undefined,
+              value: resolved?.value,
+              status: resolved ? STATUS.Found : undefined,
+              source: resolved?.source,
               projectId: projectID,
             };
           }),
@@ -115,7 +141,7 @@ export const hashRouter = t.router({
         await tx.project.update({
           where: {
             PID: projectID,
-            members: hasPermission("root")
+            members: hasPermission("projects:get")
               ? undefined
               : {
                   some: {

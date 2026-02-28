@@ -87,12 +87,24 @@ export const instanceRouter = t.router({
         hashType: z.number().int().min(0),
         hashes: z.string().array(),
         ruleID: z.string().optional(),
+        attackMode: z.number().int().min(0).optional(),
+        mask: z.string().optional(),
+        ntWordlist: z.string().array().optional(),
       })
     )
     .output(z.boolean())
     .mutation(async (opts) => {
-      const { instanceID, jobID, wordlistID, hashType, hashes, ruleID } =
-        opts.input;
+      const {
+        instanceID,
+        jobID,
+        wordlistID,
+        hashType,
+        hashes,
+        ruleID,
+        attackMode,
+        mask,
+        ntWordlist,
+      } = opts.input;
 
       const { cluster } = opts.ctx;
 
@@ -102,7 +114,10 @@ export const instanceRouter = t.router({
         wordlistID,
         hashType,
         hashes,
-        ruleID
+        ruleID,
+        attackMode,
+        mask,
+        ntWordlist
       );
     }),
   deleteJobs: publicProcedure
@@ -124,6 +139,10 @@ export const instanceRouter = t.router({
 
       return result.map((r) => r.status === "fulfilled" && r.value);
     }),
+  cleanupStale: publicProcedure.output(z.number()).mutation(async (opts) => {
+    const { cluster } = opts.ctx;
+    return await cluster.cleanupStaleInstances();
+  }),
 });
 
 export type InstanceRouter = typeof instanceRouter;

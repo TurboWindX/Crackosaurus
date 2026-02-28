@@ -18,6 +18,7 @@ export interface ServerServiceProps {
   vpcSubnets?: ec2.SubnetSelection;
   dbHost: string;
   dbSecretArn: string;
+  backendSecretArn: string;
   wordlistsBucket: s3.IBucket;
   imageTag?: string;
   desiredCount?: number;
@@ -80,12 +81,19 @@ export class ServerService extends Construct {
       "DbSecret",
       props.dbSecretArn
     );
+    const backendSecret = cdk.aws_secretsmanager.Secret.fromSecretCompleteArn(
+      this,
+      "BackendSecret",
+      props.backendSecretArn
+    );
+
     const secrets: Record<string, ecs.Secret> = {
       DATABASE_USER: ecs.Secret.fromSecretsManager(dbSecret, "username"),
       DATABASE_PASSWORD: ecs.Secret.fromSecretsManager(dbSecret, "password"),
       DATABASE_NAME: ecs.Secret.fromSecretsManager(dbSecret, "dbname"),
       DATABASE_HOST: ecs.Secret.fromSecretsManager(dbSecret, "host"),
       DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, "port"),
+      BACKEND_SECRET: ecs.Secret.fromSecretsManager(backendSecret),
     };
 
     // If the caller provided an explicit clusterHost and it's not the placeholder

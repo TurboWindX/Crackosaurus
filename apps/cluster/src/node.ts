@@ -30,11 +30,12 @@ export class NodeCluster extends FileSystemCluster<NodeClusterConfig> {
     );
     metadata.status = STATUS.Running;
 
-    writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
+    await writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
 
     childProcess.spawn("node", [this.config.scriptPath], {
       env: envInstanceConfig({
         instanceID,
+        instanceType: "node",
         ...this.config,
       }),
       stdio: "inherit",

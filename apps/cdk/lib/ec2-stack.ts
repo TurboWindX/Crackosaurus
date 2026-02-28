@@ -263,6 +263,16 @@ export class CrackosaurusStack extends cdk.Stack {
       },
     });
 
+    // Backend session secret — auto-generated, stored in Secrets Manager
+    const backendSecret = new secretsmanager.Secret(this, "BackendSecret", {
+      description: "Session signing secret for the Crackosaurus server",
+      generateSecretString: {
+        excludePunctuation: false,
+        includeSpace: false,
+        passwordLength: 64,
+      },
+    });
+
     const dbCluster = new rds.DatabaseCluster(this, "Database", {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
         version: rds.AuroraPostgresEngineVersion.VER_15_6,
@@ -591,8 +601,8 @@ export class CrackosaurusStack extends cdk.Stack {
     clusterRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ["ec2:DescribeInstances"],
-        resources: ["*"], // DescribeInstances doesn't support resource-level permissions
+        actions: ["ec2:DescribeInstances", "ec2:DescribeInstanceTypeOfferings"],
+        resources: ["*"], // Describe* actions don't support resource-level permissions
       })
     );
 
@@ -713,8 +723,9 @@ export class CrackosaurusStack extends cdk.Stack {
 
     // SQS removed: no job queue grants for Fargate task role
 
-    // Allow task to read DB credentials
+    // Allow task to read DB credentials and backend secret
     dbCredentials.grantRead(taskRole);
+    backendSecret.grantRead(taskRole);
 
     // Grant the Fargate task role access to the wordlists bucket (created above).
     // We do this here because `taskRole` is declared only after the bucket
@@ -757,6 +768,34 @@ export class CrackosaurusStack extends cdk.Stack {
       })
     );
 
+    // Allow Fargate tasks to query GPU instance availability per-AZ and
+    // describe running EC2 instances for status reconciliation.
+    // These are read-only Describe* actions that don't support resource-level
+    // permissions, so we must use "*".
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["ec2:DescribeInstances", "ec2:DescribeInstanceTypeOfferings"],
+        resources: ["*"],
+      })
+    );
+
+    // Allow Fargate tasks to terminate GPU instances managed by Crackosaurus.
+    // Scoped to instances tagged ManagedBy=Crackosaurus + Type=GPU only.
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["ec2:TerminateInstances"],
+        resources: [`arn:aws:ec2:${this.region}:${this.account}:instance/*`],
+        conditions: {
+          StringEquals: {
+            "ec2:ResourceTag/ManagedBy": "Crackosaurus",
+            "ec2:ResourceTag/Type": "GPU",
+          },
+        },
+      })
+    );
+
     const executionRole = new iam.Role(this, "FargateExecutionRole", {
       assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
       managedPolicies: [
@@ -766,9 +805,10 @@ export class CrackosaurusStack extends cdk.Stack {
       ],
     });
 
-    // Allow the execution role to read DB credentials from Secrets Manager
-    // (needed so the task can fetch secrets at startup)
+    // Allow the execution role to read DB credentials and backend secret
+    // from Secrets Manager (needed so the task can fetch secrets at startup)
     dbCredentials.grantRead(executionRole);
+    backendSecret.grantRead(executionRole);
 
     // Instantiate cluster Fargate service via construct
     const clusterServiceConstruct = new ClusterService(
@@ -816,6 +856,7 @@ export class CrackosaurusStack extends cdk.Stack {
         vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
         dbHost: dbCluster.clusterEndpoint.hostname,
         dbSecretArn: dbCredentials.secretArn,
+        backendSecretArn: backendSecret.secretArn,
         wordlistsBucket,
         imageTag: serverImageTag,
         desiredCount: serverDesiredCount,

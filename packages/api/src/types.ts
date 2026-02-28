@@ -23,6 +23,16 @@ export const STATUS = {
 } as const;
 export type Status = (typeof STATUS)[keyof typeof STATUS];
 
+export const JOB_PROGRESS = z.object({
+  progressPercent: z.number(),
+  speed: z.number(),
+  speedFormatted: z.string(),
+  eta: z.string(),
+  estimatedStop: z.number(),
+  timestamp: z.number(),
+});
+export type JobProgress = z.infer<typeof JOB_PROGRESS>;
+
 export const CLUSTER_STATUS = z.object({
   instances: z.record(
     z.string(),
@@ -33,6 +43,8 @@ export const CLUSTER_STATUS = z.object({
         z.object({
           status: z.enum(STATUSES),
           hashes: z.record(z.string(), z.string()),
+          shuckedHashes: z.array(z.string()).optional(),
+          progress: JOB_PROGRESS.optional(),
         })
       ),
     })

@@ -137,6 +137,41 @@ export const instanceRouter = t.router({
 
       return await cluster.info.type.query();
     }),
+  getAvailability: permissionProcedure(["instances:get"])
+    .output(
+      z.record(
+        z.string(),
+        z.object({
+          available: z.boolean(),
+          azs: z.string().array(),
+        })
+      )
+    )
+    .query(async (opts) => {
+      const { cluster } = opts.ctx;
+
+      // Wrap with a timeout so a slow/unreachable cluster doesn't cause a
+      // 504 on batched tRPC requests (ALB timeout is typically 60 s).
+      const AVAILABILITY_TIMEOUT_MS = 15_000;
+      try {
+        const result = await Promise.race([
+          cluster.info.availability.query(),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("getAvailability timed out")),
+              AVAILABILITY_TIMEOUT_MS
+            )
+          ),
+        ]);
+        return result;
+      } catch (e) {
+        console.warn(
+          "[instanceRouter] getAvailability failed, returning empty:",
+          e
+        );
+        return {};
+      }
+    }),
   create: permissionProcedure(["instances:add"])
     .input(
       z.object({
@@ -182,34 +217,61 @@ export const instanceRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: TransactionClient) => {
-        const instances = await tx.instance.findMany({
-          select: {
-            IID: true,
-            tag: true,
+      // 1) Fetch instances first (outside a transaction) so we can call the
+      // cluster RPC without holding an open DB transaction.
+      const instances = await prisma.instance.findMany({
+        select: {
+          IID: true,
+          tag: true,
+        },
+        where: {
+          IID: {
+            in: instanceIDs,
           },
-          where: {
-            IID: {
-              in: instanceIDs,
-            },
-          },
-        });
+        },
+      });
 
-        await cluster.instance.deleteMany.mutate({
+      if (instances.length === 0) return 0;
+
+      // 2) Ask the cluster to delete instance folders. The cluster returns an
+      // array of booleans aligned with the input order (true = deleted).
+      let deleteResults: (boolean | null)[] = [];
+      try {
+        deleteResults = await cluster.instance.deleteMany.mutate({
           instanceIDs: instances.map(
             (instance: { tag: string }) => instance.tag
           ),
         });
+      } catch (e) {
+        // If the cluster RPC fails, it's safer to abort and surface an error
+        // rather than deleting DB rows while cluster cleanup failed.
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: `Failed to delete instance folders: ${String(e)}`,
+        });
+      }
 
-        const deletedIDs = instances.map(
-          (instance: { IID: string }) => instance.IID
-        );
+      // 3) Determine which instances were successfully deleted by the cluster
+      const deletedIIDs = instances
+        .map((inst: { IID: string }, idx: number) => ({
+          iid: inst.IID,
+          ok: Boolean(deleteResults[idx]),
+        }))
+        .filter((x: { iid: string; ok: boolean }) => x.ok)
+        .map((x: { iid: string; ok: boolean }) => x.iid);
 
+      if (deletedIIDs.length === 0) {
+        // Nothing deleted on the cluster side, nothing to remove from DB.
+        return 0;
+      }
+
+      // 4) Delete jobs and instance rows in a short transaction.
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         await tx.job.deleteMany({
           where: {
             instance: {
               IID: {
-                in: deletedIDs,
+                in: deletedIIDs,
               },
             },
           },
@@ -218,7 +280,7 @@ export const instanceRouter = t.router({
         const { count } = await tx.instance.deleteMany({
           where: {
             IID: {
-              in: deletedIDs,
+              in: deletedIIDs,
             },
           },
         });
@@ -273,7 +335,7 @@ export const instanceRouter = t.router({
             PID: {
               in: projectIDs,
             },
-            members: hasPermission("root")
+            members: hasPermission("projects:get")
               ? undefined
               : {
                   some: {
@@ -283,7 +345,17 @@ export const instanceRouter = t.router({
           },
         });
         const projectMap = Object.fromEntries(
-          projects.map((project: { PID: string }) => [project.PID, project])
+          projects.map(
+            (project: {
+              PID: string;
+              hashes: {
+                HID: string;
+                hash: string;
+                hashType: number;
+                status: string;
+              }[];
+            }) => [project.PID, project]
+          )
         );
 
         const wordlists = await tx.wordlist.findMany({
@@ -382,40 +454,48 @@ export const instanceRouter = t.router({
 
       const { prisma, cluster } = opts.ctx;
 
-      return await prisma.$transaction(async (tx: TransactionClient) => {
-        const instance = await tx.instance.findUniqueOrThrow({
-          select: {
-            IID: true,
-            tag: true,
+      // 1) Fetch instance and jobs outside the transaction
+      const instance = await prisma.instance.findUniqueOrThrow({
+        select: {
+          IID: true,
+          tag: true,
+        },
+        where: {
+          IID: instanceID,
+        },
+      });
+
+      const jobs = await prisma.job.findMany({
+        select: {
+          JID: true,
+        },
+        where: {
+          JID: {
+            in: jobIDs,
           },
-          where: {
+          instance: {
             IID: instanceID,
           },
-        });
+        },
+      });
 
-        const jobs = await tx.job.findMany({
-          select: {
-            JID: true,
-          },
-          where: {
-            JID: {
-              in: jobIDs,
-            },
-            instance: {
-              IID: instanceID,
-            },
-          },
-        });
+      if (jobs.length === 0) return 0;
 
-        const results = await cluster.instance.deleteJobs.mutate({
-          instanceID: instance.tag,
-          jobIDs: jobs.map((job: { JID: string }) => job.JID),
-        });
+      // 2) Call cluster RPC to delete job folders (can be slow — must be
+      //    outside the DB transaction to avoid the 5 s timeout)
+      const results = await cluster.instance.deleteJobs.mutate({
+        instanceID: instance.tag,
+        jobIDs: jobs.map((job: { JID: string }) => job.JID),
+      });
 
-        const deletedIDs = jobs
-          .filter((_: unknown, index: number) => results[index])
-          .map(({ JID }: { JID: string }) => JID);
+      const deletedIDs = jobs
+        .filter((_: unknown, index: number) => results[index])
+        .map(({ JID }: { JID: string }) => JID);
 
+      if (deletedIDs.length === 0) return 0;
+
+      // 3) Delete DB rows in a short transaction
+      return await prisma.$transaction(async (tx: TransactionClient) => {
         const { count } = await tx.job.deleteMany({
           where: {
             JID: {

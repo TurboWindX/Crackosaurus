@@ -3,8 +3,10 @@ import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
 import { z } from "zod";
 
-import { STATUS } from "@repo/api";
+import { STATUS, type JobProgress } from "@repo/api";
+import { JOB_PROGRESS } from "@repo/api";
 
+import { getJobProgressCached } from "../plugins/cluster/plugin";
 import { permissionProcedure, t } from "../plugins/trpc";
 
 type TransactionClient = Omit<
@@ -49,14 +51,24 @@ export const jobRouter = t.router({
           },
           where: {
             PID: { in: projectIDs },
-            members: hasPermission("root")
+            members: hasPermission("projects:get")
               ? undefined
               : { some: { ID: currentUserID } },
           },
         });
 
         const projectMap = Object.fromEntries(
-          projects.map((p: { PID: string }) => [p.PID, p])
+          projects.map(
+            (p: {
+              PID: string;
+              hashes: {
+                HID: string;
+                hash: string;
+                hashType: number;
+                status: string;
+              }[];
+            }) => [p.PID, p]
+          )
         );
 
         const wordlists = await tx.wordlist.findMany({
@@ -116,8 +128,21 @@ export const jobRouter = t.router({
           ) as [(typeof data)[number], { HID: string }[], string][];
 
         await Promise.all(
-          jobData.map(([{ wordlistID, ruleID }, hashes, JID]) =>
-            tx.job.create({
+          jobData.map(([{ wordlistID, ruleID }, hashes, JID]) => {
+            if (!instanceType) {
+              throw new Error(
+                `instanceType is required but was: ${instanceType}`
+              );
+            }
+            if (!wordlistID) {
+              throw new Error(`wordlistID is required but was: ${wordlistID}`);
+            }
+            if (!hashes || hashes.length === 0) {
+              throw new Error(
+                `hashes are required but got: ${hashes?.length || 0}`
+              );
+            }
+            return tx.job.create({
               data: {
                 JID,
                 wordlistId: wordlistID,
@@ -128,138 +153,331 @@ export const jobRouter = t.router({
                 instanceType: instanceType,
                 submittedById: currentUserID,
               },
-            })
-          )
+            });
+          })
         );
 
         return jobData.map(([, , JID]) => JID);
       });
     }),
 
-  // Approve single job and mark as approved. Scheduling to cluster is out of scope here.
+  // Create pending job requests for explicit hash IDs (used by hash table selection)
+  requestJobsForHashes: permissionProcedure(["instances:jobs:add"])
+    .input(
+      z.object({
+        instanceType: z.string(),
+        wordlistID: z.string().optional(),
+        ruleID: z.string().optional(),
+        hashIDs: z.string().array().min(1),
+        attackMode: z.number().int().min(0).default(0),
+        mask: z.string().optional(),
+        cascadeId: z.string().optional(),
+        cascadeStepIndex: z.number().int().min(0).optional(),
+      })
+    )
+    .output(z.array(z.string()))
+    .mutation(async (opts) => {
+      const {
+        instanceType,
+        wordlistID,
+        ruleID,
+        hashIDs,
+        attackMode,
+        mask,
+        cascadeId,
+        cascadeStepIndex,
+      } = opts.input;
+      const { prisma, hasPermission, currentUserID } = opts.ctx;
+
+      return await prisma.$transaction(async (tx: TransactionClient) => {
+        const isMaskAttack = attackMode === 3;
+
+        // Validate wordlist for dictionary attacks
+        let resolvedWordlistID: string | undefined = undefined;
+        if (!isMaskAttack) {
+          if (!wordlistID) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Dictionary attack requires a wordlist",
+            });
+          }
+          const wordlist = await tx.wordlist.findUnique({
+            select: { WID: true },
+            where: { WID: wordlistID },
+          });
+          if (!wordlist)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Wordlist not found",
+            });
+          resolvedWordlistID = wordlist.WID;
+        }
+
+        // Validate mask for mask attacks
+        if (isMaskAttack && !mask) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Mask attack requires a mask pattern",
+          });
+        }
+
+        let resolvedRuleID: string | undefined = undefined;
+        if (ruleID) {
+          const rule = await tx.rule.findUnique({
+            select: { RID: true },
+            where: { RID: ruleID },
+          });
+          if (rule) resolvedRuleID = rule.RID;
+        }
+
+        const hashes = await tx.hash.findMany({
+          select: { HID: true, hashType: true, status: true },
+          where: {
+            HID: { in: hashIDs },
+            status: STATUS.NotFound,
+            project: hasPermission("projects:get")
+              ? undefined
+              : { members: { some: { ID: currentUserID } } },
+          },
+        });
+
+        if (hashes.length === 0) return [];
+
+        const hashesByType = new Map<number, { HID: string }[]>();
+        for (const h of hashes) {
+          const type = Number(h.hashType);
+          const list = hashesByType.get(type) ?? [];
+          list.push({ HID: h.HID });
+          hashesByType.set(type, list);
+        }
+
+        const jobIDs: string[] = [];
+        for (const [, typeHashes] of hashesByType) {
+          const JID = crypto.randomUUID();
+          await tx.job.create({
+            data: {
+              JID,
+              wordlistId: resolvedWordlistID ?? null,
+              ruleId: resolvedRuleID,
+              instanceId: null,
+              hashes: { connect: typeHashes.map(({ HID }) => ({ HID })) },
+              approvalStatus: "PENDING",
+              instanceType: instanceType,
+              attackMode: attackMode,
+              mask: mask ?? null,
+              cascadeId: cascadeId ?? null,
+              cascadeStepIndex: cascadeStepIndex ?? null,
+              submittedById: currentUserID,
+            },
+          });
+          jobIDs.push(JID);
+        }
+
+        return jobIDs;
+      });
+    }),
+
+  // Cancel (delete) a pending job request. Allowed for the submitter, or users who can approve jobs.
+  cancelPending: permissionProcedure(["instances:jobs:add"])
+    .input(z.object({ jobID: z.string() }))
+    .output(z.boolean())
+    .mutation(async (opts) => {
+      const { jobID } = opts.input;
+      const { prisma, hasPermission, currentUserID } = opts.ctx;
+
+      await prisma.$transaction(async (tx: TransactionClient) => {
+        const job = await tx.job.findUniqueOrThrow({
+          where: { JID: jobID },
+          select: {
+            JID: true,
+            approvalStatus: true,
+            submittedById: true,
+          },
+        });
+
+        if (job.approvalStatus !== "PENDING") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Job not pending",
+          });
+        }
+
+        const canCancel =
+          hasPermission("root") ||
+          hasPermission("jobs:approve") ||
+          (job.submittedById && job.submittedById === currentUserID);
+
+        if (!canCancel) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Not allowed to cancel this job",
+          });
+        }
+
+        await tx.job.delete({ where: { JID: job.JID } });
+      });
+
+      return true;
+    }),
+
+  // Cancel an approved/running job. Marks it as Stopped and attempts to
+  // stop it on the cluster. Any project member can cancel jobs belonging
+  // to their projects.
+  cancel: permissionProcedure(["auth"])
+    .input(z.object({ jobID: z.string() }))
+    .output(z.boolean())
+    .mutation(async (opts) => {
+      const { jobID } = opts.input;
+      const { prisma, hasPermission, currentUserID, cluster } = opts.ctx;
+
+      const job = await prisma.job.findUniqueOrThrow({
+        where: { JID: jobID },
+        select: {
+          JID: true,
+          status: true,
+          approvalStatus: true,
+          submittedById: true,
+          instanceId: true,
+          instance: { select: { IID: true, tag: true } },
+          hashes: {
+            select: {
+              HID: true,
+              project: {
+                select: {
+                  members: { select: { ID: true } },
+                },
+              },
+            },
+            take: 1,
+          },
+        },
+      });
+
+      // Verify user has access: root, admin, submitter, or project member
+      const isProjectMember = job.hashes.some(
+        (h: { project?: { members?: { ID: string }[] } | null }) =>
+          h.project?.members?.some(
+            (m: { ID: string }) => m.ID === currentUserID
+          )
+      );
+      const canCancel =
+        hasPermission("root") ||
+        hasPermission("jobs:approve") ||
+        (job.submittedById && job.submittedById === currentUserID) ||
+        isProjectMember;
+
+      if (!canCancel) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Not allowed to cancel this job",
+        });
+      }
+
+      // Already in a terminal state — nothing to do
+      if (
+        job.status === STATUS.Complete ||
+        job.status === STATUS.Stopped ||
+        job.status === STATUS.Error
+      ) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Job is already in terminal state: ${job.status}`,
+        });
+      }
+
+      // Mark job as Stopped in the database
+      await prisma.job.update({
+        where: { JID: jobID },
+        data: {
+          status: STATUS.Stopped,
+          rejectionNote: `Cancelled by user ${currentUserID}`,
+          updatedAt: new Date(),
+        },
+      });
+
+      // If the job is on the cluster, stop it and terminate the instance.
+      // The orchestrator creates 1:1 instance-per-job, so cancelling the
+      // job means the instance has no remaining work. Deleting just the job
+      // would leave the EC2 instance running until cooldown expires.
+      if (job.instance?.tag) {
+        try {
+          // Stop the job on EFS (marks job metadata as Stopped)
+          await cluster.instance.deleteJobs.mutate({
+            instanceID: job.instance.tag,
+            jobIDs: [jobID],
+          });
+        } catch (e) {
+          console.error(
+            `[JobRouter] Failed to cancel job ${jobID} on cluster:`,
+            e
+          );
+        }
+
+        try {
+          // Terminate the EC2 instance (marks instance as Stopped + calls
+          // EC2 terminateInstances). This kills hashcat immediately instead
+          // of waiting for the cooldown timer.
+          await cluster.instance.deleteMany.mutate({
+            instanceIDs: [job.instance.tag],
+          });
+        } catch (e) {
+          console.error(
+            `[JobRouter] Failed to terminate instance ${job.instance.tag} for cancelled job ${jobID}:`,
+            e
+          );
+        }
+
+        // Also mark the instance as Stopped in the database
+        if (job.instance?.IID) {
+          try {
+            await prisma.instance.update({
+              where: { IID: job.instance.IID },
+              data: { status: STATUS.Stopped, updatedAt: new Date() },
+            });
+          } catch (e) {
+            console.error(
+              `[JobRouter] Failed to update instance ${job.instance.IID} status:`,
+              e
+            );
+          }
+        }
+      }
+
+      console.log(
+        `[JobRouter] Job ${jobID} cancelled by ${currentUserID}, instance ${job.instance?.tag ?? "none"} terminated`
+      );
+
+      return true;
+    }),
+
+  // Approve job - just marks as approved, orchestration happens in background worker
   approve: permissionProcedure(["jobs:approve"])
     .input(z.object({ jobID: z.string() }))
     .output(z.boolean())
     .mutation(async (opts) => {
       const { jobID } = opts.input;
-      const { prisma, cluster } = opts.ctx;
+      const { prisma, currentUserID } = opts.ctx;
 
-      // First, do all database operations in a transaction
-      const { instance, job } = await prisma.$transaction(
-        async (tx: TransactionClient) => {
-          const job = await tx.job.findUniqueOrThrow({
-            where: { JID: jobID },
-            select: {
-              JID: true,
-              wordlistId: true,
-              ruleId: true,
-              instanceType: true,
-              approvalStatus: true,
-              hashes: {
-                select: {
-                  HID: true,
-                  hash: true,
-                  hashType: true,
-                },
-              },
-            },
-          });
-          if (job.approvalStatus !== "PENDING")
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Job not pending",
-            });
+      const updated = await prisma.job.updateMany({
+        where: { JID: jobID, approvalStatus: "PENDING" },
+        data: {
+          approvalStatus: "APPROVED",
+          approvedById: currentUserID,
+          approvedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
 
-          if (!job.instanceType)
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Job missing instance type",
-            });
+      if (updated.count === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Job not found or already approved",
+        });
+      }
 
-          // Create instance folder only (don't launch EC2 yet)
-          // This allows us to create the job folder before the instance starts
-          console.log(
-            `[JobRouter] Creating instance folder for job ${jobID} with type ${job.instanceType}`
-          );
-          const tag = await cluster.instance.createFolder.mutate({
-            instanceType: job.instanceType,
-          });
-          console.log(`[JobRouter] Created instance folder with tag: ${tag}`);
-          if (!tag) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-
-          const instance = await tx.instance.create({
-            data: {
-              name: `Auto-created for job ${jobID.slice(0, 8)}`,
-              tag,
-              type: job.instanceType,
-              status: "RUNNING", // optimistic: cluster will start it
-            },
-          });
-
-          // Update job with instance assignment and approval
-          await tx.job.update({
-            where: { JID: jobID },
-            data: {
-              approvalStatus: "APPROVED",
-              instanceId: instance.IID,
-              updatedAt: new Date(),
-            },
-          });
-
-          return { instance, job };
-        }
+      console.log(
+        `[JobRouter] Job ${jobID} approved by ${currentUserID} - orchestration will happen in background`
       );
-
-      // After DB transaction completes, create job folder in EFS BEFORE launching EC2
-      // This ensures the job exists when the instance starts polling
-      const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
-      try {
-        console.log(
-          `[JobRouter] Creating job folder for job ${jobID} in instance ${instance.tag}`
-        );
-        await cluster.instance.createJobWithID.mutate({
-          instanceID: instance.tag, // Use tag for cluster communication
-          jobID,
-          wordlistID: job.wordlistId!,
-          hashType: job.hashes[0]?.hashType || 0, // All hashes should have same type
-          hashes: hashStrings,
-          ruleID: job.ruleId ?? undefined,
-        });
-        console.log(
-          `[JobRouter] Successfully created job folder for job ${jobID} in instance ${instance.tag}`
-        );
-      } catch (e) {
-        console.error(
-          `[JobRouter] Failed to create job folder for job ${jobID} in instance ${instance.tag}:`,
-          e
-        );
-        console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
-        // Don't throw - DB changes are already committed, just log the error
-        // The instance will be in "running" state but job won't be in EFS
-        // Manual intervention may be needed
-        return false;
-      }
-
-      // NOW launch the EC2 instance after job folder is ready
-      try {
-        console.log(
-          `[JobRouter] Launching EC2 instance ${instance.tag} for job ${jobID}`
-        );
-        await cluster.instance.launch.mutate({
-          instanceID: instance.tag,
-        });
-        console.log(
-          `[JobRouter] Successfully launched EC2 instance ${instance.tag}`
-        );
-      } catch (e) {
-        console.error(
-          `[JobRouter] Failed to launch EC2 instance ${instance.tag}:`,
-          e
-        );
-        console.error(`[JobRouter] Error details:`, JSON.stringify(e, null, 2));
-        // Job folder exists but instance won't launch - manual intervention needed
-        return false;
-      }
 
       return true;
     }),
@@ -269,161 +487,237 @@ export const jobRouter = t.router({
     .output(z.number().int().min(0))
     .mutation(async (opts) => {
       const { jobIDs } = opts.input;
-      const { prisma, cluster } = opts.ctx;
+      const { prisma, currentUserID } = opts.ctx;
 
-      // First, do all database operations in a transaction
-      const jobInstancePairs = await prisma.$transaction(
-        async (tx: TransactionClient) => {
-          // Get all jobs to be approved
-          const jobs = await tx.job.findMany({
-            where: { JID: { in: jobIDs }, approvalStatus: "PENDING" },
-            select: {
-              JID: true,
-              wordlistId: true,
-              ruleId: true,
-              instanceType: true,
-              approvalStatus: true,
-              hashes: {
-                select: {
-                  HID: true,
-                  hash: true,
-                  hashType: true,
-                },
-              },
-            },
-          });
+      const updated = await prisma.job.updateMany({
+        where: { JID: { in: jobIDs }, approvalStatus: "PENDING" },
+        data: {
+          approvalStatus: "APPROVED",
+          approvedById: currentUserID,
+          approvedAt: new Date(),
+          updatedAt: new Date(),
+        },
+      });
 
-          if (jobs.length === 0) return [];
-
-          // Group jobs by instance type for efficient instance assignment
-          const jobsByType = jobs.reduce(
-            (acc: Record<string, typeof jobs>, job: (typeof jobs)[0]) => {
-              const type = job.instanceType;
-              if (!type) return acc; // Skip jobs without instance type
-              if (!acc[type]) acc[type] = [];
-              acc[type].push(job);
-              return acc;
-            },
-            {} as Record<string, typeof jobs>
-          );
-
-          const pairs: Array<{
-            job: (typeof jobs)[0];
-            instance: { tag: string };
-          }> = [];
-
-          for (const [, typeJobs] of Object.entries(jobsByType) as [
-            string,
-            typeof jobs,
-          ][]) {
-            for (const job of typeJobs) {
-              if (!job.instanceType) continue; // Skip jobs without instance type
-
-              // Create instance folder only (don't launch EC2 yet)
-              const tag = await cluster.instance.createFolder.mutate({
-                instanceType: job.instanceType,
-              });
-              if (!tag) continue; // Skip if instance creation failed
-
-              const instance = await tx.instance.create({
-                data: {
-                  name: `Auto-created for job ${job.JID.slice(0, 8)}`,
-                  tag,
-                  type: job.instanceType,
-                  status: "RUNNING",
-                },
-              });
-
-              await tx.job.update({
-                where: { JID: job.JID },
-                data: {
-                  approvalStatus: "APPROVED",
-                  instanceId: instance.IID,
-                  updatedAt: new Date(),
-                },
-              });
-
-              pairs.push({ job, instance: { tag: instance.tag } });
-            }
-          }
-
-          return pairs;
-        }
+      console.log(
+        `[JobRouter] Approved ${updated.count} jobs - orchestration will happen in background`
       );
 
-      // After DB transaction completes, create job folders BEFORE launching instances
-      // This ensures jobs exist when instances start polling
-      let totalApproved = 0;
+      return updated.count;
+    }),
 
-      // Step 1: Create all job folders
-      await Promise.all(
-        jobInstancePairs.map(
-          async (pair: { job: { JID: string; wordlistId: string | null; ruleId: string | null; hashes: { hash: string; hashType: number }[] }; instance: { tag: string } }) => {
-            const { job, instance } = pair;
-            const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
-            try {
-              console.log(
-                `[JobRouter] Creating job folder for job ${job.JID} in instance ${instance.tag}`
-              );
-              await cluster.instance.createJobWithID.mutate({
-                instanceID: instance.tag,
-                jobID: job.JID,
-                wordlistID: job.wordlistId!,
-                hashType: job.hashes[0]?.hashType || 0,
-                hashes: hashStrings,
-                ruleID: job.ruleId ?? undefined,
-              });
-              console.log(
-                `[JobRouter] Successfully created job folder for job ${job.JID} in instance ${instance.tag}`
-              );
-            } catch (e) {
-              console.error(
-                `[JobRouter] Failed to create job folder for job ${job.JID} in instance ${instance.tag}:`,
-                e
-              );
-              console.error(
-                `[JobRouter] Error details:`,
-                JSON.stringify(e, null, 2)
-              );
-              // Mark this pair as failed so we don't launch its instance
-              (pair as { failed?: boolean }).failed = true;
-            }
-          }
-        )
-      );
-
-      // Step 2: Launch all EC2 instances after job folders are ready
-      await Promise.all(
-        jobInstancePairs
-          .filter((pair: { failed?: boolean }) => !pair.failed)
-          .map(async (pair: { job: { JID: string }; instance: { tag: string } }) => {
-            const { job, instance } = pair;
-            try {
-              console.log(
-                `[JobRouter] Launching EC2 instance ${instance.tag} for job ${job.JID}`
-              );
-              await cluster.instance.launch.mutate({
-                instanceID: instance.tag,
-              });
-              console.log(
-                `[JobRouter] Successfully launched EC2 instance ${instance.tag}`
-              );
-              totalApproved++;
-            } catch (e) {
-              console.error(
-                `[JobRouter] Failed to launch EC2 instance ${instance.tag} for job ${job.JID}:`,
-                e
-              );
-              console.error(
-                `[JobRouter] Error details:`,
-                JSON.stringify(e, null, 2)
-              );
-              // Job folder exists but instance won't launch - manual intervention needed
-            }
+  // Get a single job with full details (for the Job detail page)
+  get: permissionProcedure(["auth"])
+    .input(z.object({ jobID: z.string() }))
+    .output(
+      z.object({
+        JID: z.string(),
+        status: z.string(),
+        approvalStatus: z.string().nullable(),
+        instanceType: z.string().nullable(),
+        rejectionNote: z.string().nullable(),
+        createdAt: z.date(),
+        updatedAt: z.date(),
+        submittedBy: z
+          .object({ ID: z.string(), username: z.string() })
+          .nullable(),
+        approvedBy: z
+          .object({ ID: z.string(), username: z.string() })
+          .nullable(),
+        approvedAt: z.date().nullable(),
+        wordlist: z
+          .object({ WID: z.string(), name: z.string().nullable() })
+          .nullable(),
+        rule: z
+          .object({ RID: z.string(), name: z.string().nullable() })
+          .nullable(),
+        instance: z
+          .object({
+            IID: z.string(),
+            name: z.string().nullable(),
+            tag: z.string(),
+            type: z.string().nullable(),
+            status: z.string(),
           })
+          .nullable(),
+        hashes: z
+          .object({
+            HID: z.string(),
+            hash: z.string(),
+            hashType: z.number(),
+            status: z.string(),
+            value: z.string().nullable(),
+            source: z.string().nullable(),
+          })
+          .array(),
+        projects: z
+          .object({
+            PID: z.string(),
+            name: z.string(),
+          })
+          .array(),
+        attackMode: z.number(),
+        mask: z.string().nullable(),
+        cascade: z
+          .object({
+            CID: z.string(),
+            name: z.string(),
+            totalSteps: z.number(),
+          })
+          .nullable(),
+        cascadeStepIndex: z.number().nullable(),
+      })
+    )
+    .query(async (opts) => {
+      const { jobID } = opts.input;
+      const { prisma, hasPermission, currentUserID } = opts.ctx;
+
+      const job = await prisma.job.findUniqueOrThrow({
+        where: { JID: jobID },
+        include: {
+          submittedBy: { select: { ID: true, username: true } },
+          approvedBy: { select: { ID: true, username: true } },
+          wordlist: { select: { WID: true, name: true } },
+          rule: { select: { RID: true, name: true } },
+          instance: {
+            select: {
+              IID: true,
+              name: true,
+              tag: true,
+              type: true,
+              status: true,
+            },
+          },
+          cascade: {
+            select: {
+              CID: true,
+              name: true,
+              _count: { select: { steps: true } },
+            },
+          },
+          hashes: {
+            select: {
+              HID: true,
+              hash: true,
+              hashType: true,
+              status: true,
+              source: true,
+              value: hasPermission("hashes:view"),
+              project: { select: { PID: true, name: true } },
+            },
+          },
+        },
+      });
+
+      // Authorization: user must be submitter, approver, project member, or admin
+      if (!hasPermission("instances:jobs:get")) {
+        if (job.submittedById !== currentUserID) {
+          throw new TRPCError({ code: "UNAUTHORIZED" });
+        }
+      }
+
+      // Collect unique projects from hashes
+      const projectMap = new Map<string, { PID: string; name: string }>();
+      for (const hash of job.hashes) {
+        const project = (hash as unknown as { project?: { PID: string; name: string } }).project;
+        if (project) {
+          projectMap.set(project.PID, project);
+        }
+      }
+
+      return {
+        JID: job.JID,
+        status: job.status,
+        approvalStatus: job.approvalStatus,
+        instanceType: job.instanceType,
+        rejectionNote: job.rejectionNote,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+        submittedBy: job.submittedBy,
+        approvedBy: job.approvedBy,
+        approvedAt: job.approvedAt,
+        wordlist: job.wordlist,
+        rule: job.rule,
+        instance: job.instance,
+        hashes: job.hashes.map((h: Record<string, unknown>) => ({
+          HID: h.HID as string,
+          hash: h.hash as string,
+          hashType: h.hashType as number,
+          status: h.status as string,
+          value: (h.value as string) ?? null,
+          source: (h.source as string) ?? null,
+        })),
+        projects: Array.from(projectMap.values()),
+        attackMode: job.attackMode,
+        mask: job.mask ?? null,
+        cascade: job.cascade
+          ? {
+              CID: job.cascade.CID,
+              name: job.cascade.name,
+              totalSteps: (job.cascade as unknown as { _count?: { steps?: number } })._count?.steps ?? 0,
+            }
+          : null,
+        cascadeStepIndex: job.cascadeStepIndex ?? null,
+      };
+    }),
+
+  // Admin endpoint to clean up orphaned jobs (jobs with no hashes)
+  cleanupOrphaned: permissionProcedure(["root"])
+    .output(z.number().int().min(0))
+    .mutation(async (opts) => {
+      const { prisma } = opts.ctx;
+
+      // Find jobs with no hashes associated
+      const orphanedJobs = await prisma.job.findMany({
+        where: {
+          hashes: { none: {} },
+        },
+        select: { JID: true },
+      });
+
+      if (orphanedJobs.length === 0) {
+        console.log("[JobRouter] No orphaned jobs found");
+        return 0;
+      }
+
+      const jobIDs = orphanedJobs.map((j: { JID: string }) => j.JID);
+
+      // Mark them as Error
+      const updated = await prisma.job.updateMany({
+        where: { JID: { in: jobIDs } },
+        data: {
+          status: STATUS.Error,
+          rejectionNote: "Orphaned job: no hashes associated",
+          updatedAt: new Date(),
+        },
+      });
+
+      console.log(
+        `[JobRouter] Marked ${updated.count} orphaned jobs as Error (JIDs: ${jobIDs.join(", ")})`
       );
 
-      return totalApproved;
+      return updated.count;
+    }),
+
+  // Get live progress (ETA, speed, %) for a single job
+  progress: permissionProcedure(["auth"])
+    .input(z.object({ jobID: z.string() }))
+    .output(JOB_PROGRESS.nullable())
+    .query((opts) => {
+      return getJobProgressCached(opts.input.jobID) ?? null;
+    }),
+
+  // Get live progress for multiple jobs at once (used by project page)
+  progressBulk: permissionProcedure(["auth"])
+    .input(z.object({ jobIDs: z.array(z.string()) }))
+    .output(z.record(z.string(), JOB_PROGRESS))
+    .query((opts) => {
+      const result: Record<string, JobProgress> = {};
+      for (const jid of opts.input.jobIDs) {
+        const p = getJobProgressCached(jid);
+        if (p) result[jid] = p;
+      }
+      return result;
     }),
 });
 

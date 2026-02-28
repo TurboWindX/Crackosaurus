@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { z } from "zod";
 
 import { DATABASE_PROVIDERS, DatabaseProvider } from "./db";
@@ -25,7 +26,12 @@ export const BACKEND_ENV = {
   nodeEnv: "NODE_ENV",
 } as const;
 
-export const BACKEND_DEFAULT_SECRET = "$SECRET:123456789012345678901234567890$";
+/**
+ * @deprecated Do not rely on a default secret. Set BACKEND_SECRET in the environment.
+ * In production the server will refuse to start without it.
+ * In development a random ephemeral secret is generated (sessions won't survive restarts).
+ */
+export const BACKEND_DEFAULT_SECRET = undefined;
 
 export const BACKEND_CONFIG = z.object({
   host: z.object({
@@ -91,7 +97,28 @@ export function loadBackendConfig(): BackendConfig {
         process.env[BACKEND_ENV.clusterPort] ?? CLUSTER_DEFAULT_PORT.toString()
       ),
     },
-    secret: process.env[BACKEND_ENV.backendSecret] ?? BACKEND_DEFAULT_SECRET,
+    secret: (() => {
+      const envSecret = process.env[BACKEND_ENV.backendSecret];
+      if (envSecret) return envSecret;
+
+      const nodeEnv = process.env[BACKEND_ENV.nodeEnv];
+      if (nodeEnv === "production") {
+        throw new Error(
+          "FATAL: BACKEND_SECRET environment variable is required in production. " +
+            "Set a cryptographically random string of at least 32 characters."
+        );
+      }
+
+      // Development only: generate an ephemeral random secret and warn loudly
+      const ephemeral = crypto.randomBytes(32).toString("hex");
+      console.warn(
+        "\n" +
+          "⚠  WARNING: No BACKEND_SECRET set — using a random ephemeral secret.\n" +
+          "   Sessions will NOT survive server restarts.\n" +
+          "   Set BACKEND_SECRET in your environment for stable sessions.\n"
+      );
+      return ephemeral;
+    })(),
     s3: {
       bucketName: process.env[BACKEND_ENV.s3BucketName],
       bucketArn: process.env[BACKEND_ENV.s3BucketArn],

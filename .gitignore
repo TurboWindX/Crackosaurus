@@ -1,5 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+NOTES.md
+
 # Dependencies
 node_modules
 .pnp
@@ -45,3 +47,6 @@ localstack_data/
 .env.*
 .env*
 .vscode/
+
+# CDK context (contains account-specific AZ lookups)
+apps/cdk/cdk.context.json

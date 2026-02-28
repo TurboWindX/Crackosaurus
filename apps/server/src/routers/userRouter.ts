@@ -168,7 +168,7 @@ export const userRouter = t.router({
               in: userIDs,
             },
             permissions: {
-              notIn: ["root"],
+              notIn: ["root", "*"],
             },
           },
         });
@@ -210,7 +210,9 @@ export const userRouter = t.router({
           },
         });
 
-        const permissionSet = new Set(user.permissions.split(" "));
+        const permissionSet = new Set(
+          user.permissions.split(" ").filter(Boolean)
+        );
 
         permissions.forEach((permission) => permissionSet.add(permission));
 
@@ -255,7 +257,9 @@ export const userRouter = t.router({
           },
         });
 
-        const permissionSet = new Set(user.permissions.split(" "));
+        const permissionSet = new Set(
+          user.permissions.split(" ").filter(Boolean)
+        );
 
         permissions.forEach((permission) => permissionSet.delete(permission));
 

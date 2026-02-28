@@ -3,10 +3,12 @@ import { Outlet, createBrowserRouter } from "react-router-dom";
 import { AuthRoute, PermissionRoute } from "@repo/ui/auth";
 import { Header } from "@repo/ui/header";
 
+import { CascadesPage } from "./CascadesPage.tsx";
 import { ErrorPage } from "./ErrorPage.tsx";
 import { HomePage } from "./HomePage.tsx";
 import { InstancePage } from "./InstancePage.tsx";
 import { InstancesPage } from "./InstancesPage.tsx";
+import { JobPage } from "./JobPage.tsx";
 import { LoginPage } from "./LoginPage.tsx";
 import { ProjectPage } from "./ProjectPage.tsx";
 import { ProjectsPage } from "./ProjectsPage.tsx";
@@ -80,7 +82,7 @@ export const router = createBrowserRouter([
           {
             path: "instances",
             element: (
-              <PermissionRoute permission="instances:get">
+              <PermissionRoute permission="root">
                 <InstancesPage />
               </PermissionRoute>
             ),
@@ -88,9 +90,17 @@ export const router = createBrowserRouter([
           {
             path: "instances/:instanceID",
             element: (
-              <PermissionRoute permission="instances:get">
+              <PermissionRoute permission="root">
                 <InstancePage />
               </PermissionRoute>
+            ),
+          },
+          {
+            path: "jobs/:jobID",
+            element: (
+              <AuthRoute>
+                <JobPage />
+              </AuthRoute>
             ),
           },
           {
@@ -107,6 +117,14 @@ export const router = createBrowserRouter([
               <PermissionRoute permission="rules:get">
                 <RulesPage />
               </PermissionRoute>
+            ),
+          },
+          {
+            path: "cascades",
+            element: (
+              <AuthRoute>
+                <CascadesPage />
+              </AuthRoute>
             ),
           },
         ],

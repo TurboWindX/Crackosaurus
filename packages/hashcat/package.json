@@ -4,6 +4,9 @@
   "license": "MIT",
   "exports": {
     "./exe": "./src/exe.ts",
-    "./data": "./src/data.ts"
+    "./data": "./src/data.ts",
+    "./ntlmv1": "./src/ntlmv1.ts",
+    "./shuck": "./src/shuck.ts",
+    "./identify": "./src/identify.ts"
   }
 }
