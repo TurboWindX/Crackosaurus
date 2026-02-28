@@ -10,7 +10,12 @@ Crackosaurus is the world's first open source password recovery platform. Powere
 
 - **Distributed GPU Cracking** - Automatically spin up AWS GPU instances (g3, g4, g5, p3, p4, p5) on-demand
 - **Multi-AZ Support** - Automatic failover across availability zones for maximum reliability
-- **All Hash Types** - Support for all hashcat hash modes
+- **All Hash Types** - Support for all hashcat hash modes with automatic hash type detection
+- **Hash Auto-Detection** - Automatically identifies hash types from structural prefixes and patterns when adding hashes
+- **Cascades** - Define multi-step job templates that chain attack modes (wordlist → rules → mask) and execute them sequentially
+- **Hash Shucking** - Automatically extracts inner NT hashes from NTLMv1, NTLMv2, DCC, DCC2, Kerberos 5 and other composite formats, cracking the simpler NTLM first
+- **NTLMv1 Pipeline** - Server-side preprocessing that converts NTLMv1 challenge/response pairs for efficient cracking
+- **Mask Presets** - Built-in dropdown of common mask patterns for quick mask attack setup
 - **Role-Based Access** - Job approval system with granular permissions
 - **Large File Support** - Direct S3 multipart uploads for wordlists and rules files
 - **EFS-Based Coordination** - Simple, reliable job state management via shared filesystem
@@ -41,17 +46,13 @@ AWS CDK deployment provides a complete, production-ready infrastructure with:
 
 ![Network Architecture](docs/network-diagram.png)
 
-For detailed network architecture including security groups and data flows, see [docs/NETWORK_ARCHITECTURE.md](docs/NETWORK_ARCHITECTURE.md).
-
 #### Quick Start
-
-See [apps/cdk/DEPLOYMENT.md](apps/cdk/DEPLOYMENT.md) for comprehensive instructions.
 
 **Prerequisites:**
 
 - AWS CLI configured with credentials
 - Docker running locally
-- Node.js 18+
+- Node.js 20+
 
 **Deploy in 2 steps:**
 
@@ -105,11 +106,6 @@ aws ec2 describe-instances --filters 'Name=tag:ManagedBy,Values=Crackosaurus' 'N
 aws ce get-cost-and-usage --time-period Start=2025-11-01,End=2025-11-14 --granularity MONTHLY --metrics BlendedCost --group-by Type=DIMENSION,Key=SERVICE --output table
 ```
 
-#### Documentation
-
-- **[DEPLOYMENT.md](apps/cdk/DEPLOYMENT.md)** - Complete deployment guide
-- **[README.md](apps/cdk/README.md)** - Quick reference and architecture
-
 #### Key Features
 
 - **GPU Instance Types**: g3, g4, g5, p3, p4, p5 instances supported
@@ -137,11 +133,7 @@ sudo docker-compose build
 sudo docker-compose up
 ```
 
-Setup the platform using:
-
-```
-http://localhost:8080/setup
-```
+Then navigate to http://localhost:8080/setup to create the admin account.
 
 Note: if the instance fails, update the `nvidia/cuda` container version in the [instance Containerfile](packages/container/instance/docker/Containerfile) to match the system CUDA version.
 
@@ -155,8 +147,8 @@ Development of the app is done via [feature branches](https://www.atlassian.com/
 
 Crackosaurus is a full TypeScript Monorepo. The following is required:
 
-- [Node](https://nodejs.org/en)
-- [NPM](https://www.npmjs.com/)
+- [Node.js](https://nodejs.org/en) 20+
+- [NPM](https://www.npmjs.com/) 10+
 
 The following is only necessary for deployment:
 
