@@ -30,6 +30,7 @@ export interface ServerServiceProps {
   clusterPort?: string;
   accessPointId?: string;
   fileSystem: efs.IFileSystem;
+  cookieSecure?: boolean;
 }
 
 export class ServerService extends Construct {
@@ -74,6 +75,10 @@ export class ServerService extends Construct {
       CLUSTER_DISCOVERY_REGION: props.discoveryRegion ?? "",
       CLUSTER_PORT: props.clusterPort ?? "13337",
     };
+
+    if (props.cookieSecure) {
+      env["COOKIE_SECURE"] = "true";
+    }
 
     // Inject DB secrets directly from Secrets Manager
     const dbSecret = cdk.aws_secretsmanager.Secret.fromSecretCompleteArn(

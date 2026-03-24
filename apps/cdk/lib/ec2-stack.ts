@@ -706,11 +706,34 @@ export class CrackosaurusStack extends cdk.Stack {
       }
     );
 
-    const listener = alb.addListener("HttpListener", {
-      port: 80,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      defaultAction: elbv2.ListenerAction.forward([targetGroup]),
-    });
+    // When a certificate ARN is provided, terminate TLS at the ALB on port 443
+    // and redirect plain HTTP on port 80 to HTTPS. Otherwise keep HTTP only.
+    let listener: elbv2.ApplicationListener;
+    if (props.certificateArn) {
+      alb.addListener("HttpListener", {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        defaultAction: elbv2.ListenerAction.redirect({
+          protocol: "HTTPS",
+          port: "443",
+          permanent: true,
+        }),
+      });
+      listener = alb.addListener("HttpsListener", {
+        port: 443,
+        protocol: elbv2.ApplicationProtocol.HTTPS,
+        certificates: [
+          elbv2.ListenerCertificate.fromArn(props.certificateArn),
+        ],
+        defaultAction: elbv2.ListenerAction.forward([targetGroup]),
+      });
+    } else {
+      listener = alb.addListener("HttpListener", {
+        port: 80,
+        protocol: elbv2.ApplicationProtocol.HTTP,
+        defaultAction: elbv2.ListenerAction.forward([targetGroup]),
+      });
+    }
 
     // ===========================================
     // ECS Cluster & Fargate Service (optional)
@@ -866,7 +889,8 @@ export class CrackosaurusStack extends cdk.Stack {
         clusterHost: clusterHostDefault,
         clusterPort: clusterPortDefault,
         accessPointId: accessPoint.accessPointId,
-        fileSystem: fileSystem, // <-- add this line
+        fileSystem: fileSystem,
+        cookieSecure: !!props.certificateArn,
       }
     );
 
@@ -958,7 +982,7 @@ export class CrackosaurusStack extends cdk.Stack {
       'echo "Prisma migrations complete"',
       "",
       "# Run server container",
-      `docker run -d --name crackosaurus-server --restart unless-stopped -p 8080:8080 -v /mnt/efs:/crackodata -e NODE_ENV=production -e DATABASE_PROVIDER=postgresql -e DATABASE_PATH="\${DATABASE_URL}" -e STORAGE_TYPE=filesystem -e STORAGE_PATH=/crackodata -e CLUSTER_TYPE=external -e CLUSTER_DISCOVERY_TYPE=cloud_map -e CLUSTER_DISCOVERY_NAMESPACE=${environmentName}.crackosaurus.local -e CLUSTER_DISCOVERY_SERVICE=cluster -e CLUSTER_DISCOVERY_REGION=\${AWS_REGION} -e CLUSTER_HOST=cluster.${environmentName}.crackosaurus.local -e CLUSTER_PORT=13337 -e USE_WEB_HOST=true -e AWS_REGION=\${AWS_REGION} $ECR_REGISTRY/crackosaurus/server:$IMAGE_TAG`,
+      `docker run -d --name crackosaurus-server --restart unless-stopped -p 8080:8080 -v /mnt/efs:/crackodata -e NODE_ENV=production -e DATABASE_PROVIDER=postgresql -e DATABASE_PATH="\${DATABASE_URL}" -e STORAGE_TYPE=filesystem -e STORAGE_PATH=/crackodata -e CLUSTER_TYPE=external -e CLUSTER_DISCOVERY_TYPE=cloud_map -e CLUSTER_DISCOVERY_NAMESPACE=${environmentName}.crackosaurus.local -e CLUSTER_DISCOVERY_SERVICE=cluster -e CLUSTER_DISCOVERY_REGION=\${AWS_REGION} -e CLUSTER_HOST=cluster.${environmentName}.crackosaurus.local -e CLUSTER_PORT=13337 -e USE_WEB_HOST=true -e AWS_REGION=\${AWS_REGION}${props.certificateArn ? " -e COOKIE_SECURE=true" : ""} $ECR_REGISTRY/crackosaurus/server:$IMAGE_TAG`,
       "",
       "echo 'EC2 instance setup complete'"
     );

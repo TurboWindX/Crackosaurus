@@ -1,5 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
-import { getQueryKey } from "@trpc/react-query";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -26,14 +24,12 @@ export const LoginPage = () => {
   const [password, setPassword] = useState("");
   const [redirect, setRedirect] = useState(false);
 
-  const queryClient = useQueryClient();
   const { handleError } = useErrors();
-
-  const authQueryKey = getQueryKey(trpc.auth.get, undefined, "any");
+  const utils = trpc.useContext();
 
   const { mutateAsync: login } = trpc.auth.login.useMutation({
-    onSuccess() {
-      queryClient.invalidateQueries(authQueryKey);
+    async onSuccess() {
+      await utils.auth.get.fetch();
     },
     onError: handleError,
   });

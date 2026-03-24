@@ -28,6 +28,10 @@ import { upload } from "./upload";
 
 const fastify = Fastify({
   maxParamLength: 5000,
+  // Trust the X-Forwarded-Proto header from the ALB so that req.protocol
+  // returns "https" when TLS is terminated at the load balancer. This is
+  // required for @fastify/session to correctly set/read Secure cookies.
+  trustProxy: true,
 });
 
 fastify.get("/ping", {}, () => "pong");
