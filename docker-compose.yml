@@ -26,22 +26,6 @@ services:
       - app
     depends_on:
       - database
-  instance:
-    container_name: instance
-    restart: always
-    build:
-      context: .
-      dockerfile: packages/container/instance/docker/Containerfile
-    environment:
-      INSTANCE_ID: docker
-      INSTANCE_ROOT: /crackodata/instances
-      WORDLIST_ROOT: /crackodata/wordlists
-    user: 0:0
-    networks:
-      - app
-    volumes:
-      - instances:/crackodata/instances
-      - wordlists:/crackodata/wordlists
   cluster:
     container_name: cluster
     restart: always
@@ -123,9 +107,12 @@ services:
 networks:
   app:
     driver: bridge
+    external: true
 
 volumes:
   instances:
-  pgdata:
+    external: true
   wordlists:
+    external: true
+  pgdata:
   localstack_data:

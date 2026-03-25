@@ -42,6 +42,6 @@ RUN chown -R instance:instance /app
 
 USER instance
 
-COPY --from=installer --chown=instance:instance /app/apps/instance/dist .
+COPY --from=installer --chown=instance:instance /app/ .
 
-CMD ["node", "index.js"]
+CMD ["node", "apps/instance/dist/index.js"]

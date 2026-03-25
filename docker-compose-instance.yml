@@ -1,0 +1,28 @@
+services:
+  instance:
+    container_name: instance
+    restart: always
+    build:
+      context: .
+      dockerfile: packages/container/instance/docker/Containerfile
+    environment:
+      INSTANCE_ID: 6dc3c0bf-4274-4c01-adb5-906efbdee364
+      INSTANCE_ROOT: /crackodata/instances
+      WORDLIST_ROOT: /crackodata/wordlists
+    user: 0:0
+    networks:
+      - app
+    volumes:
+      - instances:/crackodata/instances
+      - wordlists:/crackodata/wordlists
+
+networks:
+  app:
+    driver: bridge
+    external: true
+
+volumes:
+  instances:
+    external: true
+  wordlists:
+    external: true
