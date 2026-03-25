@@ -42,7 +42,6 @@ services:
     volumes:
       - instances:/crackodata/instances
       - wordlists:/crackodata/wordlists
-
   cluster:
     container_name: cluster
     restart: always
@@ -98,7 +97,6 @@ services:
       - prisma
       - database
       - localstack
-
   localstack:
     container_name: localstack
     image: localstack/localstack:latest
