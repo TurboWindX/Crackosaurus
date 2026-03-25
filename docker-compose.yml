@@ -42,14 +42,7 @@ services:
     volumes:
       - instances:/crackodata/instances
       - wordlists:/crackodata/wordlists
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities:
-                - gpu
+
   cluster:
     container_name: cluster
     restart: always

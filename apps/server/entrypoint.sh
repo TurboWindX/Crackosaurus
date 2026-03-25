@@ -1,22 +1,12 @@
 #!/bin/sh
 set -e
 
-
-
-# Build the database URL
-export DATABASE_PATH="postgresql://${DATABASE_USER}:${DATABASE_PASSWORD}@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?schema=public"
-export DATABASE_URL="$DATABASE_PATH"
-
-# Print the constructed DATABASE_URL (redact password)
-REDACTED_URL="postgresql://${DATABASE_USER}:*****@${DATABASE_HOST}:${DATABASE_PORT}/${DATABASE_NAME}?schema=public"
-echo "[entrypoint] DATABASE_URL: $REDACTED_URL"
-
 # Wait for the database to become reachable before attempting migrations.
 # Use a small Node.js TCP probe (available in the runtime) to avoid adding
 # extra OS packages. We retry until timeout to tolerate slower RDS startups.
 wait_for_db() {
-	host="${DATABASE_HOST:-localhost}"
-	port="${DATABASE_PORT:-5432}"
+	host="$(echo "$DATABASE_PATH" | awk -F'[@:/]' '{print $6}')"
+	port="$(echo "$DATABASE_PATH" | awk -F'[@:/]' '{print $7}')"
 	timeout=${DB_WAIT_TIMEOUT:-300}   # seconds
 	interval=${DB_WAIT_INTERVAL:-5}   # seconds
 
