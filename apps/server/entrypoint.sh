@@ -34,12 +34,5 @@ if ! wait_for_db; then
 	exit 1
 fi
 
-echo "Running database migrations..."
-# Run migrations and fail if they consistently fail (they should succeed once DB is up)
-npx prisma migrate deploy --schema=/app/prisma/schema.prisma || {
-	echo "[entrypoint] prisma migrate failed"
-	exit 1
-}
-
 echo "Starting server..."
 exec node apps/server/dist/index.js

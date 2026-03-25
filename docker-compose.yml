@@ -95,6 +95,7 @@ services:
       - app
     depends_on:
       - cluster
+      - prisma
       - database
       - localstack
 

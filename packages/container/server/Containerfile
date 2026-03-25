@@ -66,8 +66,6 @@ COPY --from=installer --chown=server:server /app/apps/web/dist ./public
 # Ensure the Prisma schema is available at /app/prisma/schema.prisma for the entrypoint migration step.
 # Default provider is postgresql; if you override DATABASE_PROVIDER at build-time, adjust this line.
 COPY --from=installer --chown=server:server /app/apps/db/providers/postgresql/schema.prisma /app/prisma/schema.prisma
-# Ensure the Prisma migrations directory is included in the image
-COPY --from=installer --chown=server:server /app/apps/db/providers/postgresql/migrations /app/prisma/migrations
 
 ARG DATABASE_PROVIDER
 ENV DATABASE_PROVIDER=$DATABASE_PROVIDER
