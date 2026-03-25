@@ -42,14 +42,6 @@ services:
     volumes:
       - instances:/crackodata/instances
       - wordlists:/crackodata/wordlists
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities:
-                - gpu
   cluster:
     container_name: cluster
     restart: always
@@ -102,12 +94,12 @@ services:
       - app
     depends_on:
       - cluster
+      - prisma
       - database
       - localstack
-
   localstack:
     container_name: localstack
-    image: localstack/localstack:latest
+    image: localstack/localstack:community-archive
     ports:
       - "4566:4566"            # LocalStack Gateway
       - "4510-4559:4510-4559"  # external services port range

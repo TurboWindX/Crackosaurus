@@ -33,12 +33,9 @@ WORKDIR /app/apps/db
 RUN DATABASE_PROVIDER=$DATABASE_PROVIDER node dist/schema.js
 
 WORKDIR /app
-# Install @prisma/client at top-level and generate the client from /app so output lands in /app/node_modules
-RUN npm install @prisma/client && \
-    DATABASE_PATH="postgresql://localhost:5432/placeholder?schema=public" \
-        npx prisma generate --schema=apps/db/providers/${DATABASE_PROVIDER}/schema.prisma
-
-WORKDIR /app
+# Generate the client from /app so output lands in /app/node_modules
+RUN DATABASE_PATH="postgresql://localhost:5432/placeholder?schema=public" \
+       npx prisma generate --schema=apps/db/providers/${DATABASE_PROVIDER}/schema.prisma
 
 # Provide defaults for backend build args so local docker builds work without extra args
 ARG BACKEND_HOST=USE_WEB_HOST
@@ -69,8 +66,6 @@ COPY --from=installer --chown=server:server /app/apps/web/dist ./public
 # Ensure the Prisma schema is available at /app/prisma/schema.prisma for the entrypoint migration step.
 # Default provider is postgresql; if you override DATABASE_PROVIDER at build-time, adjust this line.
 COPY --from=installer --chown=server:server /app/apps/db/providers/postgresql/schema.prisma /app/prisma/schema.prisma
-# Ensure the Prisma migrations directory is included in the image
-COPY --from=installer --chown=server:server /app/apps/db/providers/postgresql/migrations /app/prisma/migrations
 
 ARG DATABASE_PROVIDER
 ENV DATABASE_PROVIDER=$DATABASE_PROVIDER
