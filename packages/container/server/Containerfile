@@ -80,4 +80,3 @@ EXPOSE $BACKEND_PORT
 
 # Use entrypoint script which builds DATABASE_URL, runs migrations, then execs node
 ENTRYPOINT ["/entrypoint.sh"]
-
