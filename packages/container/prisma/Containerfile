@@ -33,13 +33,12 @@ RUN DATABASE_PROVIDER=$DATABASE_PROVIDER node dist/schema.js
 
 WORKDIR /app
 # Install @prisma/client at top-level and generate the client from /app so output lands in /app/node_modules
-RUN npm install @prisma/client && \
-    DATABASE_PATH="postgresql://localhost:5432/placeholder?schema=public" \
+RUN DATABASE_PATH="postgresql://localhost:5432/placeholder?schema=public" \
         npx prisma generate --schema=apps/db/providers/${DATABASE_PROVIDER}/schema.prisma
 
 FROM base AS runner
 
-RUN npm install -g prisma
+RUN npm install -g prisma@6.18.0
 
 COPY --from=installer /app/node_modules/ ./node_modules/
 COPY --from=installer /app/apps/db /app/apps/db

@@ -9,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     networks:
-      - app
+      - crackosaurus-app
     volumes:
       - pgdata:/var/lib/postgresql/data
   prisma:
@@ -23,33 +23,9 @@ services:
     environment:
       DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
     networks:
-      - app
+      - crackosaurus-app
     depends_on:
       - database
-  instance:
-    container_name: instance
-    restart: always
-    build:
-      context: .
-      dockerfile: packages/container/instance/docker/Containerfile
-    environment:
-      INSTANCE_ID: docker
-      INSTANCE_ROOT: /crackodata/instances
-      WORDLIST_ROOT: /crackodata/wordlists
-    user: 0:0
-    networks:
-      - app
-    volumes:
-      - instances:/crackodata/instances
-      - wordlists:/crackodata/wordlists
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities:
-                - gpu
   cluster:
     container_name: cluster
     restart: always
@@ -66,10 +42,10 @@ services:
       CLUSTER_SECRET: "${CLUSTER_SECRET:-}"
     user: 0:0
     networks:
-      - app
+      - crackosaurus-app
     volumes:
-      - instances:/crackodata/instances
-      - wordlists:/crackodata/wordlists
+      - crackosaurus-instances:/crackodata/instances
+      - crackosaurus-wordlists:/crackodata/wordlists
   server:
     container_name: server
     restart: always
@@ -99,15 +75,15 @@ services:
     ports:
       - "8080:8080"
     networks:
-      - app
+      - crackosaurus-app
     depends_on:
       - cluster
+      - prisma
       - database
       - localstack
-
   localstack:
     container_name: localstack
-    image: localstack/localstack:latest
+    image: localstack/localstack:community-archive
     ports:
       - "4566:4566"            # LocalStack Gateway
       - "4510-4559:4510-4559"  # external services port range
@@ -126,14 +102,16 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock"
       - ./localstack:/etc/localstack/init/ready.d
     networks:
-      - app
+      - crackosaurus-app
 
 networks:
-  app:
-    driver: bridge
+  crackosaurus-app:
+    external: true
 
 volumes:
-  instances:
+  crackosaurus-instances:
+    external: true
+  crackosaurus-wordlists:
+    external: true
   pgdata:
-  wordlists:
   localstack_data:

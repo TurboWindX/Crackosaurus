@@ -232,7 +232,7 @@ export const InstancePage = () => {
       <div className="flex gap-2">
         <div className="flex flex-col gap-2">
           <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
-            {instance?.name || instance?.IID || "Instance"}
+            {instance?.name || instance?.IID || "Instance"} (Tag: {instance?.tag})
           </span>
           <div>
             <StatusBadge

@@ -10,6 +10,32 @@ import { trpc } from "../cluster/trpc";
 
 type ClusterTRPC = CreateTRPCProxyClient<AppRouter>;
 
+type Hash = {
+  HID: string,
+  hash: string,
+  hashType: number,
+  status: string,
+};
+
+type Job = {
+  JID: string,
+  wordlistId: string | null,
+  ruleId: string | null,
+  instanceType: string | null,
+  instanceId: string | null,
+  approvalStatus: string,
+  attackMode: number,
+  mask: string | null,
+  cascadeId: string | null,
+  cascadeStepIndex: number | null,
+  hashes: Hash[],
+};
+
+type InstanceResult = {
+  IID: string,
+  tag: string,
+};
+
 export type OrchestratorPluginConfig = {
   pollingRateMs: number;
   maxConcurrent: number;
@@ -78,17 +104,10 @@ async function orchestrateJob(
     return false;
   }
 
-  if (job.instanceId) {
-    console.log(
-      `[Orchestrator] Job ${jobID} already has instance ${job.instanceId}`
-    );
-    return true;
-  }
-
   const isMaskAttack = (job.attackMode ?? 0) === 3;
 
   if (
-    !job.instanceType ||
+    (!job.instanceType && !job.instanceId) ||
     (!isMaskAttack && !job.wordlistId) ||
     !job.hashes?.length
   ) {
@@ -115,8 +134,7 @@ async function orchestrateJob(
     return false;
   }
 
-  let tag: string | null = null;
-  let instanceIID: string | null = null;
+  let instanceResult: InstanceResult | null = null;
 
   // ── Pre-flight lookup: resolve hashes from the KnownHash table ──
   const unresolvedHashes = job.hashes.filter(
@@ -194,48 +212,23 @@ async function orchestrateJob(
     }
   }
 
+  
   try {
-    // 1. Create instance folder
-    console.log(
-      `[Orchestrator] Creating instance folder for job ${jobID} with type ${job.instanceType}`
-    );
-    tag = await retry(
-      () =>
-        cluster.instance.createFolder.mutate({
-          instanceType: job.instanceType!,
-        }),
-      3
-    );
-    console.log(`[Orchestrator] Created instance folder with tag: ${tag}`);
-
-    if (!tag) {
-      throw new Error("createFolder returned null");
+    if (!job.instanceId) {
+      instanceResult = await createInstance(prisma, cluster, job);
+    } else {
+      instanceResult = await prisma.instance.findUnique({
+        where: { IID: job.instanceId },
+        select: {
+          IID: true,
+          tag: true,
+        }
+      });
     }
-
-    // 2. Create DB instance record
-    const instance = await prisma.instance.create({
-      data: {
-        name: `Auto-created for job ${jobID.slice(0, 8)}`,
-        tag,
-        type: job.instanceType,
-        status: STATUS.Pending,
-      },
-    });
-    instanceIID = instance.IID;
-    console.log(
-      `[Orchestrator] Created instance record ${instanceIID} (tag: ${tag})`
-    );
-
-    // 3. Link job to instance immediately (prevents sync mismatch)
-    await prisma.job.update({
-      where: { JID: jobID },
-      data: {
-        instanceId: instance.IID,
-        updatedAt: new Date(),
-      },
-    });
-
-    // 4. Create job folder
+    if (!instanceResult) {
+      throw new Error("[Orchestrator] Was not able to get a instance");
+    }
+    // Create job folder
     const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
     const jobHashType = job.hashes[0]?.hashType || 0;
 
@@ -263,12 +256,12 @@ async function orchestrateJob(
     }
 
     console.log(
-      `[Orchestrator] Creating job folder for job ${jobID} in instance ${tag}`
+      `[Orchestrator] Creating job folder for job ${jobID} in instance ${instanceResult!.tag}`
     );
     const ok = await retry(
       () =>
         cluster.instance.createJobWithID.mutate({
-          instanceID: tag!,
+          instanceID: instanceResult!.tag,
           jobID,
           wordlistID: job.wordlistId ?? "",
           hashType: jobHashType,
@@ -286,12 +279,12 @@ async function orchestrateJob(
     }
     console.log(`[Orchestrator] Created job folder for job ${jobID}`);
 
-    // 5. Launch instance
+    // Launch instance
     console.log(
-      `[Orchestrator] Launching EC2 instance ${tag} for job ${jobID}`
+      `[Orchestrator] Launching EC2 instance ${instanceResult!.tag} for job ${jobID}`
     );
-    await retry(() => cluster.instance.launch.mutate({ instanceID: tag! }), 3);
-    console.log(`[Orchestrator] Successfully launched EC2 instance ${tag}`);
+    await retry(() => cluster.instance.launch.mutate({ instanceID: instanceResult!.tag }), 3);
+    console.log(`[Orchestrator] Successfully launched EC2 instance ${instanceResult!.tag}`);
 
     // Mark orchestration complete so the job won't be picked up again
     await prisma.job.update({
@@ -304,29 +297,29 @@ async function orchestrateJob(
     console.error(`[Orchestrator] Failed to orchestrate job ${jobID}:`, e);
 
     // Best-effort cleanup
-    if (instanceIID) {
+    if (instanceResult!.IID) {
       try {
         await prisma.job.update({
           where: { JID: jobID },
           data: { instanceId: null, updatedAt: new Date() },
         });
-        await prisma.instance.delete({ where: { IID: instanceIID } });
-        console.log(`[Orchestrator] Cleaned up instance record ${instanceIID}`);
+        await prisma.instance.delete({ where: { IID: instanceResult!.IID } });
+        console.log(`[Orchestrator] Cleaned up instance record ${instanceResult!.IID}`);
       } catch (cleanupError) {
         console.error(
-          `[Orchestrator] Cleanup failed for instance ${instanceIID}:`,
+          `[Orchestrator] Cleanup failed for instance ${instanceResult!.IID}:`,
           cleanupError
         );
       }
     }
 
-    if (tag) {
+    if (instanceResult!.tag) {
       try {
-        await cluster.instance.deleteMany.mutate({ instanceIDs: [tag] });
-        console.log(`[Orchestrator] Cleaned up instance folder ${tag}`);
+        await cluster.instance.deleteMany.mutate({ instanceIDs: [instanceResult!.tag] });
+        console.log(`[Orchestrator] Cleaned up instance folder ${instanceResult!.tag}`);
       } catch (cleanupError) {
         console.error(
-          `[Orchestrator] Cleanup failed for folder ${tag}:`,
+          `[Orchestrator] Cleanup failed for folder ${instanceResult!.tag}:`,
           cleanupError
         );
       }
@@ -334,6 +327,55 @@ async function orchestrateJob(
 
     return false;
   }
+}
+
+async function createInstance(
+  prisma: PrismaClient,
+  cluster: ClusterTRPC,
+  job: Job): Promise<InstanceResult> {
+    // 1. Create instance folder
+    console.log(
+      `[Orchestrator] Creating instance folder for job ${job.JID} with type ${job.instanceType}`
+    );
+    let tag: string | null = await retry(
+      () =>
+        cluster.instance.createFolder.mutate({
+          instanceType: job.instanceType!,
+        }),
+      3
+    );
+    console.log(`[Orchestrator] Created instance folder with tag: ${tag}`);
+
+    if (!tag) {
+      throw new Error("createFolder returned null");
+    }
+
+    // 2. Create DB instance record
+    const instance = await prisma.instance.create({
+      data: {
+        name: `Auto-created for job ${job.JID.slice(0, 8)}`,
+        tag,
+        type: job.instanceType,
+        status: STATUS.Pending,
+      },
+    });
+    if (!instance) {
+      throw new Error("createInstance returned null");
+    }
+
+    console.log(
+      `[Orchestrator] Created instance record ${instance.IID} (tag: ${tag})`
+    );
+
+    // 3. Link job to instance immediately (prevents sync mismatch)
+    await prisma.job.update({
+      where: { JID: job.JID },
+      data: {
+        instanceId: instance.IID,
+        updatedAt: new Date(),
+      },
+    });
+    return { IID: instance.IID, tag: tag };
 }
 
 async function orchestrateApprovedJobs(
@@ -346,7 +388,6 @@ async function orchestrateApprovedJobs(
     const pendingOrchestration = await prisma.job.findMany({
       where: {
         approvalStatus: "APPROVED",
-        instanceId: null,
         status: { notIn: [STATUS.Error, STATUS.Stopped] },
       },
       select: { JID: true },
@@ -367,7 +408,6 @@ async function orchestrateApprovedJobs(
       where: {
         JID: { in: jobIDs },
         approvalStatus: "APPROVED", // only claim if still APPROVED
-        instanceId: null,
         status: { notIn: [STATUS.Error, STATUS.Stopped] },
       },
       data: {
