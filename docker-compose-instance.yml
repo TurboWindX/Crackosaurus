@@ -6,23 +6,22 @@ services:
       context: .
       dockerfile: packages/container/instance/docker/Containerfile
     environment:
-      INSTANCE_ID: 6dc3c0bf-4274-4c01-adb5-906efbdee364
+      INSTANCE_ID: ${INSTANCE_ID}
       INSTANCE_ROOT: /crackodata/instances
       WORDLIST_ROOT: /crackodata/wordlists
     user: 0:0
     networks:
-      - app
+      - crackosaurus-app
     volumes:
-      - instances:/crackodata/instances
-      - wordlists:/crackodata/wordlists
+      - crackosaurus-instances:/crackodata/instances
+      - crackosaurus-wordlists:/crackodata/wordlists
 
 networks:
-  app:
-    driver: bridge
+  crackosaurus-app:
     external: true
 
 volumes:
-  instances:
+  crackosaurus-instances:
     external: true
-  wordlists:
+  crackosaurus-wordlists:
     external: true

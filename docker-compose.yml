@@ -9,7 +9,7 @@ services:
     ports:
       - "5432:5432"
     networks:
-      - app
+      - crackosaurus-app
     volumes:
       - pgdata:/var/lib/postgresql/data
   prisma:
@@ -23,7 +23,7 @@ services:
     environment:
       DATABASE_PATH: postgresql://postgres:postgres@database:5432/crackosaurus?schema=public
     networks:
-      - app
+      - crackosaurus-app
     depends_on:
       - database
   cluster:
@@ -42,10 +42,10 @@ services:
       CLUSTER_SECRET: "${CLUSTER_SECRET:-}"
     user: 0:0
     networks:
-      - app
+      - crackosaurus-app
     volumes:
-      - instances:/crackodata/instances
-      - wordlists:/crackodata/wordlists
+      - crackosaurus-instances:/crackodata/instances
+      - crackosaurus-wordlists:/crackodata/wordlists
   server:
     container_name: server
     restart: always
@@ -75,7 +75,7 @@ services:
     ports:
       - "8080:8080"
     networks:
-      - app
+      - crackosaurus-app
     depends_on:
       - cluster
       - prisma
@@ -102,17 +102,16 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock"
       - ./localstack:/etc/localstack/init/ready.d
     networks:
-      - app
+      - crackosaurus-app
 
 networks:
-  app:
-    driver: bridge
+  crackosaurus-app:
     external: true
 
 volumes:
-  instances:
+  crackosaurus-instances:
     external: true
-  wordlists:
+  crackosaurus-wordlists:
     external: true
   pgdata:
   localstack_data:
