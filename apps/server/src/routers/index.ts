@@ -3,7 +3,7 @@ import { TRPCError, inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { z } from "zod";
 
 import { publicProcedure, t } from "../plugins/trpc";
-import { authRouter, hashPassword } from "./authRouter";
+import { authRouter } from "./authRouter";
 import { cascadeRouter } from "./cascadeRouter";
 import { hashRouter } from "./hashRouter";
 import { instanceRouter } from "./instanceRouter";
@@ -12,6 +12,7 @@ import { projectRouter } from "./projectRouter";
 import { ruleRouter } from "./ruleRouter";
 import { userRouter } from "./userRouter";
 import { wordlistRouter } from "./wordlistRouter";
+import { checkPasswordStrength, hashPassword } from "../utils/password";
 
 export const appRouter = t.router({
   ping: publicProcedure.query(() => "pong"),
@@ -28,8 +29,7 @@ export const appRouter = t.router({
           ),
         password: z
           .string()
-          .min(8, "Password must be at least 8 characters")
-          .max(1024, "Password must be at most 1024 characters"),
+          .min(1, "Username is required"),
       })
     )
     .output(z.string())
@@ -48,6 +48,15 @@ export const appRouter = t.router({
           });
 
           if (firstUser !== null) throw new TRPCError({ code: "UNAUTHORIZED" });
+          
+          try {
+            checkPasswordStrength(password);
+          } catch (e) {
+            if (e instanceof Error) {
+              throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+            }
+          }
+          
 
           const user = await tx.user.create({
             select: {

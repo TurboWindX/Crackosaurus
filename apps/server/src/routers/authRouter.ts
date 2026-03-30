@@ -6,6 +6,7 @@ import { z } from "zod";
 import { PERMISSIONS, PermissionType } from "@repo/api";
 
 import { permissionProcedure, publicProcedure, t } from "../plugins/trpc";
+import  { checkPassword } from "../utils/password"
 
 declare module "fastify" {
   interface Session {
@@ -13,19 +14,6 @@ declare module "fastify" {
     username: string;
     permissions: string;
   }
-}
-
-export async function checkPassword(
-  inputPassword: string,
-  dbPassword: string
-): Promise<boolean> {
-  return bcrypt.compare(inputPassword, dbPassword);
-}
-
-export async function hashPassword(password: string): Promise<string> {
-  const saltRounds = 12;
-
-  return bcrypt.hash(password, saltRounds);
 }
 
 export const authRouter = t.router({

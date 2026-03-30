@@ -5,7 +5,7 @@ import { z } from "zod";
 import { PERMISSIONS } from "@repo/api";
 
 import { permissionProcedure, t } from "../plugins/trpc";
-import { checkPassword, hashPassword } from "./authRouter";
+import { checkPasswordStrength, checkPassword, hashPassword } from "../utils/password";
 
 export const userRouter = t.router({
   get: permissionProcedure(["auth"])
@@ -125,6 +125,14 @@ export const userRouter = t.router({
 
       if ((permissions ?? []).some((permission) => !hasPermission(permission)))
         throw new TRPCError({ code: "UNAUTHORIZED" });
+
+      try {
+        checkPasswordStrength(password);
+      } catch (e) {
+        if (e instanceof Error) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+          }
+      }
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.create({
@@ -292,6 +300,14 @@ export const userRouter = t.router({
       if (!hasPermission("users:edit") && userID !== currentUserID)
         throw new TRPCError({ code: "UNAUTHORIZED" });
 
+      try {
+        checkPasswordStrength(newPassword);
+      } catch (e) {
+        if (e instanceof Error) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
+          }
+      }
+      
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // Check if old password is valid or bypass
         if (!hasPermission("users:edit")) {
