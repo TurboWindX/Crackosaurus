@@ -13,7 +13,7 @@ export const permissionProcedure = (permissions: PermissionType[]) =>
     const { hasPermission } = opts.ctx;
 
     if (!permissions.every(hasPermission))
-      throw new TRPCError({ code: "UNAUTHORIZED" });
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "You don't have the necessary permission to do this" });
 
     return opts.next();
   });
