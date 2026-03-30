@@ -25,7 +25,7 @@ export const useErrors = () => {
         toast({
           variant: "destructive",
           title: t("item.error.singular"),
-          description: t(`error.${error.data?.code ?? "NOT_FOUND"}`),
+          description: error.message ? error.message : t(`error.${error.data?.code ?? "NOT_FOUND"}`),
         });
       }
     },

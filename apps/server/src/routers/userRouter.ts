@@ -33,7 +33,7 @@ export const userRouter = t.router({
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
       if (!hasPermission("users:get") && userID !== currentUserID)
-        throw new TRPCError({ code: "UNAUTHORIZED" });
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "You don't have the necessary permission to do this" });
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         return await tx.user.findUniqueOrThrow({
@@ -124,7 +124,7 @@ export const userRouter = t.router({
       const { prisma, hasPermission } = opts.ctx;
 
       if ((permissions ?? []).some((permission) => !hasPermission(permission)))
-        throw new TRPCError({ code: "UNAUTHORIZED" });
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "You don't have the necessary permission to do this" });
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.create({
@@ -159,7 +159,7 @@ export const userRouter = t.router({
           userIDs.every((userID) => userID === currentUserID)
         )
       )
-        throw new TRPCError({ code: "UNAUTHORIZED" });
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "You don't have the necessary permission to do this" });
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const { count } = await tx.user.deleteMany({
@@ -173,7 +173,7 @@ export const userRouter = t.router({
           },
         });
 
-        if (count === 0) throw new TRPCError({ code: "BAD_REQUEST" });
+        if (count === 0) throw new TRPCError({ code: "BAD_REQUEST", message: "No user to delete" });
 
         if (userIDs.some((userID) => userID === currentUserID))
           await request.session.destroy();
@@ -195,10 +195,10 @@ export const userRouter = t.router({
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
       if (permissions.some((permission) => !hasPermission(permission)))
-        throw new TRPCError({ code: "UNAUTHORIZED" });
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "You don't have the necessary permission to do this" });
 
       if (userID === currentUserID)
-        throw new TRPCError({ code: "BAD_REQUEST" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "You cant modify your own permissions" });
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.findUniqueOrThrow({
@@ -242,10 +242,10 @@ export const userRouter = t.router({
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
       if (permissions.some((permission) => !hasPermission(permission)))
-        throw new TRPCError({ code: "UNAUTHORIZED" });
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "You don't have the necessary permission to do this" });
 
       if (userID === currentUserID)
-        throw new TRPCError({ code: "BAD_REQUEST" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "You can't modify your own permissions" });
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.findUniqueOrThrow({
@@ -290,7 +290,7 @@ export const userRouter = t.router({
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
       if (!hasPermission("users:edit") && userID !== currentUserID)
-        throw new TRPCError({ code: "UNAUTHORIZED" });
+        throw new TRPCError({ code: "UNAUTHORIZED", message: "You don't have the necessary permission to do this" });
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         // Check if old password is valid or bypass
@@ -305,7 +305,7 @@ export const userRouter = t.router({
           });
 
           if (!(await checkPassword(oldPassword, user.password)))
-            throw new TRPCError({ code: "BAD_REQUEST" });
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid old password value" });
         }
 
         // Update password for user

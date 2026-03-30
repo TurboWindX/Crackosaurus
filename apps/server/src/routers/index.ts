@@ -47,7 +47,7 @@ export const appRouter = t.router({
             },
           });
 
-          if (firstUser !== null) throw new TRPCError({ code: "UNAUTHORIZED" });
+          if (firstUser !== null) throw new TRPCError({ code: "UNAUTHORIZED", message: "The application has already been instanciate" });
 
           const user = await tx.user.create({
             select: {

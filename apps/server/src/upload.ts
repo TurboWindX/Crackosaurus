@@ -29,7 +29,7 @@ function checkPermission(permission: PermissionType) {
     next: (err?: Error | undefined) => void
   ) => {
     if (!hasPermission(request.session.permissions, permission))
-      throw new TRPCError({ code: "UNAUTHORIZED" });
+      throw new TRPCError({ code: "UNAUTHORIZED", message: "You don't have the necessary permission to do this" });
 
     next();
   };
@@ -114,10 +114,10 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
     async (request: FastifyRequest) => {
       const { prisma } = request.server;
 
-      if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid request, should be multipart" });
 
       const multipart = await request.file();
-      if (multipart === undefined) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (multipart === undefined) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid request, should be multipart" });
 
       const fileName = path.basename(multipart.filename);
       const tempPath = path.join("/tmp", `upload-${Date.now()}-${fileName}`);
@@ -141,7 +141,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
         })
       ) {
         fs.unlinkSync(tempPath);
-        throw new TRPCError({ code: "BAD_REQUEST" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "duplicate wordlist" });
       }
 
       const readStream = fs.createReadStream(tempPath);
@@ -154,7 +154,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
 
       fs.unlinkSync(tempPath); // Clean up
 
-      if (!wordlistID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      if (!wordlistID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "An unexpected error occured" });
 
       return await prisma.$transaction(async (tx: PrismaTransaction) => {
         await tx.wordlist.create({
@@ -180,7 +180,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
     };
 
     if (!wordlistId || !s3Key) {
-      throw new TRPCError({ code: "BAD_REQUEST" });
+      throw new TRPCError({ code: "BAD_REQUEST", message: "wordlist ID and s3 key are required" });
     }
 
     // Get bucket name (initialized at server startup)
@@ -206,7 +206,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
           bucketName,
           s3Key,
         });
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "An unexpected error occured" });
       }
 
       // Extract checksum from S3 object metadata (set during upload request)
@@ -328,7 +328,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
         console.error("[upload.complete] no wordlist ID generated", {
           wordlistId,
         });
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "An unexpected error occured" });
       }
 
       console.debug("[upload.complete] success", {
@@ -339,7 +339,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
     } catch (error) {
       console.error("[upload.complete] error", error);
       const message = error instanceof Error ? error.message : String(error);
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: message });
     }
   };
 
@@ -365,10 +365,10 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
     async (request: FastifyRequest) => {
       const { prisma } = request.server;
 
-      if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST", message: "Request should be multipart" });
 
       const multipart = await request.file();
-      if (multipart === undefined) throw new TRPCError({ code: "BAD_REQUEST" });
+      if (multipart === undefined) throw new TRPCError({ code: "BAD_REQUEST", message: "Request should be multipart" });
 
       const fileName = path.basename(multipart.filename);
       const tempPath = path.join("/tmp", `upload-${Date.now()}-${fileName}`);
@@ -392,7 +392,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
         })
       ) {
         fs.unlinkSync(tempPath);
-        throw new TRPCError({ code: "BAD_REQUEST" });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Rule already exists" });
       }
 
       const readStream = fs.createReadStream(tempPath);
@@ -405,7 +405,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
 
       fs.unlinkSync(tempPath);
 
-      if (!ruleID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      if (!ruleID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "An unexpected error occured" });
 
       return await prisma.$transaction(async (tx: PrismaTransaction) => {
         await tx.rule.create({
@@ -431,7 +431,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
     };
 
     if (!ruleId || !s3Key) {
-      throw new TRPCError({ code: "BAD_REQUEST" });
+      throw new TRPCError({ code: "BAD_REQUEST", message: "Rule ID and S3 key are required" });
     }
 
     const bucketName = getInitializedBucketName();
@@ -456,7 +456,7 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
           bucketName,
           s3Key,
         });
-        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "An unexpected error occured" });
       }
 
       const checksum =
@@ -538,13 +538,13 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
         approach: isLargeFile ? "direct-s3" : "streaming",
       });
 
-      if (!finalRuleID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+      if (!finalRuleID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "An unexepected error occured" });
 
       return { ruleID: finalRuleID };
     } catch (error) {
       console.error("[upload.rule.complete] error", error);
       const message = error instanceof Error ? error.message : String(error);
-      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message });
+      throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: message });
     }
   };
 

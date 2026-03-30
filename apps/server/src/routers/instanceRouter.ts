@@ -189,7 +189,7 @@ export const instanceRouter = t.router({
         const tag = await cluster.instance.create.mutate({
           instanceType: type,
         });
-        if (!tag) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        if (!tag) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "There was an unexpected error" });
 
         const instance = await tx.instance.create({
           select: {

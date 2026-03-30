@@ -72,10 +72,10 @@ export const authRouter = t.router({
             username: username,
           },
         });
-        if (user === null) throw new TRPCError({ code: "BAD_REQUEST" });
+        if (user === null) throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid Credentials" });
 
         if (!(await checkPassword(password, user.password)))
-          throw new TRPCError({ code: "BAD_REQUEST" });
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid Credentials" });
 
         await request.session.regenerate();
 

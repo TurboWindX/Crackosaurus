@@ -612,7 +612,7 @@ export const jobRouter = t.router({
       // Authorization: user must be submitter, approver, project member, or admin
       if (!hasPermission("instances:jobs:get")) {
         if (job.submittedById !== currentUserID) {
-          throw new TRPCError({ code: "UNAUTHORIZED" });
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "You are not authorized to modify this job" });
         }
       }
 
