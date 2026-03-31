@@ -48,8 +48,16 @@ export const HashTypeSelect = ({
       setIsAdvancedMode(true);
       setCustomHashType("");
     } else {
-      setIsAdvancedMode(false);
-      if (onValueChange) onValueChange(parseInt(newValue));
+      const numValue = parseInt(newValue);
+      if (!predefinedValues.includes(numValue)) {
+        if (!isNaN(numValue) && numValue >= 1 && numValue <= 99999) {
+          setIsAdvancedMode(true);
+          setCustomHashType(newValue)
+        }
+      } else {
+        setIsAdvancedMode(false);
+      }
+      if (onValueChange) onValueChange(numValue);
     }
   };
 

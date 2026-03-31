@@ -83,21 +83,11 @@ const HashDataTable = ({
       const best = candidates[0]!;
       // Auto-set on high confidence, suggest on medium
       if (best.confidence === "high") {
-        if (
-          newHash.hashType === HASH_TYPES.plaintext ||
-          newHash.hashType === 0
-        ) {
-          setNewHash((prev) => ({ ...prev, hashType: best.mode }));
-        }
+        setNewHash((prev) => ({ ...prev, hashType: best.mode }));
         setHashDetection(`Detected: ${best.name}`);
       } else {
         // Auto-set medium confidence too if user hasn't picked yet
-        if (
-          newHash.hashType === HASH_TYPES.plaintext ||
-          newHash.hashType === 0
-        ) {
-          setNewHash((prev) => ({ ...prev, hashType: best.mode }));
-        }
+        setNewHash((prev) => ({ ...prev, hashType: best.mode }));
         const names = candidates
           .filter((c) => c.confidence !== "low")
           .map((c) => c.name)
