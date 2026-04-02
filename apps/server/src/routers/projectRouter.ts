@@ -103,9 +103,9 @@ export const projectRouter = t.router({
                     source: true,
                     updatedAt: true,
                     jobs: {
-                      // If the current user lacks instances:jobs:get, only include jobs
+                      // If the current user lacks jobs:view, only include jobs
                       // that the current user submitted. Admins see all jobs.
-                      where: hasPermission("instances:jobs:get")
+                      where: hasPermission("jobs:view")
                         ? undefined
                         : {
                             submittedById: currentUserID,

@@ -1353,7 +1353,7 @@ export const ProjectPage = () => {
   }, [allJobs]);
 
   const tables = [
-    hasPermission("instances:jobs:get") && jobs.length > 0 && (
+    (hasPermission("instances:jobs:get") || hasPermission("jobs:view")) && jobs.length > 0 && (
       <JobDataTable
         key="jobs"
         projectID={projectID!}

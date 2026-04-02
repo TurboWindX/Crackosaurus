@@ -364,7 +364,7 @@ export const jobRouter = t.router({
         hasPermission("root") ||
         hasPermission("jobs:approve") ||
         (job.submittedById && job.submittedById === currentUserID) ||
-        isProjectMember;
+        (isProjectMember && hasPermission("jobs:view"));
 
       if (!canCancel) {
         throw new TRPCError({
@@ -611,7 +611,16 @@ export const jobRouter = t.router({
 
       // Authorization: user must be submitter, approver, project member, or admin
       if (!hasPermission("instances:jobs:get")) {
-        if (job.submittedById !== currentUserID) {
+        const currentUserProject = await prisma.user.findFirst({
+          where: { ID: currentUserID },
+          include: {
+            projects: true
+          }
+        });
+        // Authorization: user can also be a member of the project or user can
+        // be the one who requested the job
+        if (!currentUserProject?.projects.some((project) => project.PID === job.hashes[0]?.project?.PID) &&
+          job.submittedById !== currentUserID) {
           throw new TRPCError({ code: "UNAUTHORIZED" });
         }
       }
