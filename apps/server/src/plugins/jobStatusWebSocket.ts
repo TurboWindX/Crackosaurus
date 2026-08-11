@@ -1,11 +1,47 @@
+import type { PrismaClient } from "@prisma/client";
 import type { FastifyPluginCallback } from "fastify";
 import fs from "fs";
 import path from "path";
 import type { WebSocket } from "ws";
 
+import { hasPermission } from "@repo/api";
+
 interface JobSubscription {
   instanceID: string;
   jobID: string;
+}
+
+/**
+ * Authorize a session to view a job's live status. Mirrors jobRouter access:
+ * a caller with `instances:jobs:get` (or root/`*`) may view any job; otherwise
+ * the caller must be the job submitter or a member of a project the job's
+ * hashes belong to. Without this check any authenticated user could stream any
+ * job's status by guessing/enumerating its JID (IDOR).
+ */
+async function canViewJob(
+  prisma: PrismaClient,
+  jobID: string,
+  uid: string,
+  permissions: string | undefined
+): Promise<boolean> {
+  if (
+    hasPermission(permissions ?? "", "instances:jobs:get") ||
+    hasPermission(permissions ?? "", "root")
+  )
+    return true;
+
+  const job = await prisma.job.findFirst({
+    where: {
+      JID: jobID,
+      OR: [
+        { submittedById: uid },
+        { hashes: { some: { project: { members: { some: { ID: uid } } } } } },
+      ],
+    },
+    select: { JID: true },
+  });
+
+  return job !== null;
 }
 
 interface StatusMessage {
@@ -44,11 +80,15 @@ export const jobStatusWebSocket: FastifyPluginCallback = (
       return;
     }
 
+    const uid = req.session.uid;
+    const permissions = req.session.permissions;
+    const prisma = req.server.prisma;
+
     const clientSubscriptions = new Set<string>();
     subscriptions.set(socket, clientSubscriptions);
 
     console.log(
-      `[WebSocket] Client connected to job-status (uid=${req.session.uid})`
+      `[WebSocket] Client connected to job-status (uid=${uid})`
     );
 
     // Handle subscription messages
@@ -61,12 +101,24 @@ export const jobStatusWebSocket: FastifyPluginCallback = (
             type: string;
           };
           if (instanceID && jobID) {
-            const subKey = `${instanceID}:${jobID}`;
-            clientSubscriptions.add(subKey);
-            console.log(`[WebSocket] Client subscribed to ${subKey}`);
+            // Authorize BEFORE adding the subscription, so the poll loop never
+            // streams a job the caller isn't allowed to see.
+            void canViewJob(prisma, jobID, uid, permissions).then(
+              (allowed) => {
+                if (!allowed) {
+                  console.warn(
+                    `[WebSocket] uid=${uid} denied subscription to job ${jobID}`
+                  );
+                  return;
+                }
+                const subKey = `${instanceID}:${jobID}`;
+                clientSubscriptions.add(subKey);
+                console.log(`[WebSocket] Client subscribed to ${subKey}`);
 
-            // Send immediate status update
-            void sendStatusUpdate(socket, instanceID, jobID);
+                // Send immediate status update
+                void sendStatusUpdate(socket, instanceID, jobID);
+              }
+            );
           }
         } else if (message.type === "unsubscribe") {
           const { instanceID, jobID } = message as JobSubscription & {

@@ -56,8 +56,23 @@ export function hashcat({
   if (hexCharset) args.push("--hex-charset");
   if (customCharset1) args.push("-1", customCharset1);
 
-  // Output file and input file
-  args.push("-o", outputFile, inputFile);
+  // Output file (option, must precede the "--" terminator)
+  args.push("-o", outputFile);
+
+  // If a rule file is provided, add the -r option (only valid for -a 0).
+  // This is an option and must come before the "--" positional terminator.
+  if (ruleFile && attackMode === 0) {
+    args.push("-r", ruleFile);
+  }
+
+  // End of options. Everything after "--" is treated as a positional
+  // argument by hashcat's option parser, so a user-controlled `mask`
+  // beginning with "-" can no longer be smuggled in as a hashcat flag
+  // (argument injection). inputFile / wordlistFile are server-derived, but
+  // the mask is fully attacker-controlled, so this terminator is required.
+  args.push("--");
+
+  args.push(inputFile);
 
   if (attackMode === 3 && mask) {
     // Mask/brute-force: the mask pattern replaces the wordlist
@@ -65,11 +80,6 @@ export function hashcat({
   } else if (wordlistFile) {
     // Dictionary attack: append the wordlist file
     args.push(wordlistFile);
-  }
-
-  // If a rule file is provided, append the -r option (only valid for -a 0)
-  if (ruleFile && attackMode === 0) {
-    args.push("-r", ruleFile);
   }
 
   console.log("[Hashcat] Spawning hashcat process");

@@ -14,6 +14,42 @@ type TransactionClient = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
 >;
 
+/**
+ * Given a list of job IDs, return the subset the caller is authorized to view.
+ * Access mirrors job.get / job.cancel: a user with `instances:jobs:get` (or
+ * root/admin via wildcard) may view any job; otherwise the user must be the
+ * job submitter or a member of a project the job's hashes belong to.
+ *
+ * This is used to gate the live-progress endpoints, which previously returned
+ * any job's progress to any authenticated user (IDOR).
+ */
+async function filterViewableJobIDs(
+  prisma: PrismaClient,
+  jobIDs: string[],
+  hasPermission: (permission: "instances:jobs:get" | "root") => boolean,
+  currentUserID: string
+): Promise<Set<string>> {
+  const unique = [...new Set(jobIDs)];
+  if (unique.length === 0) return new Set();
+
+  // Privileged callers can view everything; skip the per-job ownership lookup.
+  if (hasPermission("instances:jobs:get") || hasPermission("root"))
+    return new Set(unique);
+
+  const jobs = await prisma.job.findMany({
+    where: {
+      JID: { in: unique },
+      OR: [
+        { submittedById: currentUserID },
+        { hashes: { some: { project: { members: { some: { ID: currentUserID } } } } } },
+      ],
+    },
+    select: { JID: true },
+  });
+
+  return new Set(jobs.map((j: { JID: string }) => j.JID));
+}
+
 export const jobRouter = t.router({
   // Create pending job requests (called from project UI)
   requestJobs: permissionProcedure(["instances:jobs:add"])
@@ -703,7 +739,18 @@ export const jobRouter = t.router({
   progress: permissionProcedure(["auth"])
     .input(z.object({ jobID: z.string() }))
     .output(JOB_PROGRESS.nullable())
-    .query((opts) => {
+    .query(async (opts) => {
+      const { prisma, hasPermission, currentUserID } = opts.ctx;
+
+      const viewable = await filterViewableJobIDs(
+        prisma,
+        [opts.input.jobID],
+        hasPermission,
+        currentUserID
+      );
+      if (!viewable.has(opts.input.jobID))
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+
       return getJobProgressCached(opts.input.jobID) ?? null;
     }),
 
@@ -711,9 +758,21 @@ export const jobRouter = t.router({
   progressBulk: permissionProcedure(["auth"])
     .input(z.object({ jobIDs: z.array(z.string()) }))
     .output(z.record(z.string(), JOB_PROGRESS))
-    .query((opts) => {
+    .query(async (opts) => {
+      const { prisma, hasPermission, currentUserID } = opts.ctx;
+
+      // Only return progress for jobs the caller is allowed to view. Silently
+      // drop the rest instead of erroring so a mixed batch still works.
+      const viewable = await filterViewableJobIDs(
+        prisma,
+        opts.input.jobIDs,
+        hasPermission,
+        currentUserID
+      );
+
       const result: Record<string, JobProgress> = {};
       for (const jid of opts.input.jobIDs) {
+        if (!viewable.has(jid)) continue;
         const p = getJobProgressCached(jid);
         if (p) result[jid] = p;
       }
