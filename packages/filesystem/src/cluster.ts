@@ -8,6 +8,28 @@ import type { JobProgress } from "@repo/api";
 import { HASH_TYPES } from "@repo/hashcat/data";
 import { readHashcatPot } from "@repo/hashcat/exe";
 
+/**
+ * Guard against path traversal. instance/job/wordlist/rule IDs are joined onto
+ * a trusted root as a SINGLE path segment. A value containing a path separator,
+ * a parent reference, or a NUL byte could escape the root and let a caller
+ * read/write/delete arbitrary files, so reject those before any fs operation.
+ */
+function assertSafeId(id: string, kind = "id"): void {
+  if (
+    typeof id !== "string" ||
+    id.length === 0 ||
+    id === "." ||
+    id === ".." ||
+    id.includes("/") ||
+    id.includes("\\") ||
+    id.includes("\0")
+  ) {
+    throw new Error(
+      `Path traversal detected in ${kind}: ${JSON.stringify(id)}`
+    );
+  }
+}
+
 export const INSTANCE_METADATA = z.object({
   status: z.enum([
     STATUS.Pending,
@@ -383,6 +405,7 @@ export async function getInstanceMetadata(
   instanceRoot: string,
   instanceID: string
 ): Promise<InstanceMetadata> {
+  assertSafeId(instanceID, "instanceID");
   const metadataFile = path.join(instanceRoot, instanceID, METADATA_FILE);
 
   try {
@@ -404,6 +427,7 @@ export async function writeInstanceMetadata(
   instanceID: string,
   metadata: InstanceMetadata
 ): Promise<void> {
+  assertSafeId(instanceID, "instanceID");
   const metadataFile = path.join(instanceRoot, instanceID, METADATA_FILE);
 
   await atomicWriteFileAsync(metadataFile, JSON.stringify(metadata));
@@ -416,6 +440,7 @@ export async function createInstanceFolder(
     type: string;
   }
 ): Promise<void> {
+  assertSafeId(instanceID, "instanceID");
   const instancePath = path.join(instanceRoot, instanceID);
 
   // Log the intended path so we can later verify it is on EFS and not
@@ -472,6 +497,7 @@ export async function deleteInstanceFolder(
   instanceRoot: string,
   instanceID: string
 ): Promise<void> {
+  assertSafeId(instanceID, "instanceID");
   const target = path.join(instanceRoot, instanceID);
 
   // Retry up to 3 times to handle NFS "silly rename" .nfs* files that cause
@@ -505,6 +531,7 @@ export async function getInstanceFolderJobs(
   instanceRoot: string,
   instanceID: string
 ): Promise<string[]> {
+  assertSafeId(instanceID, "instanceID");
   const jobsPath = path.join(instanceRoot, instanceID, JOBS_FOLDER);
 
   // If the jobs folder doesn't exist (race or instance already removed),
@@ -523,6 +550,8 @@ export async function writeJobMetadata(
   jobID: string,
   metadata: JobMetadata
 ): Promise<void> {
+  assertSafeId(instanceID, "instanceID");
+  assertSafeId(jobID, "jobID");
   const metadataFile = path.join(
     instanceRoot,
     instanceID,
@@ -539,6 +568,8 @@ export async function getJobMetadata(
   instanceID: string,
   jobID: string
 ): Promise<JobMetadata> {
+  assertSafeId(instanceID, "instanceID");
+  assertSafeId(jobID, "jobID");
   const metadataFile = path.join(
     instanceRoot,
     instanceID,
@@ -803,6 +834,8 @@ export async function createJobFolder(
     ntWordlist?: string[];
   }
 ): Promise<void> {
+  assertSafeId(instanceID, "instanceID");
+  assertSafeId(jobID, "jobID");
   const jobsDir = path.join(instanceRoot, instanceID, JOBS_FOLDER);
   const jobPath = path.join(jobsDir, jobID);
 
@@ -936,6 +969,8 @@ export async function deleteJobFolder(
   instanceID: string,
   jobID: string
 ): Promise<void> {
+  assertSafeId(instanceID, "instanceID");
+  assertSafeId(jobID, "jobID");
   const jobFolder = path.join(instanceRoot, instanceID, JOBS_FOLDER, jobID);
 
   fs.rmSync(jobFolder, { recursive: true, force: true });
@@ -946,6 +981,7 @@ export async function writeWordlistFile(
   wordlistID: string,
   data: Buffer
 ): Promise<void> {
+  assertSafeId(wordlistID, "wordlistID");
   const wordlistFile = path.join(wordlistRoot, wordlistID);
 
   fs.writeFileSync(wordlistFile, data as Uint8Array);
@@ -956,6 +992,7 @@ export async function writeWordlistFileFromStream(
   wordlistID: string,
   stream: NodeJS.ReadableStream
 ): Promise<void> {
+  assertSafeId(wordlistID, "wordlistID");
   const wordlistFile = path.join(wordlistRoot, wordlistID);
   const writeStream = fs.createWriteStream(wordlistFile);
 
@@ -989,6 +1026,7 @@ export async function deleteWordlistFile(
   wordlistRoot: string,
   wordlistID: string
 ): Promise<void> {
+  assertSafeId(wordlistID, "wordlistID");
   const wordlistFile = path.join(wordlistRoot, wordlistID);
 
   if (fs.existsSync(wordlistFile)) fs.rmSync(wordlistFile);
@@ -1002,6 +1040,7 @@ export async function writeRuleFile(
   ruleID: string,
   data: Buffer
 ): Promise<void> {
+  assertSafeId(ruleID, "ruleID");
   const ruleFile = path.join(ruleRoot, ruleID);
 
   fs.writeFileSync(ruleFile, data as Uint8Array);
@@ -1012,6 +1051,7 @@ export async function writeRuleFileFromStream(
   ruleID: string,
   stream: NodeJS.ReadableStream
 ): Promise<void> {
+  assertSafeId(ruleID, "ruleID");
   const ruleFile = path.join(ruleRoot, ruleID);
   const writeStream = fs.createWriteStream(ruleFile);
 
@@ -1040,6 +1080,7 @@ export async function deleteRuleFile(
   ruleRoot: string,
   ruleID: string
 ): Promise<void> {
+  assertSafeId(ruleID, "ruleID");
   const ruleFile = path.join(ruleRoot, ruleID);
 
   if (fs.existsSync(ruleFile)) fs.rmSync(ruleFile);
