@@ -1,0 +1,4 @@
+{
+  "_comment": "Per-environment ACM certificate ARNs for the ALB HTTPS (443) listener. When an environment has an entry here, deploy.ps1 exports CERTIFICATE_ARN and the CDK adds an HTTPS listener + HTTP->HTTPS redirect and sets cookieSecure=true. Environments without an entry stay HTTP-only. The cert must cover the ALB DNS name (or the custom domain) for that environment; a self-signed IMPORTED cert is acceptable (browser trust warning only).",
+  "bleeding": "arn:aws:acm:ca-central-1:975050138772:certificate/da184f08-ecca-40dc-a789-96f95e53917f"
+}

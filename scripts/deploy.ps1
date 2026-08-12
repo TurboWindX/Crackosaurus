@@ -129,6 +129,26 @@ Set-Location "$PSScriptRoot\..\apps\cdk"
 $env:ENVIRONMENT = $Environment
 $env:IMAGE_TAG = $ImageTag
 
+# --- HTTPS certificate wiring ---
+# If apps/cdk/config/certificates.json maps this environment to an ACM cert ARN,
+# export CERTIFICATE_ARN so the CDK adds an HTTPS (443) listener, redirects HTTP
+# to HTTPS, and sets cookieSecure=true. Environments without an entry stay HTTP.
+$certConfigPath = Join-Path $PSScriptRoot "..\apps\cdk\config\certificates.json"
+if (Test-Path $certConfigPath) {
+    try {
+        $certMap = Get-Content $certConfigPath -Raw | ConvertFrom-Json
+        $certArn = $certMap.$Environment
+        if ($certArn) {
+            $env:CERTIFICATE_ARN = $certArn
+            Write-Host "  ✓ HTTPS enabled for '$Environment' (cert: $certArn)" -ForegroundColor Green
+        } else {
+            Write-Host "  ℹ No certificate mapped for '$Environment' — deploying HTTP-only." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "  ⚠ Failed to parse certificates.json; deploying HTTP-only." -ForegroundColor Yellow
+    }
+}
+
 # --- Pre-deploy CloudFormation safety check ---
 # If the stack is mid-update/rollback, cancel the update and wait for it to settle
 $stackName = "Crackosaurus-$Environment"
@@ -187,6 +207,7 @@ $albDns = aws cloudformation describe-stacks `
 if (-not $albDns) {
     Write-Host "Warning: Could not retrieve Load Balancer DNS name." -ForegroundColor Yellow
 } else {
+    $scheme = if ($env:CERTIFICATE_ARN) { "https" } else { "http" }
     Write-Host "`nYour application is available at:" -ForegroundColor Cyan
-    Write-Host "  http://$albDns" -ForegroundColor White
+    Write-Host "  ${scheme}://$albDns" -ForegroundColor White
 }
