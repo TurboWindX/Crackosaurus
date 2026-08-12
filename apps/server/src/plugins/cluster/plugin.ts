@@ -36,11 +36,22 @@ export type ClusterPluginConfig = {
 export const clusterPlugin = fp<ClusterPluginConfig>(
   async (server, options) => {
     let interval: NodeJS.Timeout | null = null;
+    // Re-entrancy guard: setInterval does not await the async callback, so a
+    // cycle that runs longer than pollingRateMs would otherwise overlap the
+    // next tick and let two advanceCascades run concurrently. Mirrors the
+    // orchestrator plugin's `if (orchestrating) return` guard.
+    let syncing = false;
     server.addHook("onReady", async () => {
       interval = setInterval(async () => {
-        await updateStatus(server.prisma, trpc);
-        // After sync, check if any cascade jobs just completed
-        await advanceCascades(server.prisma);
+        if (syncing) return;
+        syncing = true;
+        try {
+          await updateStatus(server.prisma, trpc);
+          // After sync, check if any cascade jobs just completed
+          await advanceCascades(server.prisma);
+        } finally {
+          syncing = false;
+        }
       }, options.pollingRateMs);
     });
 
@@ -431,6 +442,18 @@ async function advanceCascades(prisma: PrismaClient) {
         `[Cascade] Advancing cascade ${job.cascadeId}: step ${job.cascadeStepIndex} → ${nextStepIndex} with ${notFoundHashes.length} remaining hash(es), job ${JID}`
       );
 
+      // The check-then-create above (existingNext) is safe in steady state: the
+      // server runs single-replica (cdk server.json desiredCount=1, no server
+      // autoscaling) and the poll is wrapped in a re-entrancy guard (see
+      // clusterPlugin `syncing`), so advanceCascades never overlaps itself.
+      // Residual gap: during a rolling ECS deploy the old and new tasks run
+      // concurrently for a few seconds, and this findFirst→create is lock-free,
+      // so a cascade completing inside that window could be advanced twice. A
+      // DB-level unique on (cascadeId, cascadeStepIndex) is NOT the fix — a
+      // single cascade step legitimately spawns one job per hash type (jobRouter
+      // splits hashes by type), so multiple jobs share that pair. Closing the
+      // deploy-window race would need an advisory lock / SELECT … FOR UPDATE or
+      // a partial unique that also keys on hash type.
       await prisma.job.create({
         data: {
           JID,

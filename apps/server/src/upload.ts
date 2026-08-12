@@ -23,15 +23,23 @@ type PrismaTransaction = Omit<
 >;
 
 function checkPermission(permission: PermissionType) {
-  return (
-    request: FastifyRequest,
-    _reply: FastifyReply,
-    next: (err?: Error | undefined) => void
-  ) => {
-    if (!hasPermission(request.session.permissions, permission))
-      throw new TRPCError({ code: "UNAUTHORIZED" });
+  return async (request: FastifyRequest, _reply: FastifyReply) => {
+    // Resolve permissions from live DB state rather than the login-time session
+    // snapshot, so revocation/demotion/deletion is enforced on this request.
+    const uid = request.session.uid;
+    if (!uid) throw new TRPCError({ code: "UNAUTHORIZED" });
 
-    next();
+    const user = await request.server.prisma.user.findUnique({
+      select: { permissions: true },
+      where: { ID: uid },
+    });
+    if (!user) {
+      await request.session.destroy();
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    if (!hasPermission(user.permissions, permission))
+      throw new TRPCError({ code: "UNAUTHORIZED" });
   };
 }
 

@@ -6,6 +6,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import type { PrismaClient } from "@prisma/client";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import config from "../config";
@@ -188,7 +189,14 @@ export const wordlistRouter = t.router({
     .input(
       z.object({
         fileName: z.string(),
-        fileSize: z.number().int().min(0),
+        // Bound fileSize at S3's 5 TiB per-object limit. Without a max, a huge
+        // value (e.g. 1e21) makes numParts astronomically large and the
+        // presigned-URL loop below runs effectively forever / OOMs the process.
+        fileSize: z
+          .number()
+          .int()
+          .min(0)
+          .max(5 * 1024 * 1024 * 1024 * 1024),
         checksum: z.string(),
       })
     )
@@ -238,6 +246,23 @@ export const wordlistRouter = t.router({
       const useMultipart = fileSize > 5 * 1024 * 1024 * 1024; // 5GB
 
       if (useMultipart) {
+        // Calculate number of parts (each part 100MB, minimum 5MB required by S3)
+        const partSize = 100 * 1024 * 1024; // 100MB per part
+        const numParts = Math.ceil(fileSize / partSize);
+
+        // S3 allows at most 10,000 parts per multipart upload. Reject anything
+        // beyond that (with 100MB parts, ~1 TB) so we never enter a runaway
+        // presigned-URL generation loop. The client uses the same 100MB
+        // partSize, so this bound matches what the client can actually upload.
+        // Checked BEFORE CreateMultipartUploadCommand so an over-cap request
+        // never leaves an orphaned incomplete multipart upload in S3.
+        if (numParts > 10000) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "File too large: exceeds maximum multipart part count",
+          });
+        }
+
         // Create multipart upload
         const createCommand = new CreateMultipartUploadCommand({
           Bucket: bucketName,
@@ -252,10 +277,6 @@ export const wordlistRouter = t.router({
 
         const multipartUpload = await s3Client.send(createCommand);
         const uploadId = multipartUpload.UploadId!;
-
-        // Calculate number of parts (each part 100MB, minimum 5MB required by S3)
-        const partSize = 100 * 1024 * 1024; // 100MB per part
-        const numParts = Math.ceil(fileSize / partSize);
 
         // Generate presigned URLs for each part
         const partUrls = [];
