@@ -273,6 +273,20 @@ export class CrackosaurusStack extends cdk.Stack {
       },
     });
 
+    // Shared secret for server↔cluster authentication — auto-generated, stored
+    // in Secrets Manager. Injected as CLUSTER_SECRET into BOTH the server and
+    // cluster containers so the server attaches `Authorization: Bearer <secret>`
+    // and the cluster enforces it. Required: the cluster refuses to start
+    // (process.exit(1)) when CLUSTER_TYPE != "debug" and no secret is set.
+    const clusterSecret = new secretsmanager.Secret(this, "ClusterSecret", {
+      description: "Shared secret for Crackosaurus server↔cluster auth",
+      generateSecretString: {
+        excludePunctuation: true,
+        includeSpace: false,
+        passwordLength: 64,
+      },
+    });
+
     const dbCluster = new rds.DatabaseCluster(this, "Database", {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
         version: rds.AuroraPostgresEngineVersion.VER_15_6,
@@ -832,6 +846,7 @@ export class CrackosaurusStack extends cdk.Stack {
     // from Secrets Manager (needed so the task can fetch secrets at startup)
     dbCredentials.grantRead(executionRole);
     backendSecret.grantRead(executionRole);
+    clusterSecret.grantRead(executionRole);
 
     // Instantiate cluster Fargate service via construct
     const clusterServiceConstruct = new ClusterService(
@@ -852,6 +867,7 @@ export class CrackosaurusStack extends cdk.Stack {
         discoveryRegion: this.region,
         clusterHost: clusterConfig.clusterHost as string | undefined,
         clusterPort: clusterPortDefault,
+        clusterSecretArn: clusterSecret.secretArn,
         stepFunctionArn: instanceStack?.stepFunction.stateMachineArn,
         fileSystem,
         accessPointId: accessPoint.accessPointId,
@@ -880,6 +896,7 @@ export class CrackosaurusStack extends cdk.Stack {
         dbHost: dbCluster.clusterEndpoint.hostname,
         dbSecretArn: dbCredentials.secretArn,
         backendSecretArn: backendSecret.secretArn,
+        clusterSecretArn: clusterSecret.secretArn,
         wordlistsBucket,
         imageTag: serverImageTag,
         desiredCount: serverDesiredCount,
