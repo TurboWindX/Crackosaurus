@@ -183,8 +183,11 @@ export const userRouter = t.router({
         });
 
         const deletableIDs = candidates
-          .filter((u) => !isPrivilegedPermissionString(u.permissions))
-          .map((u) => u.ID);
+          .filter(
+            (u: { ID: string; permissions: string }) =>
+              !isPrivilegedPermissionString(u.permissions)
+          )
+          .map((u: { ID: string; permissions: string }) => u.ID);
 
         const { count } = await tx.user.deleteMany({
           where: {
