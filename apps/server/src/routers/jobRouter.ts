@@ -431,15 +431,25 @@ export const jobRouter = t.router({
         },
       });
 
+      // Re-read instanceId/instance AFTER the Stopped write. The orchestrator
+      // may have written instanceId between our initial read (above) and now —
+      // if we used the stale `job.instance` snapshot we would skip teardown and
+      // leave a live g5.xlarge running until self-cooldown ($).
+      const freshJob = await prisma.job.findUnique({
+        where: { JID: jobID },
+        select: { instanceId: true, instance: { select: { IID: true, tag: true } } },
+      });
+      const liveInstance = freshJob?.instance ?? job.instance;
+
       // If the job is on the cluster, stop it and terminate the instance.
       // The orchestrator creates 1:1 instance-per-job, so cancelling the
       // job means the instance has no remaining work. Deleting just the job
       // would leave the EC2 instance running until cooldown expires.
-      if (job.instance?.tag) {
+      if (liveInstance?.tag) {
         try {
           // Stop the job on EFS (marks job metadata as Stopped)
           await cluster.instance.deleteJobs.mutate({
-            instanceID: job.instance.tag,
+            instanceID: liveInstance.tag,
             jobIDs: [jobID],
           });
         } catch (e) {
@@ -454,25 +464,25 @@ export const jobRouter = t.router({
           // EC2 terminateInstances). This kills hashcat immediately instead
           // of waiting for the cooldown timer.
           await cluster.instance.deleteMany.mutate({
-            instanceIDs: [job.instance.tag],
+            instanceIDs: [liveInstance.tag],
           });
         } catch (e) {
           console.error(
-            `[JobRouter] Failed to terminate instance ${job.instance.tag} for cancelled job ${jobID}:`,
+            `[JobRouter] Failed to terminate instance ${liveInstance.tag} for cancelled job ${jobID}:`,
             e
           );
         }
 
         // Also mark the instance as Stopped in the database
-        if (job.instance?.IID) {
+        if (liveInstance.IID) {
           try {
             await prisma.instance.update({
-              where: { IID: job.instance.IID },
+              where: { IID: liveInstance.IID },
               data: { status: STATUS.Stopped, updatedAt: new Date() },
             });
           } catch (e) {
             console.error(
-              `[JobRouter] Failed to update instance ${job.instance.IID} status:`,
+              `[JobRouter] Failed to update instance ${liveInstance.IID} status:`,
               e
             );
           }
@@ -480,7 +490,7 @@ export const jobRouter = t.router({
       }
 
       console.log(
-        `[JobRouter] Job ${jobID} cancelled by ${currentUserID}, instance ${job.instance?.tag ?? "none"} terminated`
+        `[JobRouter] Job ${jobID} cancelled by ${currentUserID}, instance ${liveInstance?.tag ?? "none"} terminated`
       );
 
       return true;

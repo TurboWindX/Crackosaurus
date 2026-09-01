@@ -72,6 +72,12 @@ model Job {
   cascadeId    String?
   cascade      Cascade?  @relation(fields: [cascadeId], references: [CID])
   cascadeStepIndex Int?
+  // Self-referential: cascade successor tracks which job it was advanced from.
+  // advanceCascades scopes existingNext to parentJobId so each hash-type sibling
+  // advances independently rather than the first sibling blocking all others.
+  parentJobId  String?
+  parentJob    Job?      @relation("JobSuccessors", fields: [parentJobId], references: [JID])
+  successors   Job[]     @relation("JobSuccessors")
   submittedById String?
   submittedBy User? @relation("JobSubmittedBy", fields: [submittedById], references: [ID])
   approvedById String?

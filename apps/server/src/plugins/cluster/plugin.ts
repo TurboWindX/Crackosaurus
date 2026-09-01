@@ -378,16 +378,18 @@ async function advanceCascades(prisma: PrismaClient) {
 
       const nextStepIndex = job.cascadeStepIndex + 1;
 
-      // Check if successor job already exists for this cascade at the next step
+      // Check if THIS job already spawned a successor. Keying on parentJobId
+      // rather than (cascadeId, cascadeStepIndex) is essential for correctness:
+      // a cascade step spawns one job per hash type (requestJobsForHashes groups
+      // by hashType), and each sibling must advance its own not-found hashes
+      // independently. The old (cascadeId, stepIndex) key made the first sibling
+      // to complete block all the others — their hashes were silently abandoned.
       const existingNext = await prisma.job.findFirst({
-        where: {
-          cascadeId: job.cascadeId,
-          cascadeStepIndex: nextStepIndex,
-        },
+        where: { parentJobId: job.JID },
         select: { JID: true },
       });
 
-      if (existingNext) continue; // Already advanced
+      if (existingNext) continue; // This job already advanced
 
       // Get remaining NOT_FOUND hashes from this job
       const notFoundHashes = job.hashes.filter(
@@ -471,6 +473,7 @@ async function advanceCascades(prisma: PrismaClient) {
           mask: nextStep.mask ?? null,
           cascadeId: job.cascadeId,
           cascadeStepIndex: nextStepIndex,
+          parentJobId: job.JID, // tracks which sibling spawned this successor
           submittedById: job.submittedById,
         },
       });
