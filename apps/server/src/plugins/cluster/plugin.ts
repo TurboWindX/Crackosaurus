@@ -15,6 +15,18 @@ type TransactionClient = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
 >;
 
+// Job statuses the DB treats as final. Once a job reaches one of these, the DB
+// is authoritative and a (possibly stale) cluster report must NOT move it back
+// to a live state. Notably, a user cancel sets STOPPED (jobRouter.cancel) while
+// the worker may keep reporting RUNNING for a poll cycle or two — without this
+// guard the sync would resurrect the cancelled job. COMPLETE/ERROR are final
+// for the same reason.
+const JOB_TERMINAL_STATUSES: readonly Status[] = [
+  STATUS.Stopped,
+  STATUS.Complete,
+  STATUS.Error,
+];
+
 // In-memory cache of job progress (ETA, speed, %). Keyed by JID.
 // Updated every sync cycle from the ClusterStatus response.
 const jobProgressCache = new Map<string, JobProgress>();
@@ -236,7 +248,13 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
                     jobProgressCache.delete(jobDB.JID);
                   }
 
-                  if (jobDB.status !== jobStatus.status) {
+                  // Never overwrite a terminal DB status with a live cluster
+                  // report — e.g. a job the user just cancelled (STOPPED) that
+                  // the worker still reports as RUNNING until it sees the stop.
+                  if (
+                    jobDB.status !== jobStatus.status &&
+                    !JOB_TERMINAL_STATUSES.includes(jobDB.status as Status)
+                  ) {
                     console.log(
                       `[Sync] Updating job ${jobDB.JID} status: ${jobDB.status} → ${jobStatus.status}`
                     );
