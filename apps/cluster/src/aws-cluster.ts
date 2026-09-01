@@ -423,55 +423,66 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
       `[AWS Cluster] deleteInstance() called for instanceID: ${instanceID}`
     );
 
-    // First, mark instance as stopped in filesystem (calls parent)
-    const result = await super.deleteInstance(instanceID);
-
-    // Try to terminate the EC2 instance if it exists
+    // Read the EC2 instance ID from metadata BEFORE deleting anything.
+    // super.deleteInstance() removes the instance folder from EFS (including
+    // metadata.json), so reading it afterwards returns UNKNOWN metadata with no
+    // ec2InstanceId — which previously meant the EC2 box was never terminated
+    // and leaked as an orphaned (billable) instance. Capture it up front.
+    let ec2InstanceId: string | undefined;
     try {
       const metadata = await getInstanceMetadata(
         this.config.instanceRoot,
         instanceID
       );
-
-      if (metadata.ec2InstanceId) {
-        console.log(
-          `[AWS Cluster] Terminating EC2 instance: ${metadata.ec2InstanceId}`
-        );
-
-        const ec2 = new AWS.EC2();
-        try {
-          await ec2
-            .terminateInstances({
-              InstanceIds: [metadata.ec2InstanceId],
-            })
-            .promise();
-          console.log(
-            `[AWS Cluster] EC2 instance ${metadata.ec2InstanceId} termination initiated`
-          );
-        } catch (e: unknown) {
-          // Ignore "InvalidInstanceID.NotFound" errors (instance already terminated)
-          if (
-            e &&
-            typeof e === "object" &&
-            "code" in e &&
-            e.code === "InvalidInstanceID.NotFound"
-          ) {
-            console.log(
-              `[AWS Cluster] EC2 instance ${metadata.ec2InstanceId} already terminated`
-            );
-          } else {
-            console.error(`[AWS Cluster] Failed to terminate EC2 instance:`, e);
-            // Don't fail the whole operation, just log the error
-          }
-        }
-      } else {
-        console.log(
-          `[AWS Cluster] No EC2 instance ID found in metadata, instance may not have been started yet or already deleted`
-        );
-      }
+      ec2InstanceId = metadata.ec2InstanceId;
     } catch (e) {
-      console.error(`[AWS Cluster] Error reading instance metadata:`, e);
-      // Continue anyway - the instance folder may have been deleted already
+      console.error(
+        `[AWS Cluster] Error reading instance metadata before delete:`,
+        e
+      );
+      // Continue — we still want to delete the folder even if metadata is
+      // unreadable, but without an ec2InstanceId we can't terminate EC2 here.
+    }
+
+    // Mark instance as stopped and delete the folder from EFS (calls parent).
+    const result = await super.deleteInstance(instanceID);
+
+    // Try to terminate the EC2 instance if we captured its ID above.
+    if (ec2InstanceId) {
+      console.log(
+        `[AWS Cluster] Terminating EC2 instance: ${ec2InstanceId}`
+      );
+
+      const ec2 = new AWS.EC2();
+      try {
+        await ec2
+          .terminateInstances({
+            InstanceIds: [ec2InstanceId],
+          })
+          .promise();
+        console.log(
+          `[AWS Cluster] EC2 instance ${ec2InstanceId} termination initiated`
+        );
+      } catch (e: unknown) {
+        // Ignore "InvalidInstanceID.NotFound" errors (instance already terminated)
+        if (
+          e &&
+          typeof e === "object" &&
+          "code" in e &&
+          e.code === "InvalidInstanceID.NotFound"
+        ) {
+          console.log(
+            `[AWS Cluster] EC2 instance ${ec2InstanceId} already terminated`
+          );
+        } else {
+          console.error(`[AWS Cluster] Failed to terminate EC2 instance:`, e);
+          // Don't fail the whole operation, just log the error
+        }
+      }
+    } else {
+      console.log(
+        `[AWS Cluster] No EC2 instance ID found in metadata, instance may not have been started yet or already deleted`
+      );
     }
 
     return result;

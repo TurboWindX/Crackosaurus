@@ -3,6 +3,7 @@ import {
   FastifyTRPCPluginOptions,
   fastifyTRPCPlugin,
 } from "@trpc/server/adapters/fastify";
+import crypto from "crypto";
 import Fastify from "fastify";
 import fs from "fs";
 
@@ -61,6 +62,15 @@ const clusterSecret = config.secret;
 // who can reach the port.
 const requiresSecret = config.type.name !== "debug";
 
+// Constant-time string comparison. Hashing both sides to a fixed-length digest
+// before timingSafeEqual avoids leaking the secret's length and prevents the
+// early-exit timing side-channel of a plain `!==` string comparison.
+function timingSafeStrEqual(a: string, b: string): boolean {
+  const ah = crypto.createHash("sha256").update(a).digest();
+  const bh = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ah, bh);
+}
+
 if (!clusterSecret && requiresSecret) {
   console.error(
     "[Cluster] FATAL: CLUSTER_SECRET is not set but cluster type is " +
@@ -78,8 +88,11 @@ if (clusterSecret) {
     if (request.url === "/ping") return;
 
     const authHeader = request.headers.authorization;
-    if (!authHeader || authHeader !== `Bearer ${clusterSecret}`) {
-      reply.code(401).send({ error: "Unauthorized" });
+    if (
+      !authHeader ||
+      !timingSafeStrEqual(authHeader, `Bearer ${clusterSecret}`)
+    ) {
+      return reply.code(401).send({ error: "Unauthorized" });
     }
   });
 } else {

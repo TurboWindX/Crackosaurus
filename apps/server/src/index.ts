@@ -38,19 +38,26 @@ fastify.get("/ping", {}, () => "pong");
 
 fastify.register(fastifyCookie);
 fastify.register(websocket);
-// COOKIE_SECURE overrides the default. In production the cookie should be Secure
-// when the ALB terminates TLS, but the current ALB is HTTP-only so we default
-// to false in production unless explicitly opted in via COOKIE_SECURE=true.
-const cookieSecure =
-  process.env.COOKIE_SECURE === "true" ||
-  process.env.COOKIE_SECURE === "1" ||
-  false;
+// Secure-cookie policy. COOKIE_SECURE=true (set by the CDK when the ALB
+// terminates TLS) forces the Secure attribute unconditionally. Otherwise we
+// use "auto": @fastify/session sets Secure only when the request arrived over
+// HTTPS, derived from X-Forwarded-Proto via `trustProxy`. This automatically
+// hardens the cookie once TLS is in front of the service while still letting
+// login work over the current HTTP-only ALB (where "auto" resolves to false).
+const forceSecureCookie =
+  process.env.COOKIE_SECURE === "true" || process.env.COOKIE_SECURE === "1";
 
 fastify.register(fastifySession, {
   cookieName: "CrackID",
   secret: config.secret,
+  // Don't persist a session for every anonymous request. With the default
+  // (saveUninitialized: true) each unauthenticated hit allocates and stores an
+  // empty session in the in-memory MemoryStore, which never evicts — an
+  // unauthenticated caller could exhaust server memory. Only sessions that are
+  // actually modified (i.e. after login sets uid) are now saved.
+  saveUninitialized: false,
   cookie: {
-    secure: cookieSecure,
+    secure: forceSecureCookie ? true : "auto",
     httpOnly: true,
     sameSite: "lax",
     maxAge: 3600000, // 1 hour in milliseconds

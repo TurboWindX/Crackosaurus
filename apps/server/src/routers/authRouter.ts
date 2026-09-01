@@ -28,6 +28,16 @@ export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, saltRounds);
 }
 
+// Decoy bcrypt hash used to equalize login response time when the supplied
+// username does not exist. Without it, a missing user returns immediately
+// while an existing user pays the cost of a bcrypt comparison — a timing
+// side-channel that lets an attacker enumerate valid usernames. Comparing the
+// submitted password against this decoy makes both paths take the same time.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync(
+  "invalid-account-placeholder-password",
+  12
+);
+
 export const authRouter = t.router({
   get: permissionProcedure(["auth"])
     .output(
@@ -72,7 +82,13 @@ export const authRouter = t.router({
             username: username,
           },
         });
-        if (user === null) throw new TRPCError({ code: "BAD_REQUEST" });
+        if (user === null) {
+          // Run a comparison against the decoy hash so a non-existent user
+          // takes the same time as a wrong password, preventing username
+          // enumeration via response timing.
+          await checkPassword(password, DUMMY_PASSWORD_HASH);
+          throw new TRPCError({ code: "BAD_REQUEST" });
+        }
 
         if (!(await checkPassword(password, user.password)))
           throw new TRPCError({ code: "BAD_REQUEST" });
