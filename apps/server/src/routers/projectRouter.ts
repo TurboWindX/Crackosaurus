@@ -103,13 +103,16 @@ export const projectRouter = t.router({
                     source: true,
                     updatedAt: true,
                     jobs: {
-                      // If the current user lacks instances:jobs:get, only include jobs
-                      // that the current user submitted. Admins see all jobs.
-                      where: hasPermission("instances:jobs:get")
-                        ? undefined
-                        : {
-                            submittedById: currentUserID,
-                          },
+                      // A project member with jobs:view (contributor) — or the
+                      // legacy instances:jobs:get / admin — sees all of the
+                      // project's jobs; otherwise only jobs they submitted.
+                      where:
+                        hasPermission("instances:jobs:get") ||
+                        hasPermission("jobs:view")
+                          ? undefined
+                          : {
+                              submittedById: currentUserID,
+                            },
                       select: {
                         JID: true,
                         status: true,

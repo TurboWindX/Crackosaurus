@@ -400,7 +400,7 @@ export const jobRouter = t.router({
         hasPermission("root") ||
         hasPermission("jobs:approve") ||
         (job.submittedById && job.submittedById === currentUserID) ||
-        isProjectMember;
+        (isProjectMember && hasPermission("jobs:view"));
 
       if (!canCancel) {
         throw new TRPCError({
@@ -649,15 +649,34 @@ export const jobRouter = t.router({
               status: true,
               source: true,
               value: hasPermission("hashes:view"),
-              project: { select: { PID: true, name: true } },
+              project: {
+                select: {
+                  PID: true,
+                  name: true,
+                  members: { select: { ID: true } },
+                },
+              },
             },
           },
         },
       });
 
-      // Authorization: user must be submitter, approver, project member, or admin
+      // Authorization: admins/root (instances:jobs:get) pass. Otherwise allow
+      // the submitter, or a member of any of the job's projects who holds
+      // jobs:view. Mirrors job.cancel and the project-listing where-clause;
+      // checks ALL hashes' projects (not just the first) so a member of any
+      // project on a multi-project job can view it.
       if (!hasPermission("instances:jobs:get")) {
-        if (job.submittedById !== currentUserID) {
+        const isProjectMember = job.hashes.some(
+          (h: { project?: { members?: { ID: string }[] } | null }) =>
+            h.project?.members?.some(
+              (m: { ID: string }) => m.ID === currentUserID
+            )
+        );
+        const canView =
+          job.submittedById === currentUserID ||
+          (isProjectMember && hasPermission("jobs:view"));
+        if (!canView) {
           throw new TRPCError({ code: "UNAUTHORIZED" });
         }
       }
