@@ -35,10 +35,7 @@ export const HomePage = () => {
             Password recovery platform
           </span>
           <h1 className="text-4xl font-bold tracking-tight md:text-5xl">
-            Crackosaurus{" "}
-            <span className="bg-gradient-to-r from-green-400 to-emerald-600 bg-clip-text text-transparent">
-              🦖
-            </span>
+            Crackosaurus <span aria-hidden="true">🦖</span>
           </h1>
           <p className="mx-auto max-w-2xl text-slate-400">
             Built for practitioners. Organize targets, add hashes, upload big
