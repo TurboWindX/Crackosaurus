@@ -1,5 +1,27 @@
 {
   "app": "Crackosaurus",
+  "mfa": {
+    "title": "Two-factor authentication",
+    "enable": "Enable 2FA",
+    "disable": "Disable 2FA",
+    "code": "Authentication code",
+    "codeHint": "Enter the 6-digit code from your authenticator app, or a recovery code.",
+    "loginPrompt": "Enter the code from your authenticator app",
+    "verify": "Verify",
+    "disablePrompt": "Enter your password to disable two-factor authentication.",
+    "enroll": {
+      "intro": "Protect your account with a time-based code from an authenticator app.",
+      "scan": "Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password, …).",
+      "manual": "Can't scan? Enter this key manually:",
+      "confirm": "Enter the 6-digit code to confirm",
+      "confirmButton": "Confirm & enable"
+    },
+    "recovery": {
+      "title": "Recovery codes",
+      "body": "Save these one-time recovery codes somewhere safe. Each works once if you lose access to your authenticator. They will not be shown again.",
+      "done": "I've saved my codes"
+    }
+  },
   "action": {
     "add": {
       "text": "Add",

@@ -30,7 +30,9 @@
     "@trpc/server": "^10.45.2",
     "bcrypt": "^5.1.1",
     "fastify": "^4.28.1",
-    "fastify-plugin": "^4.5.1"
+    "fastify-plugin": "^4.5.1",
+    "otpauth": "^9.5.1",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@repo/cluster": "*",
@@ -38,6 +40,7 @@
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@types/bcrypt": "^5.0.2",
     "@types/node": "^22.3.0",
+    "@types/qrcode": "^1.5.6",
     "@types/ws": "^8.18.1",
     "concurrently": "^8.2.2",
     "nodemon": "^3.1.4",

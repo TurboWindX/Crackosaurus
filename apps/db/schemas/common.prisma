@@ -3,11 +3,36 @@ model User {
   username      String    @unique
   password      String
   permissions   String    @default("")
+  // TOTP multi-factor auth. `totpSecret` holds the base32 secret encrypted at
+  // rest (AES-256-GCM, key derived from BACKEND_SECRET); it is null until the
+  // user starts enrollment. `mfaEnabled` gates the second factor at login and
+  // is only set true after a first valid code confirms the secret.
+  mfaEnabled    Boolean   @default(false)
+  totpSecret    String?
+  // Absolute TOTP time-step of the last accepted code. Login rejects any code
+  // whose step is <= this value, so a code cannot be replayed within its ~90s
+  // validity window (RFC 6238 §5.2). Null until the first code is accepted.
+  totpLastStep  Int?
+  recoveryCodes UserRecoveryCode[]
   projects      Project[]
   submittedJobs Job[]     @relation("JobSubmittedBy")
   approvedJobs  Job[]     @relation("JobApprovedBy")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @default(now()) @updatedAt
+}
+
+// One-time recovery codes for users who lose access to their authenticator.
+// Codes are stored bcrypt-hashed (never plaintext); `usedAt` marks a code
+// consumed so it cannot be replayed. Deleted with the user (onDelete: Cascade).
+model UserRecoveryCode {
+  RCID      String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [ID], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
 }
 
 model Project {

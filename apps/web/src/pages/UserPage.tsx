@@ -2,7 +2,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { TRPCClientError } from "@trpc/client";
 import { getQueryKey } from "@trpc/react-query";
 import { t } from "i18next";
-import { KeyRoundIcon, LogOutIcon, TrashIcon } from "lucide-react";
+import {
+  KeyRoundIcon,
+  LogOutIcon,
+  ShieldCheckIcon,
+  TrashIcon,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
@@ -274,6 +279,244 @@ const PasswordUpdateButton = ({
   );
 };
 
+interface MfaButtonProps {
+  userID: string;
+  mfaEnabled?: boolean;
+  isLoading?: boolean;
+}
+
+const MfaButton = ({ userID, mfaEnabled, isLoading }: MfaButtonProps) => {
+  const { t } = useTranslation();
+
+  const [open, setOpen] = useState(false);
+  // Enrollment is a small state machine: pick "Set up" -> scan QR & confirm a
+  // code -> save the one-time recovery codes.
+  const [step, setStep] = useState<"idle" | "enrolling" | "recovery">("idle");
+  const [enroll, setEnroll] = useState<{
+    secret: string;
+    qrDataUrl: string;
+  } | null>(null);
+  const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+
+  const { uid } = useAuth();
+  const trpc = useTRPC();
+  const queryClient = useQueryClient();
+  const { handleError } = useErrors();
+
+  const invalidate = () =>
+    queryClient.invalidateQueries(
+      getQueryKey(trpc.user.get, { userID }, "any")
+    );
+
+  const { mutateAsync: startMfaEnrollment } =
+    trpc.user.startMfaEnrollment.useMutation({ onError: handleError });
+  // Refresh mfaEnabled the moment the server state flips, independent of how the
+  // dialog is later dismissed — otherwise a backdrop/Escape close leaves the
+  // cached flag stale and the wrong (enroll vs disable) form shows.
+  const { mutateAsync: confirmMfaEnrollment } =
+    trpc.user.confirmMfaEnrollment.useMutation({
+      onSuccess: invalidate,
+      onError: handleError,
+    });
+  const { mutateAsync: disableMfa } = trpc.user.disableMfa.useMutation({
+    onSuccess: invalidate,
+    onError: handleError,
+  });
+
+  const reset = () => {
+    setStep("idle");
+    setEnroll(null);
+    setCode("");
+    setPassword("");
+    setRecoveryCodes([]);
+  };
+
+  const trigger = useMemo(
+    () => (
+      <Button variant="outline">
+        <div className="grid grid-flow-col items-center gap-2">
+          <ShieldCheckIcon />
+          <span>{t("mfa.title", { defaultValue: "Two-factor auth" })}</span>
+        </div>
+      </Button>
+    ),
+    []
+  );
+
+  // 2FA is personal: only the account owner manages their own second factor.
+  if (uid !== userID) return <></>;
+
+  if (isLoading) return trigger;
+
+  return (
+    <div className="w-max">
+      <DrawerDialog
+        title={t("mfa.title", { defaultValue: "Two-factor authentication" })}
+        open={open}
+        setOpen={(value) => {
+          setOpen(value);
+          if (!value) reset();
+        }}
+        trigger={trigger}
+        // On the recovery step the codes are shown exactly once and cannot be
+        // re-fetched. Block backdrop/Escape dismissal so they can only be left
+        // via the explicit "I've saved my codes" button, preventing accidental
+        // loss (which would strand the account with 2FA on and no codes).
+        preventClose={step === "recovery"}
+      >
+        {/* Already enabled: offer to disable (password-gated). */}
+        {mfaEnabled && step === "idle" && (
+          <form
+            className="grid gap-2"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                // onSuccess invalidates mfaEnabled; only close on success so a
+                // wrong password (surfaced by onError) leaves the form open.
+                await disableMfa({ password });
+                setOpen(false);
+                reset();
+              } catch {
+                // Surfaced by the mutation's onError handler.
+              }
+            }}
+          >
+            <p className="text-muted-foreground text-sm">
+              {t("mfa.disablePrompt", {
+                defaultValue:
+                  "Enter your password to disable two-factor authentication.",
+              })}
+            </p>
+            <Input
+              type="password"
+              placeholder={t("item.password.singular")}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <Button variant="destructive">
+              {t("mfa.disable", { defaultValue: "Disable 2FA" })}
+            </Button>
+          </form>
+        )}
+
+        {/* Not enabled: begin enrollment. */}
+        {!mfaEnabled && step === "idle" && (
+          <form
+            className="grid gap-2"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                const data = await startMfaEnrollment();
+                setEnroll({ secret: data.secret, qrDataUrl: data.qrDataUrl });
+                setStep("enrolling");
+              } catch {
+                // Surfaced by the mutation's onError handler.
+              }
+            }}
+          >
+            <p className="text-muted-foreground text-sm">
+              {t("mfa.enroll.intro", {
+                defaultValue:
+                  "Protect your account with a time-based code from an authenticator app.",
+              })}
+            </p>
+            <Button>{t("mfa.enable", { defaultValue: "Enable 2FA" })}</Button>
+          </form>
+        )}
+
+        {/* Scan QR + confirm a live code. */}
+        {step === "enrolling" && enroll && (
+          <form
+            className="grid gap-2"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              try {
+                const { recoveryCodes } = await confirmMfaEnrollment({ code });
+                setRecoveryCodes(recoveryCodes);
+                setStep("recovery");
+              } catch {
+                // Surfaced by the mutation's onError handler; stay on this step
+                // so the user can retry the code.
+              }
+            }}
+          >
+            <p className="text-muted-foreground text-sm">
+              {t("mfa.enroll.scan", {
+                defaultValue:
+                  "Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password, …).",
+              })}
+            </p>
+            <img
+              src={enroll.qrDataUrl}
+              alt="TOTP QR code"
+              className="mx-auto h-48 w-48 rounded bg-white p-2"
+            />
+            <p className="text-muted-foreground text-xs">
+              {t("mfa.enroll.manual", {
+                defaultValue: "Can't scan? Enter this key manually:",
+              })}
+            </p>
+            <code className="bg-muted break-all rounded p-2 text-center font-mono text-sm">
+              {enroll.secret}
+            </code>
+            <Input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder={t("mfa.enroll.confirm", {
+                defaultValue: "Enter the 6-digit code to confirm",
+              })}
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+            <Button>
+              {t("mfa.enroll.confirmButton", {
+                defaultValue: "Confirm & enable",
+              })}
+            </Button>
+          </form>
+        )}
+
+        {/* One-time recovery codes, shown once. */}
+        {step === "recovery" && (
+          <div className="grid gap-2">
+            <p className="text-sm font-medium">
+              {t("mfa.recovery.title", { defaultValue: "Recovery codes" })}
+            </p>
+            <div className="rounded-lg border border-yellow-500 bg-yellow-50 p-3 text-xs text-yellow-800 dark:bg-yellow-950/20 dark:text-yellow-300">
+              {t("mfa.recovery.body", {
+                defaultValue:
+                  "Save these one-time recovery codes somewhere safe. Each works once if you lose access to your authenticator. They will not be shown again.",
+              })}
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {recoveryCodes.map((rc) => (
+                <code
+                  key={rc}
+                  className="bg-muted rounded p-1 text-center font-mono text-sm"
+                >
+                  {rc}
+                </code>
+              ))}
+            </div>
+            <Button
+              onClick={() => {
+                // mfaEnabled was already refreshed by confirm's onSuccess.
+                setOpen(false);
+                reset();
+              }}
+            >
+              {t("mfa.recovery.done", { defaultValue: "I've saved my codes" })}
+            </Button>
+          </div>
+        )}
+      </DrawerDialog>
+    </div>
+  );
+};
+
 interface RemoveButtonProps {
   userID: string;
   user?: tRPCOutput["user"]["get"];
@@ -419,6 +662,11 @@ export const UserPage = () => {
         <div className="flex flex-1 flex-wrap justify-end gap-2">
           <LogoutButton userID={userID ?? ""} isLoading={isLoading} />
           <PasswordUpdateButton userID={userID ?? ""} isLoading={isLoading} />
+          <MfaButton
+            userID={userID ?? ""}
+            mfaEnabled={user?.mfaEnabled}
+            isLoading={isLoading}
+          />
           <RemoveButton
             userID={userID ?? ""}
             user={user}
