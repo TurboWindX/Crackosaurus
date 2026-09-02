@@ -1,5 +1,33 @@
 {
   "app": "Crackosaurus",
+  "mfa": {
+    "title": "Authentification à deux facteurs",
+    "enable": "Activer la 2FA",
+    "disable": "Désactiver la 2FA",
+    "code": "Code d'authentification",
+    "codeHint": "Saisissez le code à 6 chiffres de votre application d'authentification, ou un code de récupération.",
+    "loginPrompt": "Saisissez le code de votre application d'authentification",
+    "verify": "Vérifier",
+    "disablePrompt": "Saisissez votre mot de passe pour désactiver l'authentification à deux facteurs.",
+    "enroll": {
+      "intro": "Protégez votre compte avec un code temporaire généré par une application d'authentification.",
+      "scan": "Scannez ce code QR avec votre application d'authentification (Google Authenticator, Authy, 1Password, …).",
+      "manual": "Impossible de scanner ? Saisissez cette clé manuellement :",
+      "confirm": "Saisissez le code à 6 chiffres pour confirmer",
+      "confirmButton": "Confirmer et activer"
+    },
+    "recovery": {
+      "title": "Codes de récupération",
+      "body": "Conservez ces codes de récupération à usage unique en lieu sûr. Chacun fonctionne une seule fois si vous perdez l'accès à votre application d'authentification. Ils ne seront plus affichés.",
+      "done": "J'ai enregistré mes codes"
+    }
+  },
+  "message": {
+    "slowHash": {
+      "title": "Type de hachage lent ({{names}})",
+      "body": "Ce type de hachage est coûteux à casser — le débit est inférieur de plusieurs ordres de grandeur à celui des hachages rapides (MD5, NTLM, SHA-1), même réparti sur plusieurs GPU. Évitez d'associer une très grande liste de mots à un grand jeu de règles : le traitement peut durer des jours, voire ne jamais se terminer. Préférez une liste de mots ciblée et peu ou pas de règles."
+    }
+  },
   "action": {
     "add": { "text": "Ajouter", "item": "Ajouter {{item}}" },
     "cancel": { "text": "Annuler", "item": "Annuler {{item}}" },

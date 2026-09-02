@@ -18,15 +18,14 @@ export const LoginPage = () => {
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
   const [redirect, setRedirect] = useState(false);
 
   const { handleError } = useErrors();
   const utils = trpc.useContext();
 
   const { mutateAsync: login } = trpc.auth.login.useMutation({
-    async onSuccess() {
-      await utils.auth.get.fetch();
-    },
     onError: handleError,
   });
 
@@ -50,7 +49,13 @@ export const LoginPage = () => {
           <h1 className="text-2xl font-bold tracking-tight">
             Crackosaurus <span aria-hidden="true">🦖</span>
           </h1>
-          <p className="text-sm text-slate-400">{t("page.login.header")}</p>
+          <p className="text-sm text-slate-400">
+            {mfaRequired
+              ? t("mfa.loginPrompt", {
+                  defaultValue: "Enter the code from your authenticator app",
+                })
+              : t("page.login.header")}
+          </p>
         </div>
 
         <form
@@ -58,9 +63,25 @@ export const LoginPage = () => {
           onSubmit={async (event) => {
             event.preventDefault();
 
-            setRedirect(true);
+            try {
+              const result = await login({
+                username,
+                password,
+                mfaCode: mfaRequired ? mfaCode : undefined,
+              });
 
-            await login({ username, password });
+              // Password was correct but the account has 2FA: reveal the code
+              // field and wait for the user to re-submit with a code.
+              if (result.status === "MFA_REQUIRED") {
+                setMfaRequired(true);
+                return;
+              }
+
+              await utils.auth.get.fetch();
+              setRedirect(true);
+            } catch {
+              // Surfaced by the mutation's onError handler.
+            }
           }}
         >
           <label htmlFor="login-username" className="sr-only">
@@ -74,6 +95,7 @@ export const LoginPage = () => {
             placeholder={t("item.username.singular")}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            disabled={mfaRequired}
           />
           <label htmlFor="login-password" className="sr-only">
             {t("item.password.singular")}
@@ -86,8 +108,39 @@ export const LoginPage = () => {
             placeholder={t("item.password.singular")}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            disabled={mfaRequired}
           />
-          <Button className="w-full">{t("page.login.button")}</Button>
+          {mfaRequired && (
+            <>
+              <label htmlFor="login-mfa-code" className="sr-only">
+                {t("mfa.code", { defaultValue: "Authentication code" })}
+              </label>
+              <Input
+                id="login-mfa-code"
+                name="one-time-code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                placeholder={t("mfa.code", {
+                  defaultValue: "Authentication code",
+                })}
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+              />
+              <p className="text-xs text-slate-400">
+                {t("mfa.codeHint", {
+                  defaultValue:
+                    "Enter the 6-digit code from your authenticator app, or a recovery code.",
+                })}
+              </p>
+            </>
+          )}
+          <Button className="w-full">
+            {mfaRequired
+              ? t("mfa.verify", { defaultValue: "Verify" })
+              : t("page.login.button")}
+          </Button>
         </form>
       </div>
     </div>

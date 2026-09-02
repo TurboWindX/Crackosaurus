@@ -23,7 +23,7 @@ import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
-import { HashTypeSelect } from "@repo/ui/hashes";
+import { HashTypeSelect, SlowHashWarning } from "@repo/ui/hashes";
 import { MaskInput } from "@repo/ui/masks";
 import { RuleSelect } from "@repo/ui/rules";
 import { StatusBadge } from "@repo/ui/status";
@@ -350,6 +350,7 @@ const HashDataTable = ({
                 setHashTypeManuallySet(hashType !== HASH_TYPES.plaintext);
               }}
             />
+            <SlowHashWarning hashType={newHash.hashType} />
           </>
         }
         onSelectionChange={handleSelectionChange}
@@ -843,6 +844,20 @@ const LaunchButton = ({
   );
   const hasTodoHashes = useMemo(() => todoHashes.length > 0, [todoHashes]);
 
+  // Distinct hash types among the not-yet-cracked hashes — drives the slow-hash
+  // warning shown before the user picks a wordlist/ruleset.
+  const todoHashTypes = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          todoHashes.map((h: { hashType?: number | string }) =>
+            Number(h.hashType)
+          )
+        )
+      ),
+    [todoHashes]
+  );
+
   const isValid = useMemo(() => {
     if (!hasTodoHashes) return false;
     if (launchMode === "cascade") {
@@ -1197,6 +1212,7 @@ const LaunchButton = ({
                   </p>
                 )}
             </div>
+            <SlowHashWarning hashTypes={todoHashTypes} />
             {attackMode === 3 ? (
               <MaskInput value={mask} onChange={setMask} />
             ) : (
