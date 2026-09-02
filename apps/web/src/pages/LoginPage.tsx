@@ -36,12 +36,13 @@ export const LoginPage = () => {
 
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-6">
-      {/* Full-bleed animated mascot as a faint backdrop behind the card. */}
-      <DinoChomp
-        bare
-        aria-hidden
-        className="pointer-events-none absolute inset-0 h-full w-full opacity-20"
-      />
+      {/* Full-bleed animated mascot as a faint backdrop behind the card.
+          Wrapped in an absolute layer so DinoChomp keeps its own `relative`
+          (needed to anchor its internal absolutely-positioned rows) without
+          the two position utilities colliding. */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden opacity-20">
+        <DinoChomp bare aria-hidden className="h-full w-full" />
+      </div>
 
       {/* Login card floating dead-center on top of the backdrop. */}
       <div className="relative z-10 w-full max-w-sm space-y-4 rounded-xl border border-slate-800 bg-slate-900/70 p-6 shadow-2xl backdrop-blur">
