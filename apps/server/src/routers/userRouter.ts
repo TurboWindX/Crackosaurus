@@ -6,6 +6,16 @@ import { PERMISSIONS, hasPermission as checkPermission } from "@repo/api";
 
 import { permissionProcedure, t } from "../plugins/trpc";
 import { checkPasswordStrength } from "../utils/password";
+import {
+  buildTotpUri,
+  decryptSecret,
+  encryptSecret,
+  generateRecoveryCodes,
+  generateTotpSecret,
+  hashRecoveryCode,
+  qrDataUrl,
+  verifyTotp,
+} from "../utils/totp";
 import { checkPassword, hashPassword } from "./authRouter";
 
 /**
@@ -30,6 +40,7 @@ export const userRouter = t.router({
         ID: z.string(),
         username: z.string(),
         permissions: z.string(),
+        mfaEnabled: z.boolean(),
         projects: z
           .object({
             PID: z.string(),
@@ -52,6 +63,7 @@ export const userRouter = t.router({
             ID: true,
             username: true,
             permissions: true,
+            mfaEnabled: true,
             projects: {
               select: {
                 PID: true,
@@ -364,6 +376,137 @@ export const userRouter = t.router({
             password: await hashPassword(newPassword),
             updatedAt: new Date(),
           },
+        });
+
+        return true;
+      });
+    }),
+  // ── TOTP multi-factor auth (self-service) ──────────────────────────────────
+  //
+  // Enrollment is two steps so a user cannot lock themselves out with a
+  // mistyped secret: startMfaEnrollment stashes an (encrypted, not-yet-active)
+  // secret and returns a QR/URI; confirmMfaEnrollment verifies a live code
+  // before flipping mfaEnabled on and issuing recovery codes.
+  startMfaEnrollment: permissionProcedure(["auth"])
+    .output(
+      z.object({
+        secret: z.string(),
+        otpauthUri: z.string(),
+        qrDataUrl: z.string(),
+      })
+    )
+    .mutation(async (opts) => {
+      const { prisma, currentUserID } = opts.ctx;
+
+      const secret = generateTotpSecret();
+
+      const otpauthUri = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          const user = await tx.user.findUniqueOrThrow({
+            select: { username: true, mfaEnabled: true },
+            where: { ID: currentUserID },
+          });
+
+          // Re-enrolling while active could silently swap the secret; require an
+          // explicit disable first so recovery codes and state stay consistent.
+          if (user.mfaEnabled) throw new TRPCError({ code: "BAD_REQUEST" });
+
+          await tx.user.update({
+            where: { ID: currentUserID },
+            data: { totpSecret: encryptSecret(secret) },
+          });
+
+          return buildTotpUri(secret, user.username);
+        }
+      );
+
+      return {
+        secret,
+        otpauthUri,
+        qrDataUrl: await qrDataUrl(otpauthUri),
+      };
+    }),
+  confirmMfaEnrollment: permissionProcedure(["auth"])
+    .input(
+      z.object({
+        code: z.string(),
+      })
+    )
+    .output(
+      z.object({
+        recoveryCodes: z.string().array(),
+      })
+    )
+    .mutation(async (opts) => {
+      const { code } = opts.input;
+      const { prisma, currentUserID } = opts.ctx;
+
+      const recoveryCodes = generateRecoveryCodes();
+      const recoveryHashes = await Promise.all(
+        recoveryCodes.map((c) => hashRecoveryCode(c))
+      );
+
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const user = await tx.user.findUniqueOrThrow({
+          select: { totpSecret: true, mfaEnabled: true },
+          where: { ID: currentUserID },
+        });
+
+        if (user.mfaEnabled) throw new TRPCError({ code: "BAD_REQUEST" });
+        if (!user.totpSecret) throw new TRPCError({ code: "BAD_REQUEST" });
+
+        const step = verifyTotp(decryptSecret(user.totpSecret), code);
+        if (step === null) throw new TRPCError({ code: "BAD_REQUEST" });
+
+        // Replace any stale codes from a previous enrollment, then issue fresh.
+        await tx.userRecoveryCode.deleteMany({
+          where: { userId: currentUserID },
+        });
+        await tx.userRecoveryCode.createMany({
+          data: recoveryHashes.map((codeHash) => ({
+            userId: currentUserID,
+            codeHash,
+          })),
+        });
+
+        // Record the confirming code's step so it cannot be immediately replayed
+        // at login before the next 30s window.
+        await tx.user.update({
+          where: { ID: currentUserID },
+          data: { mfaEnabled: true, totpLastStep: step },
+        });
+
+        return { recoveryCodes };
+      });
+    }),
+  disableMfa: permissionProcedure(["auth"])
+    .input(
+      z.object({
+        password: z.string(),
+      })
+    )
+    .output(z.boolean())
+    .mutation(async (opts) => {
+      const { password } = opts.input;
+      const { prisma, currentUserID } = opts.ctx;
+
+      return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        const user = await tx.user.findUniqueOrThrow({
+          select: { password: true },
+          where: { ID: currentUserID },
+        });
+
+        // Disabling a security control requires proving knowledge of the
+        // current password, so a hijacked session alone cannot strip MFA.
+        if (!(await checkPassword(password, user.password)))
+          throw new TRPCError({ code: "BAD_REQUEST" });
+
+        await tx.userRecoveryCode.deleteMany({
+          where: { userId: currentUserID },
+        });
+        await tx.user.update({
+          where: { ID: currentUserID },
+          data: { mfaEnabled: false, totpSecret: null, totpLastStep: null },
         });
 
         return true;
