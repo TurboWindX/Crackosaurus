@@ -5,6 +5,7 @@ import { z } from "zod";
 import { PERMISSIONS, hasPermission as checkPermission } from "@repo/api";
 
 import { permissionProcedure, t } from "../plugins/trpc";
+import { checkPasswordStrength } from "../utils/password";
 import { checkPassword, hashPassword } from "./authRouter";
 
 /**
@@ -135,6 +136,8 @@ export const userRouter = t.router({
 
       if ((permissions ?? []).some((permission) => !hasPermission(permission)))
         throw new TRPCError({ code: "UNAUTHORIZED" });
+
+      checkPasswordStrength(password);
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.create({
@@ -319,6 +322,8 @@ export const userRouter = t.router({
 
       if (!hasPermission("users:edit") && !isSelf)
         throw new TRPCError({ code: "UNAUTHORIZED" });
+
+      checkPasswordStrength(newPassword);
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
         const user = await tx.user.findUniqueOrThrow({

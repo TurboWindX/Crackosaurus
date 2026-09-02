@@ -3,6 +3,7 @@ import { TRPCError, inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { z } from "zod";
 
 import { publicProcedure, t } from "../plugins/trpc";
+import { checkPasswordStrength } from "../utils/password";
 import { authRouter, hashPassword } from "./authRouter";
 import { cascadeRouter } from "./cascadeRouter";
 import { hashRouter } from "./hashRouter";
@@ -28,7 +29,7 @@ export const appRouter = t.router({
           ),
         password: z
           .string()
-          .min(8, "Password must be at least 8 characters")
+          .min(1, "Password is required")
           .max(1024, "Password must be at most 1024 characters"),
       })
     )
@@ -36,6 +37,9 @@ export const appRouter = t.router({
     .mutation(async (opts) => {
       const { username, password } = opts.input;
       const { prisma } = opts.ctx;
+
+      // Enforce the password-length policy on the bootstrap root account too.
+      checkPasswordStrength(password);
 
       // Use a serializable transaction to prevent race conditions where two
       // concurrent callers both see an empty user table and both create root accounts.
