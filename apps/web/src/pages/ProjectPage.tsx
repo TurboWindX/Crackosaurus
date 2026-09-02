@@ -70,6 +70,13 @@ const HashDataTable = ({
     HASH_TYPES.plaintext
   );
 
+  // Tracks whether the user has explicitly chosen a hash type. While this is
+  // false, auto-detection is free to set/overwrite the type as the hash text
+  // changes (so pasting a different hash re-detects). Once the user picks a
+  // real type it wins and detection stops overriding; picking `plaintext`
+  // resets this flag, meaning "detect it for me again".
+  const [hashTypeManuallySet, setHashTypeManuallySet] = useState(false);
+
   // Auto-detect hash type when user types/pastes a hash
   const [hashDetection, setHashDetection] = useState<string | null>(null);
   useEffect(() => {
@@ -83,19 +90,13 @@ const HashDataTable = ({
       const best = candidates[0]!;
       // Auto-set on high confidence, suggest on medium
       if (best.confidence === "high") {
-        if (
-          newHash.hashType === HASH_TYPES.plaintext ||
-          newHash.hashType === 0
-        ) {
+        if (!hashTypeManuallySet) {
           setNewHash((prev) => ({ ...prev, hashType: best.mode }));
         }
         setHashDetection(`Detected: ${best.name}`);
       } else {
-        // Auto-set medium confidence too if user hasn't picked yet
-        if (
-          newHash.hashType === HASH_TYPES.plaintext ||
-          newHash.hashType === 0
-        ) {
+        // Auto-set medium confidence too if the user hasn't picked yet
+        if (!hashTypeManuallySet) {
           setNewHash((prev) => ({ ...prev, hashType: best.mode }));
         }
         const names = candidates
@@ -342,7 +343,12 @@ const HashDataTable = ({
             )}
             <HashTypeSelect
               value={newHash.hashType}
-              onValueChange={(hashType) => setNewHash({ ...newHash, hashType })}
+              onValueChange={(hashType) => {
+                setNewHash({ ...newHash, hashType });
+                // A manual pick pins the type; choosing plaintext hands
+                // control back to auto-detection.
+                setHashTypeManuallySet(hashType !== HASH_TYPES.plaintext);
+              }}
             />
           </>
         }
