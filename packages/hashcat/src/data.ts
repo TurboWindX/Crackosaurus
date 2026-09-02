@@ -8,6 +8,7 @@ export const HASH_TYPES = {
   hmac_sha256: 1450,
   bcrypt: 3200,
   netntlmv1: 5500,
+  netntlmv2: 5600,
   des: 14000,
   netntlmv1_nt: 27000,
   plaintext: 99999,
