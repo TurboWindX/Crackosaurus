@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { HASH_TYPES } from "@repo/hashcat/data";
+import { HASH_TYPES, getHashName, isSlowHashType } from "@repo/hashcat/data";
 import { Input } from "@repo/shadcn/components/ui/input";
 import {
   Select,
@@ -113,5 +113,62 @@ export const HashTypeSelect = ({
         </SelectGroup>
       </SelectContent>
     </Select>
+  );
+};
+
+interface SlowHashWarningProps {
+  /** A single hash-type mode, or several (e.g. every hash queued for a job). */
+  hashType?: number;
+  hashTypes?: number[];
+  className?: string;
+}
+
+/**
+ * Warns when a selected hash type is a "slow"/robust hash (bcrypt, scrypt,
+ * PBKDF2, WPA, disk/document/wallet encryption, …). These crack orders of
+ * magnitude slower than fast hashes, so a large wordlist paired with a large
+ * ruleset can run for days or effectively forever — even on multi-GPU
+ * instances. Renders nothing for fast hash types.
+ */
+export const SlowHashWarning = ({
+  hashType,
+  hashTypes,
+  className,
+}: SlowHashWarningProps) => {
+  const { t } = useTranslation();
+
+  const slowModes = useMemo(() => {
+    const modes = [
+      ...(hashType !== undefined ? [hashType] : []),
+      ...(hashTypes ?? []),
+    ];
+    return [...new Set(modes.filter(isSlowHashType))];
+  }, [hashType, hashTypes]);
+
+  if (slowModes.length === 0) return null;
+
+  const names = slowModes.map(getHashName).join(", ");
+
+  return (
+    <div
+      role="alert"
+      className={`rounded-lg border border-yellow-500 bg-yellow-50 p-3 text-xs dark:bg-yellow-950/20 ${
+        className ?? ""
+      }`}
+    >
+      <p className="font-medium text-yellow-800 dark:text-yellow-300">
+        ⚠{" "}
+        {t("message.slowHash.title", {
+          defaultValue: "Slow hash type ({{names}})",
+          names,
+        })}
+      </p>
+      <p className="mt-1 text-yellow-700 dark:text-yellow-400">
+        {t("message.slowHash.body", {
+          defaultValue:
+            "This hash type is computationally expensive to crack — throughput is orders of magnitude lower than fast hashes (MD5, NTLM, SHA-1), even across multiple GPUs. Avoid pairing a very large wordlist with a large ruleset: the run may take days or may never finish. Prefer a targeted wordlist and few or no rules.",
+        })}
+      </p>
+    </div>
   );
 };

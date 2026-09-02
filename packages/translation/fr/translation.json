@@ -22,6 +22,12 @@
       "done": "J'ai enregistré mes codes"
     }
   },
+  "message": {
+    "slowHash": {
+      "title": "Type de hachage lent ({{names}})",
+      "body": "Ce type de hachage est coûteux à casser — le débit est inférieur de plusieurs ordres de grandeur à celui des hachages rapides (MD5, NTLM, SHA-1), même réparti sur plusieurs GPU. Évitez d'associer une très grande liste de mots à un grand jeu de règles : le traitement peut durer des jours, voire ne jamais se terminer. Préférez une liste de mots ciblée et peu ou pas de règles."
+    }
+  },
   "action": {
     "add": { "text": "Ajouter", "item": "Ajouter {{item}}" },
     "cancel": { "text": "Annuler", "item": "Annuler {{item}}" },
