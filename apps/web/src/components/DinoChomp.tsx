@@ -96,7 +96,7 @@ export const DinoChomp = ({
           share one spot with staggered delays so a single bubble appears to
           cycle through words. Hidden entirely under reduced motion, replaced by
           a static chip. */}
-      <div className="pointer-events-none absolute left-[14%] top-3 -translate-x-1/2">
+      <div className="pointer-events-none absolute left-[14%] top-1/2 -translate-x-1/2 -translate-y-20">
         {CRACKED.map((word, i) => (
           <div
             key={word}
