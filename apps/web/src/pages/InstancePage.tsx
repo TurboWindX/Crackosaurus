@@ -234,6 +234,11 @@ export const InstancePage = () => {
           <span className="scroll-m-20 text-2xl font-semibold tracking-tight">
             {instance?.name || instance?.IID || "Instance"}
           </span>
+          {instance?.tag && (
+            <span className="text-muted-foreground font-mono text-sm">
+              {instance.tag}
+            </span>
+          )}
           <div>
             <StatusBadge
               status={(instance?.status ?? STATUS.Unknown) as Status}

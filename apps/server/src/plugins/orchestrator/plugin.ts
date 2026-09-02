@@ -78,17 +78,17 @@ async function orchestrateJob(
     return false;
   }
 
-  if (job.instanceId) {
-    console.log(
-      `[Orchestrator] Job ${jobID} already has instance ${job.instanceId}`
-    );
-    return true;
-  }
+  // A pre-linked instanceId means this job targets a user-managed external
+  // instance (attached at approval time), NOT one the orchestrator provisions.
+  // We must still stage the job folder + hashes on that instance, so we do NOT
+  // early-return here — we branch below (isExternal) to skip provisioning and
+  // launch, and to keep the catch cleanup from ever tearing it down.
+  const isExternal = !!job.instanceId;
 
   const isMaskAttack = (job.attackMode ?? 0) === 3;
 
   if (
-    !job.instanceType ||
+    (!isExternal && !job.instanceType) ||
     (!isMaskAttack && !job.wordlistId) ||
     !job.hashes?.length
   ) {
@@ -108,15 +108,20 @@ async function orchestrateJob(
       where: { JID: jobID },
       data: {
         status: STATUS.Error,
-        rejectionNote: `Job missing required fields: instanceType=${!job.instanceType ? "MISSING" : "OK"}, wordlist=${!isMaskAttack && !job.wordlistId ? "MISSING" : "OK"}, hashes=${!job.hashes?.length ? "MISSING" : "OK"}`,
+        rejectionNote: `Job missing required fields: instanceType=${!isExternal && !job.instanceType ? "MISSING" : "OK"}, wordlist=${!isMaskAttack && !job.wordlistId ? "MISSING" : "OK"}, hashes=${!job.hashes?.length ? "MISSING" : "OK"}`,
         updatedAt: new Date(),
       },
     });
     return false;
   }
 
+  // `tag`/`instanceIID` track ONLY orchestrator-provisioned resources so the
+  // catch block can tear them down on failure. For external jobs they stay
+  // null — we never own the user's instance. `jobInstanceTag` is the cluster
+  // tag the job folder is staged on, resolved in both branches below.
   let tag: string | null = null;
   let instanceIID: string | null = null;
+  let jobInstanceTag: string;
 
   // ── Pre-flight lookup: resolve hashes from the KnownHash table ──
   const unresolvedHashes = job.hashes.filter(
@@ -195,45 +200,76 @@ async function orchestrateJob(
   }
 
   try {
-    // 1. Create instance folder
-    console.log(
-      `[Orchestrator] Creating instance folder for job ${jobID} with type ${job.instanceType}`
-    );
-    tag = await retry(
-      () =>
-        cluster.instance.createFolder.mutate({
-          instanceType: job.instanceType!,
-        }),
-      3
-    );
-    console.log(`[Orchestrator] Created instance folder with tag: ${tag}`);
+    if (isExternal) {
+      // External: the job is already linked to a user-managed instance we
+      // never provisioned. Resolve its cluster tag so we can stage the job
+      // folder there. Leave `tag`/`instanceIID` null so the catch cleanup
+      // never destroys the user's instance or its folder.
+      const existing = await prisma.instance.findUnique({
+        where: { IID: job.instanceId! },
+        select: { tag: true },
+      });
+      if (!existing) {
+        console.error(
+          `[Orchestrator] External instance ${job.instanceId} for job ${jobID} no longer exists`
+        );
+        await prisma.job.update({
+          where: { JID: jobID },
+          data: {
+            status: STATUS.Error,
+            rejectionNote: `External instance ${job.instanceId} no longer exists`,
+            updatedAt: new Date(),
+          },
+        });
+        return false;
+      }
+      jobInstanceTag = existing.tag;
+      console.log(
+        `[Orchestrator] Job ${jobID} targets external instance ${job.instanceId} (tag: ${jobInstanceTag})`
+      );
+    } else {
+      // 1. Create instance folder
+      console.log(
+        `[Orchestrator] Creating instance folder for job ${jobID} with type ${job.instanceType}`
+      );
+      tag = await retry(
+        () =>
+          cluster.instance.createFolder.mutate({
+            instanceType: job.instanceType!,
+          }),
+        3
+      );
+      console.log(`[Orchestrator] Created instance folder with tag: ${tag}`);
 
-    if (!tag) {
-      throw new Error("createFolder returned null");
+      if (!tag) {
+        throw new Error("createFolder returned null");
+      }
+
+      // 2. Create DB instance record
+      const instance = await prisma.instance.create({
+        data: {
+          name: `Auto-created for job ${jobID.slice(0, 8)}`,
+          tag,
+          type: job.instanceType,
+          status: STATUS.Pending,
+        },
+      });
+      instanceIID = instance.IID;
+      console.log(
+        `[Orchestrator] Created instance record ${instanceIID} (tag: ${tag})`
+      );
+
+      // 3. Link job to instance immediately (prevents sync mismatch)
+      await prisma.job.update({
+        where: { JID: jobID },
+        data: {
+          instanceId: instance.IID,
+          updatedAt: new Date(),
+        },
+      });
+
+      jobInstanceTag = tag;
     }
-
-    // 2. Create DB instance record
-    const instance = await prisma.instance.create({
-      data: {
-        name: `Auto-created for job ${jobID.slice(0, 8)}`,
-        tag,
-        type: job.instanceType,
-        status: STATUS.Pending,
-      },
-    });
-    instanceIID = instance.IID;
-    console.log(
-      `[Orchestrator] Created instance record ${instanceIID} (tag: ${tag})`
-    );
-
-    // 3. Link job to instance immediately (prevents sync mismatch)
-    await prisma.job.update({
-      where: { JID: jobID },
-      data: {
-        instanceId: instance.IID,
-        updatedAt: new Date(),
-      },
-    });
 
     // Cancel-race guard: check whether the job was cancelled while we were
     // creating the instance folder (createFolder can take several seconds with
@@ -282,12 +318,12 @@ async function orchestrateJob(
     }
 
     console.log(
-      `[Orchestrator] Creating job folder for job ${jobID} in instance ${tag}`
+      `[Orchestrator] Creating job folder for job ${jobID} in instance ${jobInstanceTag}`
     );
     const ok = await retry(
       () =>
         cluster.instance.createJobWithID.mutate({
-          instanceID: tag!,
+          instanceID: jobInstanceTag,
           jobID,
           wordlistID: job.wordlistId ?? "",
           hashType: jobHashType,
@@ -305,12 +341,20 @@ async function orchestrateJob(
     }
     console.log(`[Orchestrator] Created job folder for job ${jobID}`);
 
-    // 5. Launch instance
-    console.log(
-      `[Orchestrator] Launching EC2 instance ${tag} for job ${jobID}`
-    );
-    await retry(() => cluster.instance.launch.mutate({ instanceID: tag! }), 3);
-    console.log(`[Orchestrator] Successfully launched EC2 instance ${tag}`);
+    // 5. Launch instance (auto-provisioned only). External instances are
+    // user-managed and already running — we never boot or terminate them.
+    if (!isExternal) {
+      console.log(
+        `[Orchestrator] Launching EC2 instance ${jobInstanceTag} for job ${jobID}`
+      );
+      await retry(
+        () => cluster.instance.launch.mutate({ instanceID: jobInstanceTag }),
+        3
+      );
+      console.log(
+        `[Orchestrator] Successfully launched EC2 instance ${jobInstanceTag}`
+      );
+    }
 
     // Mark orchestration complete so the job won't be picked up again
     await prisma.job.update({
@@ -361,11 +405,13 @@ async function orchestrateApprovedJobs(
   maxConcurrent: number
 ) {
   try {
-    // Find approved jobs without instances (excluding jobs already marked as Error)
+    // Find approved jobs awaiting orchestration (excluding jobs already marked
+    // as Error/Stopped). Do NOT filter on `instanceId: null` — jobs pre-linked
+    // to a user-managed external instance carry an instanceId at approval time
+    // and still need their job folder staged on that instance.
     const pendingOrchestration = await prisma.job.findMany({
       where: {
         approvalStatus: "APPROVED",
-        instanceId: null,
         status: { notIn: [STATUS.Error, STATUS.Stopped] },
       },
       select: { JID: true },
@@ -386,7 +432,6 @@ async function orchestrateApprovedJobs(
       where: {
         JID: { in: jobIDs },
         approvalStatus: "APPROVED", // only claim if still APPROVED
-        instanceId: null,
         status: { notIn: [STATUS.Error, STATUS.Stopped] },
       },
       data: {
