@@ -1,5 +1,11 @@
 {
   "app": "Crackosaurus",
+  "message": {
+    "slowHash": {
+      "title": "Slow hash type ({{names}})",
+      "body": "This hash type is computationally expensive to crack — throughput is orders of magnitude lower than fast hashes (MD5, NTLM, SHA-1), even across multiple GPUs. Avoid pairing a very large wordlist with a large ruleset: the run may take days or may never finish. Prefer a targeted wordlist and few or no rules."
+    }
+  },
   "action": {
     "add": {
       "text": "Add",

@@ -15,7 +15,7 @@ import { useAuth } from "@repo/ui/auth";
 import { DataTable } from "@repo/ui/data";
 import { DrawerDialog } from "@repo/ui/dialog";
 import { useErrors } from "@repo/ui/errors";
-import { HashTypeSelect } from "@repo/ui/hashes";
+import { HashTypeSelect, SlowHashWarning } from "@repo/ui/hashes";
 import { RuleSelect } from "@repo/ui/rules";
 import { StatusBadge } from "@repo/ui/status";
 import { RelativeTime } from "@repo/ui/time";
@@ -120,6 +120,7 @@ const JobDataTable = ({ instanceID, values, isLoading }: JobDataTableProps) => {
             value={newJob.hashType}
             onValueChange={(hashType) => setNewJob({ ...newJob, hashType })}
           />
+          <SlowHashWarning hashType={newJob.hashType} />
           <WordlistSelect
             value={newJob.wordlistID}
             onValueChange={(wordlistID) => setNewJob({ ...newJob, wordlistID })}
