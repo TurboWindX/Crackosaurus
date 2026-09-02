@@ -235,6 +235,25 @@ async function orchestrateJob(
       },
     });
 
+    // Cancel-race guard: check whether the job was cancelled while we were
+    // creating the instance folder (createFolder can take several seconds with
+    // retries). If status===Stopped, run cleanup immediately and abort — the
+    // cancel handler's fresh re-read will already have found the instanceId
+    // we just wrote and issued deleteMany/deleteJobs, but we also abort here
+    // so we don't compound the mess by launching EC2 on top of a cancellation.
+    {
+      const jobStatus = await prisma.job.findUnique({
+        where: { JID: jobID },
+        select: { status: true },
+      });
+      if (jobStatus?.status === STATUS.Stopped) {
+        console.log(
+          `[Orchestrator] Job ${jobID} was cancelled during orchestration — aborting launch and cleaning up`
+        );
+        throw new Error("cancelled");
+      }
+    }
+
     // 4. Create job folder
     const hashStrings = job.hashes.map((h: { hash: string }) => h.hash);
     const jobHashType = job.hashes[0]?.hashType || 0;

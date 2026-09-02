@@ -2,10 +2,20 @@ import type { Prisma } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
-import { PERMISSIONS } from "@repo/api";
+import { PERMISSIONS, hasPermission as checkPermission } from "@repo/api";
 
 import { permissionProcedure, t } from "../plugins/trpc";
 import { checkPassword, hashPassword } from "./authRouter";
+
+/**
+ * A "privileged" account is one that holds a wildcard/root grant ("*" or
+ * "root"). These accounts must not be mutated by a delegated `users:edit`
+ * holder who is not themselves privileged, otherwise a lower-tier admin could
+ * take over the root account (reset its password, delete it, etc.).
+ */
+function isPrivilegedPermissionString(permissions: string): boolean {
+  return checkPermission(permissions, "*") || checkPermission(permissions, "root");
+}
 
 export const userRouter = t.router({
   get: permissionProcedure(["auth"])
@@ -162,13 +172,27 @@ export const userRouter = t.router({
         throw new TRPCError({ code: "UNAUTHORIZED" });
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+        // Never delete privileged (root/`*`) accounts. A DB-level
+        // `notIn: ["root","*"]` only matches single-token permission strings;
+        // a privileged account whose column has any extra token (e.g.
+        // "root hashes:get") would slip past it. Resolve the actual permission
+        // strings and filter privileged accounts out in code instead.
+        const candidates = await tx.user.findMany({
+          select: { ID: true, permissions: true },
+          where: { ID: { in: userIDs } },
+        });
+
+        const deletableIDs = candidates
+          .filter(
+            (u: { ID: string; permissions: string }) =>
+              !isPrivilegedPermissionString(u.permissions)
+          )
+          .map((u: { ID: string; permissions: string }) => u.ID);
+
         const { count } = await tx.user.deleteMany({
           where: {
             ID: {
-              in: userIDs,
-            },
-            permissions: {
-              notIn: ["root", "*"],
+              in: deletableIDs,
             },
           },
         });
@@ -289,21 +313,39 @@ export const userRouter = t.router({
 
       const { prisma, hasPermission, currentUserID } = opts.ctx;
 
-      if (!hasPermission("users:edit") && userID !== currentUserID)
+      const isSelf = userID === currentUserID;
+      const callerIsPrivileged =
+        hasPermission("*") || hasPermission("root");
+
+      if (!hasPermission("users:edit") && !isSelf)
         throw new TRPCError({ code: "UNAUTHORIZED" });
 
       return await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        // Check if old password is valid or bypass
-        if (!hasPermission("users:edit")) {
-          const user = await tx.user.findUniqueOrThrow({
-            select: {
-              password: true,
-            },
-            where: {
-              ID: userID,
-            },
-          });
+        const user = await tx.user.findUniqueOrThrow({
+          select: {
+            password: true,
+            permissions: true,
+          },
+          where: {
+            ID: userID,
+          },
+        });
 
+        // A delegated `users:edit` holder must NOT reset a privileged
+        // (root/`*`) account's password unless they are themselves privileged
+        // or acting on their own account. Prevents lower-tier admin -> root
+        // takeover.
+        if (
+          !isSelf &&
+          !callerIsPrivileged &&
+          isPrivilegedPermissionString(user.permissions)
+        )
+          throw new TRPCError({ code: "UNAUTHORIZED" });
+
+        // The old-password check is only bypassed when a `users:edit` holder
+        // resets ANOTHER account. Self-service password changes must always
+        // prove knowledge of the current password.
+        if (!hasPermission("users:edit") || isSelf) {
           if (!(await checkPassword(oldPassword, user.password)))
             throw new TRPCError({ code: "BAD_REQUEST" });
         }

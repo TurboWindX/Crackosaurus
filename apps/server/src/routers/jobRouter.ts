@@ -14,6 +14,42 @@ type TransactionClient = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
 >;
 
+/**
+ * Given a list of job IDs, return the subset the caller is authorized to view.
+ * Access mirrors job.get / job.cancel: a user with `instances:jobs:get` (or
+ * root/admin via wildcard) may view any job; otherwise the user must be the
+ * job submitter or a member of a project the job's hashes belong to.
+ *
+ * This is used to gate the live-progress endpoints, which previously returned
+ * any job's progress to any authenticated user (IDOR).
+ */
+async function filterViewableJobIDs(
+  prisma: PrismaClient,
+  jobIDs: string[],
+  hasPermission: (permission: "instances:jobs:get" | "root") => boolean,
+  currentUserID: string
+): Promise<Set<string>> {
+  const unique = [...new Set(jobIDs)];
+  if (unique.length === 0) return new Set();
+
+  // Privileged callers can view everything; skip the per-job ownership lookup.
+  if (hasPermission("instances:jobs:get") || hasPermission("root"))
+    return new Set(unique);
+
+  const jobs = await prisma.job.findMany({
+    where: {
+      JID: { in: unique },
+      OR: [
+        { submittedById: currentUserID },
+        { hashes: { some: { project: { members: { some: { ID: currentUserID } } } } } },
+      ],
+    },
+    select: { JID: true },
+  });
+
+  return new Set(jobs.map((j: { JID: string }) => j.JID));
+}
+
 export const jobRouter = t.router({
   // Create pending job requests (called from project UI)
   requestJobs: permissionProcedure(["instances:jobs:add"])
@@ -395,15 +431,25 @@ export const jobRouter = t.router({
         },
       });
 
+      // Re-read instanceId/instance AFTER the Stopped write. The orchestrator
+      // may have written instanceId between our initial read (above) and now —
+      // if we used the stale `job.instance` snapshot we would skip teardown and
+      // leave a live g5.xlarge running until self-cooldown ($).
+      const freshJob = await prisma.job.findUnique({
+        where: { JID: jobID },
+        select: { instanceId: true, instance: { select: { IID: true, tag: true } } },
+      });
+      const liveInstance = freshJob?.instance ?? job.instance;
+
       // If the job is on the cluster, stop it and terminate the instance.
       // The orchestrator creates 1:1 instance-per-job, so cancelling the
       // job means the instance has no remaining work. Deleting just the job
       // would leave the EC2 instance running until cooldown expires.
-      if (job.instance?.tag) {
+      if (liveInstance?.tag) {
         try {
           // Stop the job on EFS (marks job metadata as Stopped)
           await cluster.instance.deleteJobs.mutate({
-            instanceID: job.instance.tag,
+            instanceID: liveInstance.tag,
             jobIDs: [jobID],
           });
         } catch (e) {
@@ -418,25 +464,25 @@ export const jobRouter = t.router({
           // EC2 terminateInstances). This kills hashcat immediately instead
           // of waiting for the cooldown timer.
           await cluster.instance.deleteMany.mutate({
-            instanceIDs: [job.instance.tag],
+            instanceIDs: [liveInstance.tag],
           });
         } catch (e) {
           console.error(
-            `[JobRouter] Failed to terminate instance ${job.instance.tag} for cancelled job ${jobID}:`,
+            `[JobRouter] Failed to terminate instance ${liveInstance.tag} for cancelled job ${jobID}:`,
             e
           );
         }
 
         // Also mark the instance as Stopped in the database
-        if (job.instance?.IID) {
+        if (liveInstance.IID) {
           try {
             await prisma.instance.update({
-              where: { IID: job.instance.IID },
+              where: { IID: liveInstance.IID },
               data: { status: STATUS.Stopped, updatedAt: new Date() },
             });
           } catch (e) {
             console.error(
-              `[JobRouter] Failed to update instance ${job.instance.IID} status:`,
+              `[JobRouter] Failed to update instance ${liveInstance.IID} status:`,
               e
             );
           }
@@ -444,7 +490,7 @@ export const jobRouter = t.router({
       }
 
       console.log(
-        `[JobRouter] Job ${jobID} cancelled by ${currentUserID}, instance ${job.instance?.tag ?? "none"} terminated`
+        `[JobRouter] Job ${jobID} cancelled by ${currentUserID}, instance ${liveInstance?.tag ?? "none"} terminated`
       );
 
       return true;
@@ -703,7 +749,18 @@ export const jobRouter = t.router({
   progress: permissionProcedure(["auth"])
     .input(z.object({ jobID: z.string() }))
     .output(JOB_PROGRESS.nullable())
-    .query((opts) => {
+    .query(async (opts) => {
+      const { prisma, hasPermission, currentUserID } = opts.ctx;
+
+      const viewable = await filterViewableJobIDs(
+        prisma,
+        [opts.input.jobID],
+        hasPermission,
+        currentUserID
+      );
+      if (!viewable.has(opts.input.jobID))
+        throw new TRPCError({ code: "UNAUTHORIZED" });
+
       return getJobProgressCached(opts.input.jobID) ?? null;
     }),
 
@@ -711,9 +768,21 @@ export const jobRouter = t.router({
   progressBulk: permissionProcedure(["auth"])
     .input(z.object({ jobIDs: z.array(z.string()) }))
     .output(z.record(z.string(), JOB_PROGRESS))
-    .query((opts) => {
+    .query(async (opts) => {
+      const { prisma, hasPermission, currentUserID } = opts.ctx;
+
+      // Only return progress for jobs the caller is allowed to view. Silently
+      // drop the rest instead of erroring so a mixed batch still works.
+      const viewable = await filterViewableJobIDs(
+        prisma,
+        opts.input.jobIDs,
+        hasPermission,
+        currentUserID
+      );
+
       const result: Record<string, JobProgress> = {};
       for (const jid of opts.input.jobIDs) {
+        if (!viewable.has(jid)) continue;
         const p = getJobProgressCached(jid);
         if (p) result[jid] = p;
       }

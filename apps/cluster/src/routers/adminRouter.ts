@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 
+import { TRPCError } from "@trpc/server";
+
 import config from "../config";
 import { publicProcedure, t } from "../plugins/trpc";
 
@@ -8,6 +10,16 @@ export const adminRouter = t.router({
   // Wipe EFS-like data directories (instances, wordlists, rules).
   // This is a destructive debugging endpoint intended for local/dev use only.
   wipeEfs: publicProcedure.mutation(async () => {
+    // Fail closed outside local development. This recursively deletes every
+    // instance/wordlist/rule directory, so it must never be callable against
+    // a real (aws/external/node) deployment.
+    if (config.type.name !== "debug") {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "wipeEfs is only available in debug mode",
+      });
+    }
+
     const roots: string[] = [];
     const type = (config.type as Record<string, unknown>) ?? {};
     if (type.instanceRoot) roots.push(type.instanceRoot as string);

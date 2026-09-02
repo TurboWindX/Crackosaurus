@@ -984,6 +984,17 @@ const LaunchButton = ({
               mask: attackMode === 3 ? mask : undefined,
             });
             void created;
+          } else if (attackMode === 3) {
+            // Mask attack on all todo hashes — requestJobs is dictionary-only,
+            // so use requestJobsForHashes with the full todo hash list instead.
+            const created = await requestJobsForHashes({
+              instanceType,
+              hashIDs: todoHashes.map((h: { HID: string }) => h.HID),
+              attackMode,
+              mask,
+              ruleID: ruleID || undefined,
+            });
+            void created;
           } else {
             const hashTypes = Array.from(
               new Set(

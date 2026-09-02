@@ -3,6 +3,7 @@ import {
   FastifyTRPCPluginOptions,
   fastifyTRPCPlugin,
 } from "@trpc/server/adapters/fastify";
+import crypto from "crypto";
 import Fastify from "fastify";
 import fs from "fs";
 
@@ -52,6 +53,34 @@ const fastify = Fastify({
 // When CLUSTER_SECRET is configured, every incoming request (except /ping)
 // must include a matching `Authorization: Bearer <secret>` header.
 const clusterSecret = config.secret;
+
+// The "debug" cluster type is the local development mode (no EFS roots, fs
+// operations are no-ops). Every other type (aws/external/node) is a real
+// deployment where the cluster manages instances/wordlists/jobs on disk and
+// MUST NOT be exposed unauthenticated. Fail closed rather than silently
+// serving destructive endpoints (deleteMany, wipeEfs, createJob) to anyone
+// who can reach the port.
+const requiresSecret = config.type.name !== "debug";
+
+// Constant-time string comparison. Hashing both sides to a fixed-length digest
+// before timingSafeEqual avoids leaking the secret's length and prevents the
+// early-exit timing side-channel of a plain `!==` string comparison.
+function timingSafeStrEqual(a: string, b: string): boolean {
+  const ah = crypto.createHash("sha256").update(a).digest();
+  const bh = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ah, bh);
+}
+
+if (!clusterSecret && requiresSecret) {
+  console.error(
+    "[Cluster] FATAL: CLUSTER_SECRET is not set but cluster type is " +
+      `"${config.type.name}". Refusing to start with unauthenticated ` +
+      "destructive endpoints exposed. Set CLUSTER_SECRET on both the " +
+      "server and cluster."
+  );
+  process.exit(1);
+}
+
 if (clusterSecret) {
   console.log("[Cluster] Shared-secret authentication ENABLED");
   fastify.addHook("onRequest", async (request, reply) => {
@@ -59,13 +88,17 @@ if (clusterSecret) {
     if (request.url === "/ping") return;
 
     const authHeader = request.headers.authorization;
-    if (!authHeader || authHeader !== `Bearer ${clusterSecret}`) {
-      reply.code(401).send({ error: "Unauthorized" });
+    if (
+      !authHeader ||
+      !timingSafeStrEqual(authHeader, `Bearer ${clusterSecret}`)
+    ) {
+      return reply.code(401).send({ error: "Unauthorized" });
     }
   });
 } else {
+  // Only reachable for the local "debug" type.
   console.warn(
-    "[Cluster] \u26a0  WARNING: No CLUSTER_SECRET set \u2014 all endpoints are unauthenticated!"
+    "[Cluster] \u26a0  WARNING: No CLUSTER_SECRET set \u2014 all endpoints are unauthenticated (debug type only)!"
   );
   console.warn(
     "[Cluster]   Set CLUSTER_SECRET on both the server and cluster to enable authentication."

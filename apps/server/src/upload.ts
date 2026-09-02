@@ -1,11 +1,13 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
+import type { MultipartFile } from "@fastify/multipart";
 import type { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import crypto from "crypto";
 import { FastifyPluginCallback, FastifyReply, FastifyRequest } from "fastify";
 import fs from "fs";
+import os from "os";
 import path from "path";
-import { Readable } from "stream";
+import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 
 import { PermissionType, hasPermission } from "@repo/api";
@@ -17,21 +19,82 @@ import { createS3Client } from "./utils/s3";
 /** Shared secret for authenticating server→cluster requests. */
 const clusterSecret = process.env.CLUSTER_SECRET || undefined;
 
+// Hard cap for the direct multipart→disk upload path (POST /upload/wordlist and
+// /upload/rule). These handlers spool the incoming file to the server's local
+// temp dir; without a cap a single request could stream hundreds of GB and
+// exhaust the disk (DoS). Files larger than this must use the S3 presigned
+// upload flow (wordlistRouter.getUploadUrl), which never touches local disk.
+// Rules and small wordlists are comfortably under this bound.
+const MAX_DIRECT_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2 GiB
+
+/**
+ * Spool an uploaded multipart file to a private temp file while computing its
+ * SHA-256 inline (avoiding a second full read), enforcing MAX_DIRECT_UPLOAD_BYTES.
+ * On any error — including exceeding the size cap — the partial temp file is
+ * removed before the error propagates. On success the caller owns `tempPath`
+ * and MUST delete it (use try/finally).
+ */
+async function spoolMultipartToTemp(multipart: MultipartFile): Promise<{
+  tempPath: string;
+  size: number;
+  checksum: string;
+}> {
+  // Randomized name in the OS temp dir — avoids collisions between concurrent
+  // uploads of the same filename and keeps attacker-controlled names off disk.
+  const tempPath = path.join(os.tmpdir(), `upload-${crypto.randomUUID()}`);
+
+  const hash = crypto.createHash("sha256");
+  const hashing = new Transform({
+    transform(chunk, _enc, cb) {
+      hash.update(chunk);
+      cb(null, chunk);
+    },
+  });
+
+  try {
+    await pipeline(multipart.file, hashing, fs.createWriteStream(tempPath));
+
+    // @fastify/multipart flags the stream truncated when the per-request
+    // fileSize limit is reached (with throwFileSizeLimit disabled below).
+    if (multipart.file.truncated) {
+      throw new TRPCError({
+        code: "PAYLOAD_TOO_LARGE",
+        message:
+          "Upload exceeds the direct-upload size limit; use the S3 upload flow for larger files.",
+      });
+    }
+
+    const size = (await fs.promises.stat(tempPath)).size;
+    return { tempPath, size, checksum: hash.digest("hex") };
+  } catch (err) {
+    await fs.promises.unlink(tempPath).catch(() => {});
+    throw err;
+  }
+}
+
 type PrismaTransaction = Omit<
   PrismaClient,
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
 
 function checkPermission(permission: PermissionType) {
-  return (
-    request: FastifyRequest,
-    _reply: FastifyReply,
-    next: (err?: Error | undefined) => void
-  ) => {
-    if (!hasPermission(request.session.permissions, permission))
-      throw new TRPCError({ code: "UNAUTHORIZED" });
+  return async (request: FastifyRequest, _reply: FastifyReply) => {
+    // Resolve permissions from live DB state rather than the login-time session
+    // snapshot, so revocation/demotion/deletion is enforced on this request.
+    const uid = request.session.uid;
+    if (!uid) throw new TRPCError({ code: "UNAUTHORIZED" });
 
-    next();
+    const user = await request.server.prisma.user.findUnique({
+      select: { permissions: true },
+      where: { ID: uid },
+    });
+    if (!user) {
+      await request.session.destroy();
+      throw new TRPCError({ code: "UNAUTHORIZED" });
+    }
+
+    if (!hasPermission(user.permissions, permission))
+      throw new TRPCError({ code: "UNAUTHORIZED" });
   };
 }
 
@@ -116,58 +179,53 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
 
       if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST" });
 
-      const multipart = await request.file();
+      const multipart = await request.file({
+        limits: { fileSize: MAX_DIRECT_UPLOAD_BYTES },
+        throwFileSizeLimit: false,
+      });
       if (multipart === undefined) throw new TRPCError({ code: "BAD_REQUEST" });
 
       const fileName = path.basename(multipart.filename);
-      const tempPath = path.join("/tmp", `upload-${Date.now()}-${fileName}`);
+      const { tempPath, size, checksum } = await spoolMultipartToTemp(multipart);
 
-      // Stream file to disk
-      await pipeline(multipart.file, fs.createWriteStream(tempPath));
+      // Guarantee the temp file is removed on every exit path (success,
+      // duplicate, cluster failure, DB error) — otherwise partial/orphaned
+      // uploads accumulate in the temp dir and exhaust disk over time.
+      try {
+        // Check for duplicate
+        if (
+          await prisma.wordlist.findFirst({
+            select: { WID: true },
+            where: { checksum },
+          })
+        ) {
+          throw new TRPCError({ code: "BAD_REQUEST" });
+        }
 
-      // Compute checksum from file stream (optional: stream again, or use hashing stream during first write)
-      const hash = crypto.createHash("sha256");
-      const fileStream = fs.createReadStream(tempPath);
-      for await (const chunk of fileStream) {
-        hash.update(chunk);
-      }
-      const checksum = hash.digest("hex");
+        const readStream = fs.createReadStream(tempPath);
+        const wordlistID = await uploadRawToCluster(
+          `${url}/upload/wordlist/raw`,
+          readStream,
+          size
+        );
 
-      // Check for duplicate
-      if (
-        await prisma.wordlist.findFirst({
-          select: { WID: true },
-          where: { checksum },
-        })
-      ) {
-        fs.unlinkSync(tempPath);
-        throw new TRPCError({ code: "BAD_REQUEST" });
-      }
+        if (!wordlistID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-      const readStream = fs.createReadStream(tempPath);
-      const stat = fs.statSync(tempPath);
-      const wordlistID = await uploadRawToCluster(
-        `${url}/upload/wordlist/raw`,
-        readStream,
-        stat.size
-      );
+        return await prisma.$transaction(async (tx: PrismaTransaction) => {
+          await tx.wordlist.create({
+            data: {
+              WID: wordlistID,
+              name: fileName,
+              size: BigInt(size),
+              checksum,
+            },
+          });
 
-      fs.unlinkSync(tempPath); // Clean up
-
-      if (!wordlistID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-
-      return await prisma.$transaction(async (tx: PrismaTransaction) => {
-        await tx.wordlist.create({
-          data: {
-            WID: wordlistID,
-            name: fileName,
-            size: BigInt(stat.size),
-            checksum,
-          },
+          return wordlistID;
         });
-
-        return wordlistID;
-      });
+      } finally {
+        await fs.promises.unlink(tempPath).catch(() => {});
+      }
     }
   );
 
@@ -367,58 +425,51 @@ export const upload: FastifyPluginCallback<{ url: string }> = (
 
       if (!request.isMultipart()) throw new TRPCError({ code: "BAD_REQUEST" });
 
-      const multipart = await request.file();
+      const multipart = await request.file({
+        limits: { fileSize: MAX_DIRECT_UPLOAD_BYTES },
+        throwFileSizeLimit: false,
+      });
       if (multipart === undefined) throw new TRPCError({ code: "BAD_REQUEST" });
 
       const fileName = path.basename(multipart.filename);
-      const tempPath = path.join("/tmp", `upload-${Date.now()}-${fileName}`);
+      const { tempPath, size, checksum } = await spoolMultipartToTemp(multipart);
 
-      // Stream file to disk
-      await pipeline(multipart.file, fs.createWriteStream(tempPath));
+      // Guarantee temp cleanup on every exit path (see /wordlist handler).
+      try {
+        // Check for duplicate
+        if (
+          await prisma.rule.findFirst({
+            select: { RID: true },
+            where: { checksum },
+          })
+        ) {
+          throw new TRPCError({ code: "BAD_REQUEST" });
+        }
 
-      // Compute checksum
-      const hash = crypto.createHash("sha256");
-      const fileStream = fs.createReadStream(tempPath);
-      for await (const chunk of fileStream) {
-        hash.update(chunk);
-      }
-      const checksum = hash.digest("hex");
+        const readStream = fs.createReadStream(tempPath);
+        const ruleID = await uploadRawToCluster(
+          `${url}/upload/rules/raw`,
+          readStream,
+          size
+        );
 
-      // Check for duplicate
-      if (
-        await prisma.rule.findFirst({
-          select: { RID: true },
-          where: { checksum },
-        })
-      ) {
-        fs.unlinkSync(tempPath);
-        throw new TRPCError({ code: "BAD_REQUEST" });
-      }
+        if (!ruleID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-      const readStream = fs.createReadStream(tempPath);
-      const stat = fs.statSync(tempPath);
-      const ruleID = await uploadRawToCluster(
-        `${url}/upload/rules/raw`,
-        readStream,
-        stat.size
-      );
+        return await prisma.$transaction(async (tx: PrismaTransaction) => {
+          await tx.rule.create({
+            data: {
+              RID: ruleID,
+              name: fileName,
+              size: BigInt(size),
+              checksum,
+            },
+          });
 
-      fs.unlinkSync(tempPath);
-
-      if (!ruleID) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
-
-      return await prisma.$transaction(async (tx: PrismaTransaction) => {
-        await tx.rule.create({
-          data: {
-            RID: ruleID,
-            name: fileName,
-            size: BigInt(stat.size),
-            checksum,
-          },
+          return ruleID;
         });
-
-        return ruleID;
-      });
+      } finally {
+        await fs.promises.unlink(tempPath).catch(() => {});
+      }
     }
   );
 

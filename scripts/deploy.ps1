@@ -27,7 +27,7 @@ Set-Location $RepoRoot
 Write-Host "`nDetecting AWS environment..." -ForegroundColor Yellow
 $AccountId = (aws sts get-caller-identity --query Account --output text) 2>$null
 if (-not $AccountId) {
-    Write-Host "  ✗ Failed to detect AWS account. Make sure AWS CLI is configured." -ForegroundColor Red
+    Write-Host "  [X]Failed to detect AWS account. Make sure AWS CLI is configured." -ForegroundColor Red
     exit 1
 }
 
@@ -39,8 +39,8 @@ if (-not $Region) {
     }
 }
 
-Write-Host "  ✓ Account: $AccountId" -ForegroundColor Green
-Write-Host "  ✓ Region: $Region" -ForegroundColor Green
+Write-Host "  [OK]Account: $AccountId" -ForegroundColor Green
+Write-Host "  [OK]Region: $Region" -ForegroundColor Green
 
 # Build configuration
 $DatabaseProvider = "postgresql"
@@ -64,11 +64,11 @@ $repos = @("crackosaurus/server", "crackosaurus/cluster", "crackosaurus/prisma")
 foreach ($repo in $repos) {
     aws ecr describe-repositories --repository-names $repo --region $Region 2>$null | Out-Null
     if ($LASTEXITCODE -eq 0) {
-        Write-Host "  ✓ Repository $repo already exists" -ForegroundColor Green
+        Write-Host "  [OK]Repository $repo already exists" -ForegroundColor Green
     } else {
         Write-Host "  Creating repository $repo..." -ForegroundColor Gray
         aws ecr create-repository --repository-name $repo --region $Region 2>$null | Out-Null
-        Write-Host "  ✓ Repository $repo created" -ForegroundColor Green
+        Write-Host "  [OK]Repository $repo created" -ForegroundColor Green
     }
 }
 
@@ -129,6 +129,26 @@ Set-Location "$PSScriptRoot\..\apps\cdk"
 $env:ENVIRONMENT = $Environment
 $env:IMAGE_TAG = $ImageTag
 
+# --- HTTPS certificate wiring ---
+# If apps/cdk/config/certificates.json maps this environment to an ACM cert ARN,
+# export CERTIFICATE_ARN so the CDK adds an HTTPS (443) listener, redirects HTTP
+# to HTTPS, and sets cookieSecure=true. Environments without an entry stay HTTP.
+$certConfigPath = Join-Path $PSScriptRoot "..\apps\cdk\config\certificates.json"
+if (Test-Path $certConfigPath) {
+    try {
+        $certMap = Get-Content $certConfigPath -Raw | ConvertFrom-Json
+        $certArn = $certMap.$Environment
+        if ($certArn) {
+            $env:CERTIFICATE_ARN = $certArn
+            Write-Host "  [OK]HTTPS enabled for '$Environment' (cert: $certArn)" -ForegroundColor Green
+        } else {
+            Write-Host "  [i] No certificate mapped for '$Environment' - deploying HTTP-only." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Host "  [!] Failed to parse certificates.json; deploying HTTP-only." -ForegroundColor Yellow
+    }
+}
+
 # --- Pre-deploy CloudFormation safety check ---
 # If the stack is mid-update/rollback, cancel the update and wait for it to settle
 $stackName = "Crackosaurus-$Environment"
@@ -187,6 +207,7 @@ $albDns = aws cloudformation describe-stacks `
 if (-not $albDns) {
     Write-Host "Warning: Could not retrieve Load Balancer DNS name." -ForegroundColor Yellow
 } else {
+    $scheme = if ($env:CERTIFICATE_ARN) { "https" } else { "http" }
     Write-Host "`nYour application is available at:" -ForegroundColor Cyan
-    Write-Host "  http://$albDns" -ForegroundColor White
+    Write-Host "  ${scheme}://$albDns" -ForegroundColor White
 }

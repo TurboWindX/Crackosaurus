@@ -19,6 +19,7 @@ export interface ServerServiceProps {
   dbHost: string;
   dbSecretArn: string;
   backendSecretArn: string;
+  clusterSecretArn?: string;
   wordlistsBucket: s3.IBucket;
   imageTag?: string;
   desiredCount?: number;
@@ -100,6 +101,19 @@ export class ServerService extends Construct {
       DATABASE_PORT: ecs.Secret.fromSecretsManager(dbSecret, "port"),
       BACKEND_SECRET: ecs.Secret.fromSecretsManager(backendSecret),
     };
+
+    // Shared server↔cluster secret. The server attaches it as
+    // `Authorization: Bearer <CLUSTER_SECRET>` on every cluster request; the
+    // cluster rejects requests without it. Must match the value injected into
+    // the cluster container.
+    if (props.clusterSecretArn) {
+      const clusterSecret = cdk.aws_secretsmanager.Secret.fromSecretCompleteArn(
+        this,
+        "ClusterSecret",
+        props.clusterSecretArn
+      );
+      secrets["CLUSTER_SECRET"] = ecs.Secret.fromSecretsManager(clusterSecret);
+    }
 
     // If the caller provided an explicit clusterHost and it's not the placeholder
     // 0.0.0.0 (used by the cluster container), export it. Otherwise omit CLUSTER_HOST

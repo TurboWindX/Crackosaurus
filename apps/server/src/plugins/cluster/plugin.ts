@@ -15,6 +15,18 @@ type TransactionClient = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
 >;
 
+// Job statuses the DB treats as final. Once a job reaches one of these, the DB
+// is authoritative and a (possibly stale) cluster report must NOT move it back
+// to a live state. Notably, a user cancel sets STOPPED (jobRouter.cancel) while
+// the worker may keep reporting RUNNING for a poll cycle or two — without this
+// guard the sync would resurrect the cancelled job. COMPLETE/ERROR are final
+// for the same reason.
+const JOB_TERMINAL_STATUSES: readonly Status[] = [
+  STATUS.Stopped,
+  STATUS.Complete,
+  STATUS.Error,
+];
+
 // In-memory cache of job progress (ETA, speed, %). Keyed by JID.
 // Updated every sync cycle from the ClusterStatus response.
 const jobProgressCache = new Map<string, JobProgress>();
@@ -36,11 +48,22 @@ export type ClusterPluginConfig = {
 export const clusterPlugin = fp<ClusterPluginConfig>(
   async (server, options) => {
     let interval: NodeJS.Timeout | null = null;
+    // Re-entrancy guard: setInterval does not await the async callback, so a
+    // cycle that runs longer than pollingRateMs would otherwise overlap the
+    // next tick and let two advanceCascades run concurrently. Mirrors the
+    // orchestrator plugin's `if (orchestrating) return` guard.
+    let syncing = false;
     server.addHook("onReady", async () => {
       interval = setInterval(async () => {
-        await updateStatus(server.prisma, trpc);
-        // After sync, check if any cascade jobs just completed
-        await advanceCascades(server.prisma);
+        if (syncing) return;
+        syncing = true;
+        try {
+          await updateStatus(server.prisma, trpc);
+          // After sync, check if any cascade jobs just completed
+          await advanceCascades(server.prisma);
+        } finally {
+          syncing = false;
+        }
       }, options.pollingRateMs);
     });
 
@@ -225,7 +248,13 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
                     jobProgressCache.delete(jobDB.JID);
                   }
 
-                  if (jobDB.status !== jobStatus.status) {
+                  // Never overwrite a terminal DB status with a live cluster
+                  // report — e.g. a job the user just cancelled (STOPPED) that
+                  // the worker still reports as RUNNING until it sees the stop.
+                  if (
+                    jobDB.status !== jobStatus.status &&
+                    !JOB_TERMINAL_STATUSES.includes(jobDB.status as Status)
+                  ) {
                     console.log(
                       `[Sync] Updating job ${jobDB.JID} status: ${jobDB.status} → ${jobStatus.status}`
                     );
@@ -367,16 +396,18 @@ async function advanceCascades(prisma: PrismaClient) {
 
       const nextStepIndex = job.cascadeStepIndex + 1;
 
-      // Check if successor job already exists for this cascade at the next step
+      // Check if THIS job already spawned a successor. Keying on parentJobId
+      // rather than (cascadeId, cascadeStepIndex) is essential for correctness:
+      // a cascade step spawns one job per hash type (requestJobsForHashes groups
+      // by hashType), and each sibling must advance its own not-found hashes
+      // independently. The old (cascadeId, stepIndex) key made the first sibling
+      // to complete block all the others — their hashes were silently abandoned.
       const existingNext = await prisma.job.findFirst({
-        where: {
-          cascadeId: job.cascadeId,
-          cascadeStepIndex: nextStepIndex,
-        },
+        where: { parentJobId: job.JID },
         select: { JID: true },
       });
 
-      if (existingNext) continue; // Already advanced
+      if (existingNext) continue; // This job already advanced
 
       // Get remaining NOT_FOUND hashes from this job
       const notFoundHashes = job.hashes.filter(
@@ -431,6 +462,18 @@ async function advanceCascades(prisma: PrismaClient) {
         `[Cascade] Advancing cascade ${job.cascadeId}: step ${job.cascadeStepIndex} → ${nextStepIndex} with ${notFoundHashes.length} remaining hash(es), job ${JID}`
       );
 
+      // The check-then-create above (existingNext) is safe in steady state: the
+      // server runs single-replica (cdk server.json desiredCount=1, no server
+      // autoscaling) and the poll is wrapped in a re-entrancy guard (see
+      // clusterPlugin `syncing`), so advanceCascades never overlaps itself.
+      // Residual gap: during a rolling ECS deploy the old and new tasks run
+      // concurrently for a few seconds, and this findFirst→create is lock-free,
+      // so a cascade completing inside that window could be advanced twice. A
+      // DB-level unique on (cascadeId, cascadeStepIndex) is NOT the fix — a
+      // single cascade step legitimately spawns one job per hash type (jobRouter
+      // splits hashes by type), so multiple jobs share that pair. Closing the
+      // deploy-window race would need an advisory lock / SELECT … FOR UPDATE or
+      // a partial unique that also keys on hash type.
       await prisma.job.create({
         data: {
           JID,
@@ -448,6 +491,7 @@ async function advanceCascades(prisma: PrismaClient) {
           mask: nextStep.mask ?? null,
           cascadeId: job.cascadeId,
           cascadeStepIndex: nextStepIndex,
+          parentJobId: job.JID, // tracks which sibling spawned this successor
           submittedById: job.submittedById,
         },
       });

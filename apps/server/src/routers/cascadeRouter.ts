@@ -1,7 +1,15 @@
+import { PrismaClient } from "@prisma/client";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
+import { STATUS } from "@repo/api";
+
 import { permissionProcedure, t } from "../plugins/trpc";
+
+type TransactionClient = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
+>;
 
 const cascadeStepSchema = z.object({
   order: z.number().int().min(0),
@@ -193,12 +201,34 @@ export const cascadeRouter = t.router({
       const { cascadeID } = opts.input;
       const { prisma } = opts.ctx;
 
-      // Delete steps first (cascade delete), then the cascade
-      await prisma.cascadeStep.deleteMany({
-        where: { cascadeId: cascadeID },
+      // Refuse to delete a cascade that non-terminal jobs still depend on.
+      // Job.cascade is an optional relation, so deleting the cascade nulls
+      // those jobs' cascadeId (SetNull) — silently stranding in-flight
+      // cascades so advanceCascades can never advance them to the next step.
+      const activeJob = await prisma.job.findFirst({
+        where: {
+          cascadeId: cascadeID,
+          status: { in: [STATUS.Pending, STATUS.Running] },
+        },
+        select: { JID: true },
       });
-      await prisma.cascade.delete({
-        where: { CID: cascadeID },
+      if (activeJob) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message:
+            "Cannot delete a cascade with active (pending or running) jobs",
+        });
+      }
+
+      // Delete steps and the cascade atomically so a failure between the two
+      // writes can't leave a step-less orphan cascade behind.
+      await prisma.$transaction(async (tx: TransactionClient) => {
+        await tx.cascadeStep.deleteMany({
+          where: { cascadeId: cascadeID },
+        });
+        await tx.cascade.delete({
+          where: { CID: cascadeID },
+        });
       });
 
       return true;
@@ -246,20 +276,24 @@ export const cascadeRouter = t.router({
           }
         }
 
-        // Replace all steps
-        await prisma.cascadeStep.deleteMany({
-          where: { cascadeId: cascadeID },
-        });
-        await prisma.cascadeStep.createMany({
-          data: sorted.map((s) => ({
-            cascadeId: cascadeID,
-            order: s.order,
-            attackMode: s.attackMode ?? 0,
-            wordlistId: s.wordlistId ?? null,
-            ruleId: s.ruleId ?? null,
-            mask: s.mask ?? null,
-            instanceType: s.instanceType ?? null,
-          })),
+        // Replace all steps atomically: if the recreate failed after the
+        // delete, the cascade would be left with zero steps and become
+        // unusable (and any in-flight job advancing it would stall).
+        await prisma.$transaction(async (tx: TransactionClient) => {
+          await tx.cascadeStep.deleteMany({
+            where: { cascadeId: cascadeID },
+          });
+          await tx.cascadeStep.createMany({
+            data: sorted.map((s) => ({
+              cascadeId: cascadeID,
+              order: s.order,
+              attackMode: s.attackMode ?? 0,
+              wordlistId: s.wordlistId ?? null,
+              ruleId: s.ruleId ?? null,
+              mask: s.mask ?? null,
+              instanceType: s.instanceType ?? null,
+            })),
+          });
         });
       }
 

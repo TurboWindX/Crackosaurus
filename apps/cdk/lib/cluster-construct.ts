@@ -1,3 +1,4 @@
+import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as ecs from "aws-cdk-lib/aws-ecs";
@@ -21,6 +22,7 @@ export interface ClusterServiceProps {
   discoveryRegion?: string;
   clusterHost?: string;
   clusterPort?: string;
+  clusterSecretArn?: string;
   stepFunctionArn?: string;
   fileSystem: efs.IFileSystem;
   accessPointId?: string;
@@ -55,6 +57,21 @@ export class ClusterService extends Construct {
     };
     taskDef.addVolume(efsVolume);
 
+    // Inject the shared server↔cluster secret from Secrets Manager. The cluster
+    // enforces `Authorization: Bearer <CLUSTER_SECRET>` on every request when set,
+    // and refuses to start without it under CLUSTER_TYPE="aws".
+    const clusterSecrets: Record<string, ecs.Secret> = {};
+    if (props.clusterSecretArn) {
+      const clusterSecret = cdk.aws_secretsmanager.Secret.fromSecretCompleteArn(
+        this,
+        "ClusterSecret",
+        props.clusterSecretArn
+      );
+      clusterSecrets["CLUSTER_SECRET"] =
+        ecs.Secret.fromSecretsManager(clusterSecret);
+      clusterSecret.grantRead(props.executionRole);
+    }
+
     const container = taskDef.addContainer("ClusterContainer", {
       image: ecs.ContainerImage.fromEcrRepository(props.clusterRepo, imageTag),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: "cluster" }),
@@ -74,6 +91,7 @@ export class ClusterService extends Construct {
           : {}),
         // jobQueueUrl removed - no SQS wiring
       },
+      secrets: clusterSecrets,
     });
 
     container.addMountPoints({
