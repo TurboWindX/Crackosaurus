@@ -35,65 +35,59 @@ export const LoginPage = () => {
   }, [redirect, isAuthenticated]);
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-6">
-      <div className="w-full max-w-md space-y-6">
-        {/* Brand */}
+    <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-6">
+      {/* Full-bleed animated mascot as a faint backdrop behind the card. */}
+      <DinoChomp
+        bare
+        aria-hidden
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-20"
+      />
+
+      {/* Login card floating dead-center on top of the backdrop. */}
+      <div className="relative z-10 w-full max-w-sm space-y-4 rounded-xl border border-slate-800 bg-slate-900/70 p-6 shadow-2xl backdrop-blur">
         <div className="space-y-1 text-center">
-          <div className="text-3xl font-bold tracking-tight">
+          <h1 className="text-2xl font-bold tracking-tight">
             Crackosaurus <span aria-hidden="true">🦖</span>
-          </div>
-          <p className="text-sm text-slate-400">
-            Password recovery built for practitioners.
-          </p>
+          </h1>
+          <p className="text-sm text-slate-400">{t("page.login.header")}</p>
         </div>
 
-        {/* Animated mascot: a dino chomping hashes into plaintext. */}
-        <DinoChomp className="h-40 sm:h-44" />
+        <form
+          className="grid grid-cols-1 gap-3"
+          onSubmit={async (event) => {
+            event.preventDefault();
 
-        {/* Login card */}
-        <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg backdrop-blur">
-          <div className="space-y-1 text-center">
-            <h1 className="text-xl font-semibold tracking-tight">{t("app")}</h1>
-            <p className="text-sm text-slate-400">{t("page.login.header")}</p>
-          </div>
+            setRedirect(true);
 
-          <form
-            className="grid grid-cols-1 gap-3"
-            onSubmit={async (event) => {
-              event.preventDefault();
-
-              setRedirect(true);
-
-              await login({ username, password });
-            }}
-          >
-            <label htmlFor="login-username" className="sr-only">
-              {t("item.username.singular")}
-            </label>
-            <Input
-              id="login-username"
-              name="username"
-              type="text"
-              autoComplete="username"
-              placeholder={t("item.username.singular")}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-            />
-            <label htmlFor="login-password" className="sr-only">
-              {t("item.password.singular")}
-            </label>
-            <Input
-              id="login-password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              placeholder={t("item.password.singular")}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-            <Button className="w-full">{t("page.login.button")}</Button>
-          </form>
-        </div>
+            await login({ username, password });
+          }}
+        >
+          <label htmlFor="login-username" className="sr-only">
+            {t("item.username.singular")}
+          </label>
+          <Input
+            id="login-username"
+            name="username"
+            type="text"
+            autoComplete="username"
+            placeholder={t("item.username.singular")}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
+          <label htmlFor="login-password" className="sr-only">
+            {t("item.password.singular")}
+          </label>
+          <Input
+            id="login-password"
+            name="password"
+            type="password"
+            autoComplete="current-password"
+            placeholder={t("item.password.singular")}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <Button className="w-full">{t("page.login.button")}</Button>
+        </form>
       </div>
     </div>
   );

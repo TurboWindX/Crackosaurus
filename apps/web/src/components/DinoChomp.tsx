@@ -45,12 +45,34 @@ const HashRow = ({ speed, className }: { speed: number; className?: string }) =>
   </div>
 );
 
-export const DinoChomp = ({ className }: { className?: string }) => {
+export const DinoChomp = ({
+  className,
+  bare = false,
+  "aria-hidden": ariaHidden = false,
+}: {
+  className?: string;
+  // Drop the card chrome (border/rounded/background) — for full-bleed
+  // backdrop use where the component fills a larger container.
+  bare?: boolean;
+  // Hide from assistive tech entirely when used as pure decoration.
+  "aria-hidden"?: boolean;
+}) => {
+  const chrome = bare
+    ? ""
+    : "rounded-xl border border-slate-700/50 bg-slate-900/40";
+
+  const a11y = ariaHidden
+    ? { "aria-hidden": true as const }
+    : {
+        role: "img",
+        "aria-label":
+          "A cartoon T-rex chomping a stream of password hashes and cracking them into plaintext.",
+      };
+
   return (
     <div
-      className={`relative isolate overflow-hidden rounded-xl border border-slate-700/50 bg-slate-900/40 ${className ?? ""}`}
-      role="img"
-      aria-label="A cartoon T-rex chomping a stream of password hashes and cracking them into plaintext."
+      className={`relative isolate overflow-hidden ${chrome} ${className ?? ""}`}
+      {...a11y}
     >
       {/* Incoming stream of hashes, flowing right-to-left into the jaws. Masked
           so glyphs fade out exactly where the mouth is (left) and where they
