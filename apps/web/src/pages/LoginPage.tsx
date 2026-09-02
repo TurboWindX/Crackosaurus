@@ -35,11 +35,11 @@ export const LoginPage = () => {
   }, [redirect, isAuthenticated]);
 
   return (
-    <div className="grid min-h-dvh lg:grid-cols-2">
-      {/* Brand / hero side — hidden on small screens, where the form takes over. */}
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-10 lg:flex">
-        <div className="space-y-1">
-          <div className="text-2xl font-bold tracking-tight">
+    <div className="flex min-h-dvh items-center justify-center bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/40 p-6">
+      <div className="w-full max-w-md space-y-6">
+        {/* Brand */}
+        <div className="space-y-1 text-center">
+          <div className="text-3xl font-bold tracking-tight">
             Crackosaurus <span aria-hidden="true">🦖</span>
           </div>
           <p className="text-sm text-slate-400">
@@ -47,27 +47,18 @@ export const LoginPage = () => {
           </p>
         </div>
 
-        <DinoChomp className="h-56 shrink-0" />
+        {/* Animated mascot: a dino chomping hashes into plaintext. */}
+        <DinoChomp className="h-40 sm:h-44" />
 
-        <p className="text-xs text-slate-400">
-          Organize targets, add hashes, upload big wordlists, and crack.
-        </p>
-      </div>
-
-      {/* Form side */}
-      <div className="flex items-center justify-center p-6">
-        <div className="w-full max-w-sm space-y-6">
-          <div className="space-y-2 text-center">
-            {/* Compact wordmark for small screens where the hero is hidden. */}
-            <div className="text-2xl font-bold tracking-tight lg:hidden">
-              Crackosaurus <span aria-hidden="true">🦖</span>
-            </div>
+        {/* Login card */}
+        <div className="space-y-4 rounded-xl border border-slate-800 bg-slate-900/60 p-6 shadow-lg backdrop-blur">
+          <div className="space-y-1 text-center">
             <h1 className="text-xl font-semibold tracking-tight">{t("app")}</h1>
             <p className="text-sm text-slate-400">{t("page.login.header")}</p>
           </div>
 
           <form
-            className="grid grid-cols-1 gap-3 rounded-xl border border-slate-800 bg-slate-900/40 p-6 shadow-sm"
+            className="grid grid-cols-1 gap-3"
             onSubmit={async (event) => {
               event.preventDefault();
 
