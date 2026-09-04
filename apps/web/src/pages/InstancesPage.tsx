@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { Status } from "@repo/api";
+import { Button } from "@repo/shadcn/components/ui/button";
 import { Input } from "@repo/shadcn/components/ui/input";
 import { tRPCInput, useTRPC } from "@repo/ui/api";
 import { useAuth } from "@repo/ui/auth";
@@ -20,6 +21,8 @@ export const InstancesPage = () => {
   const trpc = useTRPC();
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
+
+  const [showTerminated, setShowTerminated] = useState(false);
 
   const [newInstance, setNewInstance] = useState<
     tRPCInput["instance"]["create"]
@@ -36,8 +39,10 @@ export const InstancesPage = () => {
     isLoading,
     error,
     isLoadingError,
-  } = trpc.instance.getMany.useQuery(undefined, {
-    retry(count, error) {
+  } = trpc.instance.getMany.useQuery(
+    { includeTerminated: showTerminated },
+    {
+      retry(count, error) {
       if (
         error instanceof TRPCClientError &&
         error.data?.code === "UNAUTHORIZED"
@@ -76,7 +81,18 @@ export const InstancesPage = () => {
   );
 
   return (
-    <div className="p-4">
+    <div className="grid gap-4 p-4">
+      <div className="flex justify-end">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setShowTerminated((v) => !v)}
+        >
+          {showTerminated
+            ? t("action.hideTerminated", { defaultValue: "Hide terminated" })
+            : t("action.showTerminated", { defaultValue: "Show terminated" })}
+        </Button>
+      </div>
       <DataTable
         singular={t("item.instance.singular")}
         plural={t("item.instance.plural")}

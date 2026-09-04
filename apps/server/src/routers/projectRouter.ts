@@ -62,6 +62,7 @@ export const projectRouter = t.router({
                   .object({
                     IID: z.string(),
                     name: z.string().nullable(),
+                    status: z.string(),
                   })
                   .nullable()
                   .optional(), // Nullable until instance is created
@@ -137,6 +138,7 @@ export const projectRouter = t.router({
                           select: {
                             IID: true,
                             name: true,
+                            status: true,
                           },
                         },
                       },

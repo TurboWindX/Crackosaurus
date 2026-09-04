@@ -3,6 +3,7 @@ import { z } from "zod";
 
 import { STATUS } from "@repo/api";
 import { toHashcatHash } from "@repo/hashcat/data";
+import { NTLM_HASH_TYPE } from "@repo/hashcat/shuck";
 
 import { permissionProcedure, t } from "../plugins/trpc";
 
@@ -74,9 +75,13 @@ export const hashRouter = t.router({
           };
         }
 
-        // Also check KnownHash table (auto-learned from previous cracks)
+        // Also check KnownHash table (auto-learned from previous cracks, or
+        // saved at submit time). Only rows with a real plaintext count as a
+        // resolved crack — an NT hash saved-at-submit but never cracked carries
+        // plaintext "" and must NOT pre-mark the submitted hash as FOUND.
         const knownHashes = await tx.knownHash.findMany({
           where: {
+            plaintext: { not: "" },
             OR: data.map((hash) => ({
               hash: toHashcatHash(hash.hashType, hash.hash),
               hashType: hash.hashType,
@@ -113,6 +118,38 @@ export const hashRouter = t.router({
             };
           }),
         });
+
+        // Persist every submitted NTLM (NT) hash into the global KnownHash
+        // corpus so it becomes an NT-wordlist shuck candidate immediately — even
+        // before it is cracked. plaintext stays "" until a crack backfills it
+        // (see the auto-learn upsert in cluster/plugin.ts). KnownHash has no
+        // project relation and is never deleted, so this material survives
+        // project deletion by construction — a permanent, cross-project corpus.
+        const upsertedNt = new Set<string>();
+        for (const hash of data) {
+          if (hash.hashType !== NTLM_HASH_TYPE) continue;
+          const hashValue = hashValueMap[hash.hash]!;
+          if (upsertedNt.has(hashValue)) continue;
+          upsertedNt.add(hashValue);
+          try {
+            await tx.knownHash.upsert({
+              where: {
+                hash_hashType: { hash: hashValue, hashType: NTLM_HASH_TYPE },
+              },
+              update: {}, // already known — keep any existing plaintext
+              create: {
+                hash: hashValue,
+                hashType: NTLM_HASH_TYPE,
+                // If this NT hash was already cracked elsewhere (DUPLICATE) or
+                // known, carry that plaintext in; otherwise "".
+                plaintext: resolvedMap[hashValue]?.value ?? "",
+              },
+            });
+          } catch {
+            // Ignore unique-constraint race — a concurrent submit may have
+            // inserted the same NT hash.
+          }
+        }
 
         const outHashMap = Object.fromEntries(
           outHashes.map((hash: { hash: string; HID: string }) => [

@@ -129,9 +129,14 @@ async function orchestrateJob(
   );
 
   if (unresolvedHashes.length > 0) {
-    // Batch lookup: find all known plaintext values for this job's unresolved hashes
+    // Batch lookup: find all known plaintext values for this job's unresolved
+    // hashes. Only rows with a real plaintext count as a resolved crack — an NT
+    // hash saved into KnownHash at submit time carries plaintext "" until a
+    // crack backfills it, and must NOT pre-mark the job FOUND (that would flip
+    // the hash green and skip the GPU pass with a blank value).
     const knownMatches = await prisma.knownHash.findMany({
       where: {
+        plaintext: { not: "" },
         OR: unresolvedHashes.map((h: { hash: string; hashType: number }) => ({
           hash: h.hash,
           hashType: h.hashType,

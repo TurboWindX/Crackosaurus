@@ -41,4 +41,14 @@ export class ExternalCluster extends FileSystemCluster<ExternalClusterConfig> {
   public async cleanupStaleInstances(): Promise<number> {
     return 0;
   }
+
+  // Liveness of an externally-managed machine is not ours to determine — we
+  // never provisioned an EC2 box for it, so we have no authoritative signal.
+  // Returning null tells the server reaper "unknown", so it never stops a
+  // registered external instance. (This mirrors the base default; kept explicit
+  // alongside the deleteInstance/cleanupStaleInstances no-ops for the same
+  // never-touch-external reason.)
+  public async getLiveInstanceIDs(): Promise<string[] | null> {
+    return null;
+  }
 }

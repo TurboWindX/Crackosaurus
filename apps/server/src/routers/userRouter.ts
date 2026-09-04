@@ -359,10 +359,13 @@ export const userRouter = t.router({
         )
           throw new TRPCError({ code: "UNAUTHORIZED" });
 
-        // The old-password check is only bypassed when a `users:edit` holder
-        // resets ANOTHER account. Self-service password changes must always
-        // prove knowledge of the current password.
-        if (!hasPermission("users:edit") || isSelf) {
+        // A `users:edit` holder (admin) can SET a password without knowing the
+        // current one — for any account, including their own. Only an
+        // unprivileged user changing their own password must prove knowledge of
+        // the current password (self-service change on a non-admin session).
+        // The privileged-account guard above still blocks a lower-tier admin
+        // from resetting a root/`*` account.
+        if (!hasPermission("users:edit")) {
           if (!(await checkPassword(oldPassword, user.password)))
             throw new TRPCError({ code: "BAD_REQUEST" });
         }

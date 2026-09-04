@@ -677,10 +677,23 @@ const JobDataTable = ({ projectID, values, isLoading }: JobDataTableProps) => {
             <StatusBadge status={status as Status} />
           );
 
+        // Prefer the requested instance type (clean, e.g. "g4dn.xlarge") over
+        // the auto-provisioned instance's noisy "Auto-created for job …" name.
+        // Dim the cell once the backing instance is terminal so finished/failed
+        // launches read as history, not live infrastructure.
+        const instanceLabel =
+          instanceType || (instance ? instance.name || instance.IID : "Pending");
+        const instanceCell =
+          instance && isTerminal(instance.status) ? (
+            <span className="text-muted-foreground">{instanceLabel}</span>
+          ) : (
+            instanceLabel
+          );
+
         return [
           JID,
           getHashName(type),
-          instance ? instance.name || instance.IID : instanceType || "Pending",
+          instanceCell,
           statusCell,
           <RelativeTime time={updatedAt} />,
           !isTerminal(status) ? (
