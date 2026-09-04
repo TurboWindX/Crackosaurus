@@ -143,6 +143,26 @@ export const instanceRouter = t.router({
     const { cluster } = opts.ctx;
     return await cluster.cleanupStaleInstances();
   }),
+  reconcileLaunches: publicProcedure
+    .output(
+      z.object({
+        parked: z.string().array(),
+        errored: z.string().array(),
+      })
+    )
+    .mutation(async (opts) => {
+      const { cluster } = opts.ctx;
+      return await cluster.reconcileLaunches();
+    }),
+  // Authoritative liveness for the server reaper: instanceIDs with a live EC2
+  // box, or null if the cluster can't tell (non-cloud, or a transient API
+  // error). null → the server does not reap.
+  liveInstanceIDs: publicProcedure
+    .output(z.string().array().nullable())
+    .query(async (opts) => {
+      const { cluster } = opts.ctx;
+      return await cluster.getLiveInstanceIDs();
+    }),
 });
 
 export type InstanceRouter = typeof instanceRouter;

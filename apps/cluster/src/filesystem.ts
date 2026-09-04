@@ -100,6 +100,13 @@ export abstract class FileSystemCluster<
             // Only reset RUNNING → PENDING; leave everything else untouched
             if (instanceMetadata.status !== STATUS.Running) return;
 
+            // Don't orphan an in-flight launch: a RUNNING instance with a live
+            // Step Functions execution ARN is mid-provision. The execution runs
+            // in AWS independently of this process, so after a restart the
+            // reconciler must be able to poll it — resetting to PENDING here
+            // would drop the ARN and risk a duplicate launch / stuck box.
+            if (instanceMetadata.executionArn) return;
+
             instanceMetadata.status = STATUS.Pending;
             await writeInstanceMetadata(
               this.config.instanceRoot,
@@ -161,6 +168,19 @@ export abstract class FileSystemCluster<
 
           // Never touch RUNNING instances — they might be booting / installing drivers.
           if (metadata.status === STATUS.Running) continue;
+
+          // Never reap an instance that is mid launch-retry. A capacity-parked
+          // launch sits in PENDING between backoff attempts (launchAttempts>0);
+          // the reconciler will relaunch it. Reaping it here — especially a
+          // UI-created instance with no jobs yet, which would otherwise hit the
+          // fast path below — would silently abandon the retry. This releases
+          // automatically: once the reconciler exhausts its attempts it flips
+          // the instance to ERROR, which is reapable again.
+          if (
+            metadata.status === STATUS.Pending &&
+            (metadata.launchAttempts ?? 0) > 0
+          )
+            continue;
 
           const jobs = await getInstanceFolderJobs(
             this.config.instanceRoot,
@@ -249,6 +269,20 @@ export abstract class FileSystemCluster<
 
   public async deleteInstance(instanceID: string): Promise<boolean> {
     console.log(`[filesystem] Deleting instance ${instanceID}`);
+
+    // Idempotent: if the folder is already gone, the instance is deleted as far
+    // as the cluster is concerned — report success. The previous code fell into
+    // the try below, where writeInstanceMetadata on a missing folder throws and
+    // the catch returned false. That false blocked the caller (server deleteMany
+    // / reaper) from ever removing the orphaned DB row, leaving un-purgeable
+    // zombies. Treat "no folder" as "nothing to delete, already done".
+    const folderPath = path.join(this.config.instanceRoot, instanceID);
+    if (!fs.existsSync(folderPath)) {
+      console.log(
+        `[filesystem] Instance ${instanceID} folder already gone; delete is a no-op`
+      );
+      return true;
+    }
 
     try {
       // First mark as stopped

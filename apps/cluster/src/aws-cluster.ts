@@ -5,6 +5,7 @@ import { type AWSClusterConfig } from "@repo/app-config/cluster";
 import { INSTANCE_TYPE_VALUES } from "@repo/app-config/instance-types";
 import { DEFAULT_INSTANCE_TYPE } from "@repo/app-config/instance-types";
 import {
+  getClusterFolderInstances,
   getInstanceMetadata,
   writeInstanceMetadata,
 } from "@repo/filesystem/cluster";
@@ -28,6 +29,76 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
     timestamp: number;
   } | null = null;
   private static readonly AVAILABILITY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+  // ── Capacity-aware launch retry (park-and-retry) ──
+  // AWS returns these error codes when a GPU instance type is temporarily
+  // unavailable or the API is throttling. Failures matching this allowlist are
+  // treated as TRANSIENT and PARKED for a later retry; everything else is
+  // treated as a terminal launch failure (fail-closed). ca-central-1 has few
+  // AZs, so the retry stays in-region and leans on the Step Functions cross-AZ
+  // fallback + in-state retries.
+  private static readonly LAUNCH_CAPACITY_CODES = [
+    "InsufficientInstanceCapacity",
+    "Ec2.InsufficientInstanceCapacity",
+    "Ec2.Client.InsufficientInstanceCapacity",
+    "RequestLimitExceeded",
+    "Ec2.Client.RequestLimitExceeded",
+    "Throttling",
+    "ThrottlingException",
+    "Unavailable",
+    "Ec2.Client.Unavailable",
+  ];
+  // Human-readable capacity/throttle phrasings AWS buries in the failure
+  // `cause` when the error CODE is a generic wrapper. Step Functions' generic
+  // aws-sdk integration (`aws-sdk:ec2:runInstances`) surfaces an
+  // InsufficientInstanceCapacity failure as the code `Ec2.Ec2Exception`, with
+  // the real reason ("We currently do not have sufficient <type> capacity ...")
+  // only in the message — so the exact-code list above never matches it. These
+  // patterns catch that phrasing (case-insensitive) so a genuine transient
+  // shortage is PARKED, not terminally errored. Kept deliberately narrow: a
+  // real misconfig cause ("The image id ... does not exist", "is not authorized
+  // to perform") does NOT match, so it still fails closed to ERROR.
+  private static readonly LAUNCH_CAPACITY_PATTERNS: readonly RegExp[] = [
+    /(insufficient|do not have sufficient|not have enough)[\s\S]{0,80}capacity/i,
+    /request limit exceeded/i,
+    /\bthrottl/i,
+  ];
+  private static readonly MAX_LAUNCH_ATTEMPTS = 5;
+  private static readonly BACKOFF_BASE_MS = 30_000; // 30s
+  private static readonly BACKOFF_CAP_MS = 300_000; // 5m
+  private static readonly STUCK_EXECUTION_MS = 15 * 60_000; // 15m
+
+  /**
+   * Backoff for the Nth completed attempt: 30s, 60s, 120s, 240s, capped at 5m.
+   */
+  private launchBackoffMs(attempts: number): number {
+    return Math.min(
+      AwsCluster.BACKOFF_BASE_MS * Math.pow(2, Math.max(0, attempts - 1)),
+      AwsCluster.BACKOFF_CAP_MS
+    );
+  }
+
+  /**
+   * Decide whether a launch failure is a transient capacity/throttle blip we
+   * should PARK and retry, or a terminal ERROR. Fails closed: an unrecognised
+   * failure is terminal so we never silently retry a genuinely broken launch
+   * (bad AMI, missing IAM, invalid type) forever. Matches by substring so a
+   * generic `States.TaskFailed` whose `cause` embeds the real EC2 code is
+   * still classified correctly.
+   */
+  private classifyLaunchError(
+    error?: string,
+    cause?: string
+  ): "park" | "error" {
+    const haystack = `${error ?? ""} ${cause ?? ""}`;
+    for (const code of AwsCluster.LAUNCH_CAPACITY_CODES) {
+      if (haystack.includes(code)) return "park";
+    }
+    for (const re of AwsCluster.LAUNCH_CAPACITY_PATTERNS) {
+      if (re.test(haystack)) return "park";
+    }
+    return "error";
+  }
 
   public getName(): string {
     return "aws";
@@ -181,8 +252,7 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
           instanceID
         );
         metadata.status = STATUS.Error;
-        (metadata as Record<string, unknown>)["error"] =
-          `Unsupported instance type: ${instanceType}`;
+        metadata.launchError = `Unsupported instance type: ${instanceType}`;
         await writeInstanceMetadata(
           this.config.instanceRoot,
           instanceID,
@@ -365,45 +435,117 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
     );
     console.log(`[AWS Cluster] Instance metadata:`, JSON.stringify(metadata));
 
-    metadata.status = STATUS.Running;
-    await writeInstanceMetadata(this.config.instanceRoot, instanceID, metadata);
+    // A reconcile-driven relaunch can race a concurrent delete: the folder may
+    // have been removed (getInstanceMetadata → UNKNOWN) or marked Stopped
+    // between the caller's read and now. Never (re)launch — nor recreate the
+    // folder for — an instance that no longer exists or is stopping, or we
+    // leak a billable EC2 with no metadata to track/terminate it.
+    if (
+      metadata.status === STATUS.Unknown ||
+      metadata.status === STATUS.Stopped
+    ) {
+      console.warn(
+        `[AWS Cluster] run() aborted for ${instanceID}: instance is ${metadata.status} (deleted or stopping)`
+      );
+      return;
+    }
+
+    // Count this launch attempt. run() is the SINGLE place attempts increment,
+    // so the per-attempt execution name below stays unique across retries.
+    const attempt = (metadata.launchAttempts ?? 0) + 1;
+
+    if (!this.config.stepFunctionArn) {
+      // Hard misconfiguration — terminal, never retryable.
+      metadata.status = STATUS.Error;
+      metadata.launchAttempts = attempt;
+      metadata.launchError = "Step Function ARN not configured for AwsCluster";
+      await writeInstanceMetadata(
+        this.config.instanceRoot,
+        instanceID,
+        metadata
+      );
+      throw new Error("Step Function ARN not configured for AwsCluster");
+    }
 
     const stepFunctionInput = {
       instanceID,
       instanceType: metadata.type ?? DEFAULT_TYPE,
     };
     console.log(
-      `[AWS Cluster] Starting Step Functions execution with input:`,
+      `[AWS Cluster] Starting Step Functions execution (attempt ${attempt}) with input:`,
       JSON.stringify(stepFunctionInput)
     );
 
+    // Start the execution FIRST, then persist the RUNNING flip TOGETHER with
+    // the executionArn in a single write. The previous ordering (flip RUNNING,
+    // then persist the ARN in a second write) left a window where a swallowed
+    // ARN-write failure stranded the instance RUNNING-with-no-ARN — which the
+    // reconciler then relaunched, double-billing. Persisting them together
+    // means a successful start is always pollable by reconcileLaunches().
+    let executionArn: string | undefined;
     try {
-      if (!this.config.stepFunctionArn) {
-        throw new Error("Step Function ARN not configured for AwsCluster");
-      }
-
       const result = await this.stepFunctions
         .startExecution({
           stateMachineArn: this.config.stepFunctionArn,
           input: JSON.stringify(stepFunctionInput),
+          // Unique per attempt so a parked launch can be relaunched without
+          // colliding with the prior execution name (dedup window is 90 days).
+          name: `${instanceID}-${attempt}`,
         })
         .promise();
-      console.log(`[AWS Cluster] Step Functions started:`, result.executionArn);
+      executionArn = result.executionArn;
+      console.log(`[AWS Cluster] Step Functions started:`, executionArn);
     } catch (e) {
       console.error(`[AWS Cluster] Step Functions error:`, e);
 
-      // Mark instance metadata as Error and save the error message for debugging
+      const errName =
+        e && typeof e === "object" && "code" in e
+          ? String((e as { code?: unknown }).code)
+          : "";
+      const errMsg =
+        e && typeof e === "object" && "message" in e
+          ? String((e as { message?: unknown }).message)
+          : String(e);
+
+      // startExecution itself failed (throttling, a transient API blip, or a
+      // hard misconfig). Park transient failures for a bounded retry; only
+      // hard-fail terminal ones. Parking must NOT throw — a transient throttle
+      // is not a user-facing failure, and the reconciler will relaunch it.
       try {
         const failedMetadata = await getInstanceMetadata(
           this.config.instanceRoot,
           instanceID
         );
+        // Deleted / stopped mid-launch — don't resurrect the folder.
+        if (
+          failedMetadata.status === STATUS.Unknown ||
+          failedMetadata.status === STATUS.Stopped
+        ) {
+          return;
+        }
+        failedMetadata.launchAttempts = attempt;
+        failedMetadata.executionArn = undefined;
+        const verdict = this.classifyLaunchError(errName, errMsg);
+        if (verdict === "park" && attempt < AwsCluster.MAX_LAUNCH_ATTEMPTS) {
+          failedMetadata.status = STATUS.Pending;
+          failedMetadata.launchStartedAt = undefined;
+          failedMetadata.nextAttemptAt =
+            Date.now() + this.launchBackoffMs(attempt);
+          failedMetadata.launchError = errName || errMsg;
+          await writeInstanceMetadata(
+            this.config.instanceRoot,
+            instanceID,
+            failedMetadata
+          );
+          console.log(
+            `[AWS Cluster] Parked launch for ${instanceID} after transient error (attempt ${attempt}): ${errName || errMsg}`
+          );
+          return; // parked — do not rethrow
+        }
+
         failedMetadata.status = STATUS.Error;
-        const errMsg =
-          e && typeof e === "object" && "message" in e
-            ? String((e as { message?: unknown }).message)
-            : String(e);
-        (failedMetadata as Record<string, unknown>)["error"] = errMsg;
+        failedMetadata.launchStartedAt = undefined;
+        failedMetadata.launchError = errMsg;
         await writeInstanceMetadata(
           this.config.instanceRoot,
           instanceID,
@@ -413,9 +555,303 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
         console.error(`[AWS Cluster] Failed to write error metadata:`, w);
       }
 
-      // Re-throw so upstream callers (and the server) receive a clear failure
+      // Re-throw only for terminal failures so upstream callers see them.
       throw e;
     }
+
+    // Execution accepted — an EC2 launch is now in flight. Persist RUNNING +
+    // the ARN. Re-read first so we don't clobber a concurrent status change,
+    // and bail (aborting the orphaned execution) if the instance was deleted
+    // or stopped while startExecution was in flight — recreating its folder
+    // here would leak an untracked billable box.
+    try {
+      const saved = await getInstanceMetadata(
+        this.config.instanceRoot,
+        instanceID
+      );
+      if (
+        saved.status === STATUS.Unknown ||
+        saved.status === STATUS.Stopped
+      ) {
+        console.warn(
+          `[AWS Cluster] Instance ${instanceID} was ${saved.status} during launch; aborting execution ${executionArn}`
+        );
+        try {
+          await this.stepFunctions
+            .stopExecution({ executionArn })
+            .promise();
+        } catch (se) {
+          console.error(
+            `[AWS Cluster] Failed to abort orphaned execution for ${instanceID}:`,
+            se
+          );
+        }
+        return;
+      }
+      saved.status = STATUS.Running;
+      saved.launchAttempts = attempt;
+      saved.launchStartedAt = Date.now();
+      saved.executionArn = executionArn;
+      saved.nextAttemptAt = undefined;
+      saved.launchError = undefined;
+      await writeInstanceMetadata(this.config.instanceRoot, instanceID, saved);
+    } catch (w) {
+      // The execution is running but we couldn't record its ARN. Do NOT
+      // relaunch on the next cycle — reconcile Case B terminally errors a
+      // RUNNING-with-no-ARN instance rather than risk a second box.
+      console.error(
+        `[AWS Cluster] Failed to persist launch state for ${instanceID}:`,
+        w
+      );
+    }
+  }
+
+  /**
+   * Poll in-flight instance launches and reconcile stuck/failed ones.
+   *
+   * The EC2 box is provisioned by an async Step Functions execution whose ARN
+   * run() stores in instance metadata. This pass, driven periodically by the
+   * server, closes the feedback loop run() cannot:
+   *   • SUCCEEDED  → clear launch bookkeeping, keep RUNNING (worker will boot).
+   *   • FAILED/TIMED_OUT/ABORTED → classify: PARK (→ PENDING + backoff, retry
+   *     in-region) for transient capacity/throttle, else terminal ERROR.
+   *   • parked + backoff elapsed → relaunch via run() (bounded by MAX attempts).
+   *
+   * Poll errors (throttle / not-found / AccessDenied) leave metadata UNCHANGED
+   * — we never fail-closed on a transient inability to read execution state.
+   * Per-instance failures are isolated so one bad instance can't abort the pass.
+   */
+  public async reconcileLaunches(): Promise<{
+    parked: string[];
+    errored: string[];
+  }> {
+    const parked: string[] = [];
+    const errored: string[] = [];
+
+    let instanceIDs: string[];
+    try {
+      instanceIDs = await getClusterFolderInstances(this.config.instanceRoot);
+    } catch {
+      return { parked, errored };
+    }
+
+    const now = Date.now();
+
+    for (const instanceID of instanceIDs) {
+      try {
+        const metadata = await getInstanceMetadata(
+          this.config.instanceRoot,
+          instanceID
+        );
+
+        // ── Case A: a launch execution is in flight — poll it ──
+        if (metadata.status === STATUS.Running && metadata.executionArn) {
+          let desc: AWS.StepFunctions.DescribeExecutionOutput;
+          try {
+            desc = await this.stepFunctions
+              .describeExecution({ executionArn: metadata.executionArn })
+              .promise();
+          } catch (e) {
+            // Poll error — leave metadata UNCHANGED and retry next cycle.
+            console.warn(
+              `[AWS Cluster] describeExecution failed for ${instanceID}:`,
+              e
+            );
+            continue;
+          }
+
+          if (desc.status === "RUNNING" || desc.status === "PENDING_REDRIVE") {
+            // Still provisioning. Only intervene if wedged well past any sane
+            // boot time so a hung execution can't pin the instance forever.
+            if (
+              metadata.launchStartedAt &&
+              now - metadata.launchStartedAt > AwsCluster.STUCK_EXECUTION_MS
+            ) {
+              metadata.status = STATUS.Error;
+              metadata.executionArn = undefined;
+              metadata.launchError = "Launch execution stuck > 15m";
+              await writeInstanceMetadata(
+                this.config.instanceRoot,
+                instanceID,
+                metadata
+              );
+              errored.push(instanceID);
+            }
+            continue;
+          }
+
+          if (desc.status === "SUCCEEDED") {
+            // EC2 launched. Keep RUNNING; clear ALL launch bookkeeping so the
+            // instance reads as a normal healthy box. Critically this clears
+            // launchAttempts + nextAttemptAt too: otherwise a later
+            // RUNNING→PENDING startup reset (executionArn is now gone, so the
+            // reset guard no longer exempts it) leaves it PENDING-with-attempts
+            // and nextAttemptAt=undefined — which the cleanup guard skips and
+            // Case C never relaunches, a permanent un-reapable zombie.
+            metadata.executionArn = undefined;
+            metadata.launchStartedAt = undefined;
+            metadata.launchError = undefined;
+            metadata.launchAttempts = undefined;
+            metadata.nextAttemptAt = undefined;
+            await writeInstanceMetadata(
+              this.config.instanceRoot,
+              instanceID,
+              metadata
+            );
+            continue;
+          }
+
+          // FAILED | TIMED_OUT | ABORTED
+          const verdict = this.classifyLaunchError(desc.error, desc.cause);
+          const attempts = metadata.launchAttempts ?? 0;
+          if (verdict === "park" && attempts < AwsCluster.MAX_LAUNCH_ATTEMPTS) {
+            metadata.status = STATUS.Pending;
+            metadata.executionArn = undefined;
+            metadata.launchStartedAt = undefined;
+            metadata.nextAttemptAt = now + this.launchBackoffMs(attempts);
+            metadata.launchError = desc.error ?? "capacity";
+            await writeInstanceMetadata(
+              this.config.instanceRoot,
+              instanceID,
+              metadata
+            );
+            parked.push(instanceID);
+          } else {
+            metadata.status = STATUS.Error;
+            metadata.executionArn = undefined;
+            metadata.launchError =
+              desc.error ?? desc.cause ?? "launch failed";
+            await writeInstanceMetadata(
+              this.config.instanceRoot,
+              instanceID,
+              metadata
+            );
+            errored.push(instanceID);
+          }
+          continue;
+        }
+
+        // ── Case B: RUNNING with no execution ARN and wedged too long ──
+        // AMBIGUOUS state: startExecution may have succeeded (a real EC2 could
+        // be booting) but the RUNNING+ARN write was lost, so we cannot know
+        // whether a box exists. Relaunching would risk a SECOND billable box
+        // for one instanceID, so fail TERMINAL instead — an operator can delete
+        // and recreate. Old pre-Task-B launches have no launchStartedAt, so
+        // this never fires for them (their prior lifecycle is left untouched).
+        if (metadata.status === STATUS.Running && !metadata.executionArn) {
+          if (
+            metadata.launchStartedAt &&
+            now - metadata.launchStartedAt > AwsCluster.STUCK_EXECUTION_MS
+          ) {
+            metadata.status = STATUS.Error;
+            metadata.launchStartedAt = undefined;
+            metadata.launchError =
+              "Launch execution ARN missing (possible lost write); failed terminal to avoid double-launch";
+            await writeInstanceMetadata(
+              this.config.instanceRoot,
+              instanceID,
+              metadata
+            );
+            errored.push(instanceID);
+          }
+          continue;
+        }
+
+        // ── Case C: parked (PENDING with prior attempts) — relaunch on backoff ──
+        if (
+          metadata.status === STATUS.Pending &&
+          (metadata.launchAttempts ?? 0) > 0 &&
+          !metadata.executionArn
+        ) {
+          const attempts = metadata.launchAttempts ?? 0;
+          if (attempts >= AwsCluster.MAX_LAUNCH_ATTEMPTS) {
+            metadata.status = STATUS.Error;
+            metadata.launchError =
+              metadata.launchError ?? "Exhausted launch retries";
+            await writeInstanceMetadata(
+              this.config.instanceRoot,
+              instanceID,
+              metadata
+            );
+            errored.push(instanceID);
+            continue;
+          }
+          if (metadata.nextAttemptAt && now >= metadata.nextAttemptAt) {
+            // run() flips to RUNNING, bumps attempts, and starts a fresh
+            // execution. It parks itself again if this attempt also fails.
+            console.log(
+              `[AWS Cluster] Relaunching parked instance ${instanceID} (attempt ${attempts + 1})`
+            );
+            await this.run(instanceID);
+          }
+          continue;
+        }
+      } catch (e) {
+        // Isolate per-instance failures — one bad instance must not abort the
+        // whole reconcile pass.
+        console.error(
+          `[AWS Cluster] reconcileLaunches error for ${instanceID}:`,
+          e
+        );
+      }
+    }
+
+    return { parked, errored };
+  }
+
+  /**
+   * Return the set of instanceIDs (the folder/DB tag) that currently have a
+   * LIVE EC2 box — one in the pending or running state, tagged
+   * ManagedBy=Crackosaurus. This is the authoritative liveness signal the
+   * server's stale-instance reaper uses to stop DB instances whose box is gone.
+   *
+   * Returns null if liveness cannot be determined (ANY EC2 API error), so the
+   * caller treats it as "unknown" and never reaps on a transient failure — a
+   * partial list from a mid-pagination error must not read as "these are the
+   * only live boxes". The instanceID is read from the explicit `InstanceID` tag
+   * when present, falling back to the trailing UUID of the `Name` tag
+   * (`<prefix>-instance-stack-<uuid>`) for any box launched before that tag
+   * existed.
+   */
+  public async getLiveInstanceIDs(): Promise<string[] | null> {
+    const UUID_RE =
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const ids = new Set<string>();
+    try {
+      let nextToken: string | undefined;
+      do {
+        const resp = await this.ec2
+          .describeInstances({
+            Filters: [
+              { Name: "tag:ManagedBy", Values: ["Crackosaurus"] },
+              { Name: "instance-state-name", Values: ["pending", "running"] },
+            ],
+            NextToken: nextToken,
+          })
+          .promise();
+
+        for (const reservation of resp.Reservations ?? []) {
+          for (const inst of reservation.Instances ?? []) {
+            const tags = inst.Tags ?? [];
+            const idTag = tags.find((tg) => tg.Key === "InstanceID")?.Value;
+            if (idTag) {
+              ids.add(idTag);
+              continue;
+            }
+            const nameTag = tags.find((tg) => tg.Key === "Name")?.Value;
+            const match = nameTag?.match(UUID_RE);
+            if (match) ids.add(match[0]);
+          }
+        }
+
+        nextToken = resp.NextToken;
+      } while (nextToken);
+    } catch (e) {
+      console.error("[AWS Cluster] getLiveInstanceIDs failed:", e);
+      return null;
+    }
+
+    return Array.from(ids);
   }
 
   public async deleteInstance(instanceID: string): Promise<boolean> {

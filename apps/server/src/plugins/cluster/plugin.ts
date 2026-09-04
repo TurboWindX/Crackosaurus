@@ -27,6 +27,38 @@ const JOB_TERMINAL_STATUSES: readonly Status[] = [
   STATUS.Error,
 ];
 
+// Instance statuses the DB treats as final. Once an instance reaches one of
+// these it must NOT be moved back to a live state by a (possibly stale) cluster
+// report — the same DB-authoritative rule the jobs already follow via
+// JOB_TERMINAL_STATUSES. Without this, a just-reaped STOPPED instance can be
+// resurrected to RUNNING when a second cluster replica (rolling ECS deploy, or
+// a 2-replica prod config) serves the next info.status.query off an NFS
+// directory cache still listing the now-deleted folder frozen at RUNNING.
+const INSTANCE_TERMINAL_STATUSES: readonly Status[] = [
+  STATUS.Stopped,
+  STATUS.Complete,
+  STATUS.Error,
+];
+
+// Instance states the reaper considers "should be backed by a live box". An
+// instance sitting in one of these with NO live EC2 box (per the cluster's
+// authoritative liveInstanceIDs) is dead — a pre-reconciler zombie, or a box
+// that crashed / was terminated out of band — and gets stopped.
+const REAPABLE_STATUSES: readonly Status[] = [
+  STATUS.Running,
+  STATUS.Pending,
+  STATUS.Unknown,
+];
+
+// Only reap instances not touched within this window. A freshly created
+// instance can sit Pending/Running for a few minutes before its EC2 box appears
+// in describeInstances (Step Functions start → runInstances latency), and a
+// capacity-parked launch legitimately has no box between backoff attempts —
+// but those attempts resolve well within this window (or flip to a terminal
+// ERROR the reaper ignores). Keying on updatedAt keeps both cases safe from a
+// premature reap.
+const INSTANCE_REAP_GRACE_MS = 30 * 60 * 1000; // 30 min
+
 // In-memory cache of job progress (ETA, speed, %). Keyed by JID.
 // Updated every sync cycle from the ClusterStatus response.
 const jobProgressCache = new Map<string, JobProgress>();
@@ -58,7 +90,34 @@ export const clusterPlugin = fp<ClusterPluginConfig>(
         if (syncing) return;
         syncing = true;
         try {
+          // Reconcile in-flight EC2 launches BEFORE syncing status: an instance
+          // the reconciler just parked (→ Pending) or terminally failed
+          // (→ Error) is then picked up by the same updateStatus pass, so the
+          // DB and UI reflect it immediately (Error propagates to its jobs).
+          // Best-effort — a reconcile failure (non-AWS cluster, transient RPC
+          // error) must not block the status sync.
+          try {
+            const r = await trpc.instance.reconcileLaunches.mutate();
+            if (r.parked.length > 0 || r.errored.length > 0) {
+              console.log(
+                `[Sync] reconcileLaunches: parked ${r.parked.length}, errored ${r.errored.length}`
+              );
+            }
+          } catch (e) {
+            console.error("[Sync] reconcileLaunches failed:", e);
+          }
+
           await updateStatus(server.prisma, trpc);
+          // Stop DB instances whose EC2 box is gone (authoritative EC2 check).
+          // Runs AFTER updateStatus so it acts on the freshest DB state; it
+          // clears each dead instance's EFS folder before marking it Stopped so
+          // the NEXT updateStatus can't resurrect it from a frozen folder.
+          // Best-effort — a reaper failure must not block cascade advancement.
+          try {
+            await reapDeadInstances(server.prisma, trpc);
+          } catch (e) {
+            console.error("[Reaper] reapDeadInstances failed:", e);
+          }
           // After sync, check if any cascade jobs just completed
           await advanceCascades(server.prisma);
         } finally {
@@ -163,10 +222,20 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
               }
             }
 
-            if (instanceDB.status !== instanceStatus.status) {
-              await tx.instance.update({
+            if (
+              instanceDB.status !== instanceStatus.status &&
+              !INSTANCE_TERMINAL_STATUSES.includes(instanceDB.status as Status)
+            ) {
+              // updateMany + a DB-authoritative terminal guard (mirrors the job
+              // write below). The instanceDB snapshot was taken before this
+              // pass; a concurrent replica may have written a terminal status
+              // (e.g. the reaper just marked it STOPPED) since. Filtering on the
+              // persisted status makes that terminal status win (0 rows matched)
+              // instead of being resurrected to a live state.
+              const updated = await tx.instance.updateMany({
                 where: {
                   IID: instanceDB.IID,
+                  status: { notIn: [...INSTANCE_TERMINAL_STATUSES] },
                 },
                 data: {
                   status: instanceStatus.status,
@@ -176,10 +245,13 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
 
               // If an instance transitions to Stopped or Error, mark any of
               // its still-running/pending jobs as Error so they don't hang
-              // in the UI forever.
+              // in the UI forever. Only cascade when we actually flipped the
+              // instance (count > 0) — a guarded no-op must not force-Error
+              // jobs off a stale snapshot.
               if (
-                instanceStatus.status === STATUS.Stopped ||
-                instanceStatus.status === STATUS.Error
+                updated.count > 0 &&
+                (instanceStatus.status === STATUS.Stopped ||
+                  instanceStatus.status === STATUS.Error)
               ) {
                 const staleStatuses: Status[] = [STATUS.Running, STATUS.Pending];
                 const staleJobs = instanceDB.jobs.filter(
@@ -258,9 +330,19 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
                     console.log(
                       `[Sync] Updating job ${jobDB.JID} status: ${jobDB.status} → ${jobStatus.status}`
                     );
-                    await tx.job.update({
+                    // updateMany + a DB-authoritative terminal guard, NOT a
+                    // plain update({where:{JID}}). The jobDB snapshot was taken
+                    // (line ~126) BEFORE the instance force-Error block above,
+                    // which may have written ERROR to THIS row earlier in the
+                    // same transaction. The stale snapshot still reads a live
+                    // status, so a plain update would clobber that ERROR back to
+                    // a live status and strand the job forever. Filtering on the
+                    // persisted status makes the just-written terminal status
+                    // win (0 rows matched) instead of being resurrected.
+                    await tx.job.updateMany({
                       where: {
                         JID: jobDB.JID,
+                        status: { notIn: [...JOB_TERMINAL_STATUSES] },
                       },
                       data: {
                         status: jobStatus.status,
@@ -328,7 +410,12 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
                               where: {
                                 hash_hashType: { hash, hashType },
                               },
-                              update: {}, // already known — no-op
+                              // Backfill plaintext: a submit-time row may already
+                              // exist with plaintext "" (saved before any crack).
+                              // A real crack must fill it, else the shuck /
+                              // known-lookup phases never learn the plaintext.
+                              // Idempotent — `plain` is the correct plaintext.
+                              update: { plaintext: plain },
                               create: {
                                 hash,
                                 hashType,
@@ -352,6 +439,119 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
     });
   } catch {
     // ignore error
+  }
+}
+
+/**
+ * Stop DB instances that have no live EC2 box behind them.
+ *
+ * The cluster is authoritative for liveness: liveInstanceIDs returns the set of
+ * instanceIDs currently backed by a running/pending EC2 box, or null if it
+ * cannot tell (non-cloud cluster, or a transient EC2 API error). On null we do
+ * NOTHING — never a false mass-stop on an unknown answer.
+ *
+ * For each non-terminal DB instance (older than the grace window) whose tag is
+ * absent from the live set, we mark the instance STOPPED and force-Error its
+ * still-live jobs — the same treatment updateStatus gives an instance that
+ * stops on its own. STOPPED is recoverable: the row survives, visible via the
+ * "show terminated" toggle.
+ *
+ * We deliberately do NOT terminate EC2 or delete the EFS folder here:
+ *   • Termination — the reaper only ever touches instances with NO live box, so
+ *     there is nothing legitimate to terminate. Keeping the terminate path would
+ *     only add blast radius: a describeInstances that succeeds-but-empty (tag /
+ *     region drift) would classify healthy boxes as dead and kill them. Dropping
+ *     it makes the worst-case misconfig outcome a recoverable status change, not
+ *     an irreversible fleet wipe. Explicit user deletes still terminate.
+ *   • Resurrection — a folder frozen at RUNNING no longer needs clearing to stay
+ *     dead: updateStatus now refuses to move an instance out of a terminal
+ *     status (INSTANCE_TERMINAL_STATUSES guard), so the STOPPED write sticks.
+ *
+ * This clears the pre-reconciler zombies (instances stuck non-terminal for
+ * months with no box) from the default listing and prevents recurrence for any
+ * future box that vanishes.
+ */
+async function reapDeadInstances(prisma: PrismaClient, cluster: ClusterTRPC) {
+  // 1) Ask the cluster which instanceIDs have a live EC2 box. null = unknown.
+  let live: string[] | null;
+  try {
+    live = await cluster.instance.liveInstanceIDs.query();
+  } catch (e) {
+    console.error("[Reaper] liveInstanceIDs query failed:", e);
+    return;
+  }
+  if (live === null) return;
+  const liveSet = new Set(live);
+
+  // 2) Candidate DB instances: non-terminal and untouched past the grace window.
+  const cutoff = new Date(Date.now() - INSTANCE_REAP_GRACE_MS);
+  const candidates = await prisma.instance.findMany({
+    select: {
+      IID: true,
+      tag: true,
+      jobs: { select: { JID: true, status: true } },
+    },
+    where: {
+      status: { in: [...REAPABLE_STATUSES] },
+      updatedAt: { lt: cutoff },
+    },
+  });
+
+  const dead = candidates.filter(
+    (inst: { tag: string }) => !liveSet.has(inst.tag)
+  );
+  if (dead.length === 0) return;
+
+  // Defense-in-depth signal for Finding 2: a live set that is empty while the DB
+  // still holds candidate instances is the shape a misconfig (tag / region /
+  // account drift making describeInstances succeed-but-empty) produces. It is
+  // ALSO the legitimate steady state once every box is genuinely gone (the
+  // pre-reconciler zombie cleanup), so we still proceed — but marking STOPPED is
+  // recoverable, and this warning surfaces the drift for an operator to catch.
+  if (liveSet.size === 0) {
+    console.warn(
+      `[Reaper] live EC2 set is EMPTY while ${dead.length} candidate instance(s) exist — ` +
+        `expected when all boxes are genuinely gone, but also the signature of a ` +
+        `tag/region/credential misconfig. Proceeding (STOPPED is recoverable).`
+    );
+  }
+
+  console.log(
+    `[Reaper] ${dead.length} non-terminal instance(s) have no live EC2 box — stopping: ${dead
+      .map((d: { tag: string }) => d.tag)
+      .join(", ")}`
+  );
+
+  // 3) Mark the dead instances STOPPED and force-Error their live jobs, in one
+  //    transaction so a partial failure rolls back and is retried next cycle.
+  try {
+    await prisma.$transaction(async (tx: TransactionClient) => {
+      for (const inst of dead) {
+        await tx.instance.update({
+          where: { IID: inst.IID },
+          data: { status: STATUS.Stopped, updatedAt: new Date() },
+        });
+
+        const staleStatuses: Status[] = [STATUS.Running, STATUS.Pending];
+        const staleJIDs = inst.jobs
+          .filter((j: { status: string }) =>
+            staleStatuses.includes(j.status as Status)
+          )
+          .map((j: { JID: string }) => j.JID);
+        if (staleJIDs.length > 0) {
+          await tx.job.updateMany({
+            where: { JID: { in: staleJIDs }, status: { in: staleStatuses } },
+            data: {
+              status: STATUS.Error,
+              rejectionNote: "Instance had no live EC2 box (reaped as dead)",
+              updatedAt: new Date(),
+            },
+          });
+        }
+      }
+    });
+  } catch (e) {
+    console.error("[Reaper] Failed to mark dead instances stopped:", e);
   }
 }
 

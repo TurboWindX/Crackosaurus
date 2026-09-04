@@ -40,6 +40,20 @@ export const INSTANCE_METADATA = z.object({
   ]),
   type: z.string(),
   ec2InstanceId: z.string().optional(), // AWS EC2 instance ID for termination
+  // ── Launch bookkeeping for capacity-aware retry (park-and-retry) ──
+  // The EC2 box is provisioned ASYNCHRONOUSLY by a Step Functions execution;
+  // run() used to discard the executionArn, so a launch that failed on
+  // InsufficientInstanceCapacity left the instance stuck in RUNNING forever.
+  // These optional fields let reconcileLaunches() poll the execution, detect
+  // capacity failures, and re-launch with backoff (in-region) instead. They
+  // are optional so existing metadata parses unchanged. NOTE: this is a plain
+  // z.object (no .passthrough()), so getInstanceMetadata()'s .parse() strips
+  // any key not declared here — every persisted field MUST live in this schema.
+  executionArn: z.string().optional(), // current in-flight launch execution
+  launchStartedAt: z.number().optional(), // epoch ms the current attempt began
+  launchAttempts: z.number().optional(), // launch executions started so far
+  nextAttemptAt: z.number().optional(), // epoch ms; earliest time to retry a parked launch
+  launchError: z.string().optional(), // last launch failure code/message
 });
 export type InstanceMetadata = z.infer<typeof INSTANCE_METADATA>;
 
@@ -200,7 +214,7 @@ export async function getClusterFolderStatus(
     };
 
   const instanceIDs = await getClusterFolderInstances(instanceRoot);
-  const instances: Record<string, unknown> = {};
+  const instances: ClusterStatus["instances"] = {};
   let skippedCount = 0;
 
   // Process instances sequentially to avoid memory spike from Promise.all
@@ -221,7 +235,7 @@ export async function getClusterFolderStatus(
         continue;
       }
 
-      const jobs: Record<string, unknown> = {};
+      const jobs: ClusterStatus["instances"][string]["jobs"] = {};
 
       // Only load job metadata, not the full pot file (unless completed)
       for (const jobID of jobIDs) {
@@ -232,50 +246,57 @@ export async function getClusterFolderStatus(
             jobID
           );
 
-          // Load cracked hashes for completed jobs so result sync can process them
+          // Load resolved hashes for result sync. The shuck / NTLMv1 pre-phase
+          // result files are written BEFORE the GPU pass, so they must sync on
+          // ANY status — otherwise a partial shuck followed by a GPU error
+          // would drop the already-recovered matches (they were previously read
+          // only when the whole job reached Complete). The pot file is the GPU
+          // output, so it is still only read once the job is Complete.
           let hashes: Record<string, string> = {};
           let shuckedHashes: string[] = [];
+
+          // Check for NTLMv1 results file first (written by the NTLMv1 pipeline)
+          const ntlmv1Path = path.join(
+            instanceRoot,
+            instanceID,
+            JOBS_FOLDER,
+            jobID,
+            NTLMV1_RESULTS_FILE
+          );
+          if (fs.existsSync(ntlmv1Path)) {
+            try {
+              const raw = fs.readFileSync(ntlmv1Path, "utf-8");
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed.results === "object") {
+                hashes = parsed.results;
+              }
+            } catch {
+              // Fall through to pot file
+            }
+          }
+          // Check for shuck results (NT-candidate mode shucking)
+          const shuckPath = path.join(
+            instanceRoot,
+            instanceID,
+            JOBS_FOLDER,
+            jobID,
+            SHUCK_RESULTS_FILE
+          );
+          if (fs.existsSync(shuckPath)) {
+            try {
+              const raw = fs.readFileSync(shuckPath, "utf-8");
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed.results === "object") {
+                hashes = { ...hashes, ...parsed.results };
+                shuckedHashes = Object.keys(parsed.results);
+              }
+            } catch {
+              // Fall through to pot file
+            }
+          }
+          // The pot file is the GPU crack output — only meaningful once the job
+          // has finished, so keep it gated on Complete.
           if (jobMetadata.status === STATUS.Complete) {
-            // Check for NTLMv1 results file first (written by the NTLMv1 pipeline)
-            const ntlmv1Path = path.join(
-              instanceRoot,
-              instanceID,
-              JOBS_FOLDER,
-              jobID,
-              NTLMV1_RESULTS_FILE
-            );
-            if (fs.existsSync(ntlmv1Path)) {
-              try {
-                const raw = fs.readFileSync(ntlmv1Path, "utf-8");
-                const parsed = JSON.parse(raw);
-                if (parsed && typeof parsed.results === "object") {
-                  hashes = parsed.results;
-                }
-              } catch {
-                // Fall through to pot file
-              }
-            }
-            // Check for shuck results (NT-candidate mode shucking)
-            const shuckPath = path.join(
-              instanceRoot,
-              instanceID,
-              JOBS_FOLDER,
-              jobID,
-              SHUCK_RESULTS_FILE
-            );
-            if (fs.existsSync(shuckPath)) {
-              try {
-                const raw = fs.readFileSync(shuckPath, "utf-8");
-                const parsed = JSON.parse(raw);
-                if (parsed && typeof parsed.results === "object") {
-                  hashes = { ...hashes, ...parsed.results };
-                  shuckedHashes = Object.keys(parsed.results);
-                }
-              } catch {
-                // Fall through to pot file
-              }
-            }
-            // Always merge pot file results (may have additional results)
             const potPath = getJobOutputPath(instanceRoot, instanceID, jobID);
             if (fs.existsSync(potPath)) {
               try {
@@ -409,7 +430,11 @@ export async function getInstanceMetadata(
   const metadataFile = path.join(instanceRoot, instanceID, METADATA_FILE);
 
   try {
-    if (!fs.existsSync(metadataFile)) return UNKNOWN_INSTANCE_METADATA;
+    // Return a FRESH COPY of the sentinel, never the shared singleton: callers
+    // (e.g. AwsCluster.run) mutate the returned object in place, so handing out
+    // the module-level UNKNOWN_INSTANCE_METADATA by reference would corrupt it
+    // process-wide and silently break every future missing-folder read.
+    if (!fs.existsSync(metadataFile)) return { ...UNKNOWN_INSTANCE_METADATA };
 
     return INSTANCE_METADATA.parse(
       JSON.parse(await safeReadFileAsync(metadataFile))
@@ -417,7 +442,8 @@ export async function getInstanceMetadata(
   } catch (err: unknown) {
     // Race condition: file existed at the existsSync check but was deleted
     // before safeReadFileAsync could read it (concurrent cleanup, etc.).
-    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return UNKNOWN_INSTANCE_METADATA;
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT")
+      return { ...UNKNOWN_INSTANCE_METADATA };
     throw err;
   }
 }

@@ -22,10 +22,29 @@ export const useErrors = () => {
           queryClient.invalidateQueries(authQueryKey);
         }
 
+        // For a BAD_REQUEST carrying a custom server message (e.g. "Password
+        // must be at least 15 characters"), show that message verbatim instead
+        // of the generic "Invalid input" code translation — otherwise the real
+        // reason is hidden. Skip it for zod input rejections (data.zodError set)
+        // and for bare throws where the message is just the code name, both of
+        // which stay on the generic translation.
+        const code = error.data?.code ?? "NOT_FOUND";
+        const hasZodError = Boolean(
+          (error.data as { zodError?: unknown } | undefined)?.zodError
+        );
+        const serverMessage = error.message;
+        const showServerMessage =
+          code === "BAD_REQUEST" &&
+          !hasZodError &&
+          Boolean(serverMessage) &&
+          serverMessage !== code;
+
         toast({
           variant: "destructive",
           title: t("item.error.singular"),
-          description: t(`error.${error.data?.code ?? "NOT_FOUND"}`),
+          description: showServerMessage
+            ? serverMessage
+            : t(`error.${code}`),
         });
       }
     },

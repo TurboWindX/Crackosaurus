@@ -347,6 +347,57 @@ export class CrackosaurusStack extends cdk.Stack {
     });
 
     // ===========================================
+    // Additive GPU subnet in a 3rd AZ (ca-central-1d)
+    // ===========================================
+    // GPU (g5/g6) capacity in ca-central-1 is patchy — 1a and 1b can both be
+    // out while 1d has stock. We want the launch state machine to fail over to
+    // 1d, but bumping the VPC's maxAzs to 3 would re-partition the auto-
+    // allocated CIDR range and REPLACE the existing RDS/EFS-bearing private
+    // subnets (destructive on a data stack). Instead we add ONE standalone
+    // private subnet in 1d with an explicit CIDR OUTSIDE the auto-allocated
+    // range (the L2 VPC uses 10.0.0.0/24–10.0.3.0/24 for maxAzs:2), egressing
+    // through the VPC's single existing NAT gateway. Purely additive: existing
+    // subnets keep their CIDRs, so nothing is replaced.
+    const gpuSubnetAz3 = new ec2.PrivateSubnet(this, "GpuSubnetAz3", {
+      vpcId: vpc.vpcId,
+      availabilityZone: "ca-central-1d",
+      cidrBlock: "10.0.10.0/24",
+      mapPublicIpOnLaunch: false,
+    });
+
+    // Route the subnet's egress (0.0.0.0/0) through the VPC's existing NAT
+    // gateway. natGateways:1 places the single NAT in the first public subnet;
+    // reach its CfnNatGateway via that subnet's construct node (no new NAT, no
+    // extra EIP cost). GPU boxes need outbound for driver/CUDA/package installs
+    // and S3 access.
+    const natPublicSubnet = vpc.publicSubnets[0];
+    if (!natPublicSubnet) {
+      throw new Error(
+        "VPC has no public subnet to source the NAT gateway for the ca-central-1d GPU subnet"
+      );
+    }
+    const natGateway = natPublicSubnet.node.tryFindChild("NATGateway") as
+      | ec2.CfnNatGateway
+      | undefined;
+    if (!natGateway) {
+      throw new Error(
+        "Could not locate the VPC NAT gateway to route the ca-central-1d GPU subnet"
+      );
+    }
+    gpuSubnetAz3.addDefaultNatRoute(natGateway.ref);
+
+    // EFS mounts are per-AZ: an instance can only mount via a mount target in
+    // its OWN AZ. The L2 FileSystem created mount targets only in the two auto-
+    // allocated private subnets (1a, 1b), so add one in 1d — reusing the EFS
+    // security group (already allows NFS 2049 from the GPU SG) — otherwise GPU
+    // boxes launched in 1d cannot mount /crackodata.
+    new efs.CfnMountTarget(this, "EfsMountTargetAz3", {
+      fileSystemId: fileSystem.fileSystemId,
+      subnetId: gpuSubnetAz3.subnetId,
+      securityGroups: [efsSecurityGroup.securityGroupId],
+    });
+
+    // ===========================================
     // Instance Stack (Step Functions for GPU instances)
     // Instance stack (GPU/StepFunctions) is created by default. The EC2-backed
     // cluster (spot AutoScalingGroup) can be disabled independently via
@@ -359,7 +410,9 @@ export class CrackosaurusStack extends cdk.Stack {
     const instanceStack = new InstanceStack(this, {
       prefix: environmentName,
       vpc,
-      subnets: vpc.privateSubnets, // Pass all private subnets for multi-AZ support
+      // 1a + 1b (auto-allocated) + 1d (standalone additive subnet above) so the
+      // launch state machine can fail over across all three AZs on capacity.
+      subnets: [...vpc.privateSubnets, gpuSubnetAz3],
       fileSystem,
       fileSystemPath: "/crackodata",
       accessPointId: accessPoint.accessPointId,
@@ -607,6 +660,13 @@ export class CrackosaurusStack extends cdk.Stack {
     if (instanceStack) {
       // Allow Step Functions execution for cluster (to start GPU instances)
       instanceStack.stepFunction.grantStartExecution(clusterRole);
+
+      // Allow the cluster to READ execution state (states:DescribeExecution).
+      // reconcileLaunches() polls each launch execution to detect capacity
+      // failures and park-and-retry. Without this grant that poll returns
+      // AccessDenied and the reconciler soft-fails into a no-op — so this grant
+      // MUST ship for the capacity handling to function.
+      instanceStack.stepFunction.grantRead(clusterRole);
 
       // SQS removed: no queue grants
     }

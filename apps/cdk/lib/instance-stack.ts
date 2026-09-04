@@ -1,5 +1,5 @@
 // This is for the GPU ec2 instances that get created to process jobs
-import { DockerImage } from "aws-cdk-lib";
+import { DockerImage, Duration } from "aws-cdk-lib";
 import {
   ISubnet,
   IVpc,
@@ -204,6 +204,13 @@ export class InstanceStack extends Construct {
                   Value: "Crackosaurus",
                 },
                 {
+                  // Explicit instanceID → EC2 mapping so the server reaper can
+                  // match a live box to its DB/EFS instance exactly, without
+                  // parsing it out of the Name tag.
+                  Key: "InstanceID",
+                  Value: JsonPath.stringAt("$.instanceID"),
+                },
+                {
                   Key: "Type",
                   Value: "GPU", // Required for terminate permission condition
                 },
@@ -219,23 +226,78 @@ export class InstanceStack extends Construct {
       });
     };
 
+    // Capacity/throttle errors are transient — a type briefly unavailable in an
+    // AZ often frees up within seconds. Retry IN-AZ a couple times with backoff
+    // BEFORE escalating to the cross-AZ fallback below, so short capacity blips
+    // are absorbed silently inside the state machine (the common case) without
+    // bouncing through the app-side park-and-retry loop. This RETRY is scoped to
+    // capacity / rate-limit codes only, so a genuine misconfig (bad AMI, IAM)
+    // gets NO in-AZ retries — it drops straight to the cross-AZ catch below.
+    // (The catch is broader; see its comment for the misconfig behaviour.)
+    // Step Functions surfaces EC2 CallAwsService errors as `Ec2.<Code>`. The
+    // modern EC2 API returns the BARE code (Ec2.RequestLimitExceeded), while
+    // some paths still emit the legacy `.Client.`-prefixed form — so list BOTH
+    // spellings for each code. Omitting the bare RequestLimitExceeded (as an
+    // earlier version did) left the throttle retry dead, since ErrorEquals is
+    // an EXACT match, not a substring match.
+    // NOTE on Ec2.Ec2Exception: the generic aws-sdk integration surfaces an
+    // insufficient-capacity failure under this generic wrapper code (the
+    // specific InsufficientInstanceCapacity is only in the message), so it is
+    // listed here to get the in-AZ capacity retry. Trade-off: this code ALSO
+    // covers genuine misconfigs (bad AMI, IAM), so those now get the 2 in-AZ
+    // retries too (~40s wasted) before failing over — accepted so real capacity
+    // blips are absorbed in-AZ. ErrorEquals is an EXACT match (not substring),
+    // which is why each code is listed verbatim in both spellings.
+    const CAPACITY_RETRY_ERRORS = [
+      "Ec2.InsufficientInstanceCapacity",
+      "Ec2.Client.InsufficientInstanceCapacity",
+      "Ec2.RequestLimitExceeded",
+      "Ec2.Client.RequestLimitExceeded",
+      "Ec2.Ec2Exception",
+    ];
+    const addCapacityRetry = (task: CallAwsService) =>
+      task.addRetry({
+        errors: CAPACITY_RETRY_ERRORS,
+        interval: Duration.seconds(20),
+        maxAttempts: 2,
+        backoffRate: 2,
+      });
+
     // Create primary runInstance task (first AZ)
     const runInstance = createRunInstanceTask(0);
+    addCapacityRetry(runInstance);
 
-    // If multiple subnets are provided, add error handling to retry in other AZs
-    if (props.subnets.length > 1) {
-      // Create fallback task for second AZ
-      const runInstanceFallback = createRunInstanceTask(1);
-
-      // Configure primary task to catch InsufficientInstanceCapacity errors and retry in second AZ
-      runInstance.addCatch(runInstanceFallback, {
+    // Chain a cross-AZ fallback for every remaining subnet: AZ0 → AZ1 → AZ2 …
+    // Each task gets the in-AZ capacity retry; each non-final task CATCHES to
+    // the next AZ. Catchers run only AFTER the in-AZ retries are exhausted.
+    //
+    // The catch is deliberately BROAD (States.TaskFailed catches any task
+    // failure, not only capacity) so a transient blip — including the
+    // Ec2.Ec2Exception the SDK integration emits for an insufficient-capacity
+    // failure — still fails over to the next AZ. Cost of the breadth: a genuine
+    // misconfig (bad AMI, IAM) fails in every AZ in turn before the last one
+    // fails for real — a few wasted seconds per AZ, not a wasted instance.
+    //
+    // resultPath:"$.error" merges the failure under $.error while PRESERVING
+    // the input (instanceID/instanceType), so the next AZ's task still has them.
+    //
+    // The FINAL task is intentionally left uncaught: if the last AZ also fails
+    // the execution FAILS, and the server-driven reconciler picks it up to
+    // park-and-retry in-region on capacity codes (fail-closed classify), or
+    // terminally error after N attempts on anything else.
+    let previousTask = runInstance;
+    for (let i = 1; i < props.subnets.length; i++) {
+      const fallback = createRunInstanceTask(i);
+      addCapacityRetry(fallback);
+      previousTask.addCatch(fallback, {
         errors: [
-          "States.TaskFailed", // Generic task failure
+          "States.TaskFailed", // Generic task failure (broad — see comment above)
           "Ec2.InsufficientInstanceCapacity", // Specific capacity error
           "Ec2.Client.InsufficientInstanceCapacity",
         ],
         resultPath: "$.error",
       });
+      previousTask = fallback;
     }
 
     this.stepFunction = new StateMachine(this, "state-machine", {

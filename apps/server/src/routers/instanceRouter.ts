@@ -12,6 +12,37 @@ type TransactionClient = Omit<
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$extends"
 >;
 
+// Instances in these states are finished. They are hidden from the default
+// listing so the live table isn't buried under thousands of completed/failed
+// auto-provisioned rows. Callers pass includeTerminated to see them anyway.
+const INSTANCE_TERMINAL_STATUSES = [
+  STATUS.Stopped,
+  STATUS.Error,
+  STATUS.Complete,
+];
+
+// ERROR is terminal, but a RECENTLY failed instance is an actionable signal —
+// a launch that exhausted in-region capacity retries, or a misconfig — not the
+// historical noise the default filter exists to hide. So the default listing
+// keeps showing ERROR instances updated within this window; older failures age
+// out into the hidden set (still reachable via the "Show terminated" toggle).
+const RECENT_ERROR_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
+
+// Build the default (includeTerminated=false) filter: every non-terminal
+// instance, PLUS any instance that failed within RECENT_ERROR_WINDOW_MS.
+// Computed per-call so the cutoff tracks "now", not process start.
+function defaultInstanceWhere() {
+  return {
+    OR: [
+      { status: { notIn: INSTANCE_TERMINAL_STATUSES } },
+      {
+        status: STATUS.Error,
+        updatedAt: { gte: new Date(Date.now() - RECENT_ERROR_WINDOW_MS) },
+      },
+    ],
+  };
+}
+
 export const instanceRouter = t.router({
   get: permissionProcedure(["instances:get"])
     .input(
@@ -52,6 +83,13 @@ export const instanceRouter = t.router({
       });
     }),
   getMany: permissionProcedure(["instances:get"])
+    .input(
+      z
+        .object({
+          includeTerminated: z.boolean().optional(),
+        })
+        .optional()
+    )
     .output(
       z
         .object({
@@ -64,9 +102,11 @@ export const instanceRouter = t.router({
     )
     .query(async (opts) => {
       const { prisma } = opts.ctx;
+      const includeTerminated = opts.input?.includeTerminated ?? false;
 
       return await prisma.$transaction(async (tx: TransactionClient) => {
         return await tx.instance.findMany({
+          where: includeTerminated ? undefined : defaultInstanceWhere(),
           select: {
             IID: true,
             name: true,
@@ -77,6 +117,13 @@ export const instanceRouter = t.router({
       });
     }),
   getList: permissionProcedure(["instances:list"])
+    .input(
+      z
+        .object({
+          includeTerminated: z.boolean().optional(),
+        })
+        .optional()
+    )
     .output(
       z
         .object({
@@ -87,9 +134,11 @@ export const instanceRouter = t.router({
     )
     .query(async (opts) => {
       const { prisma } = opts.ctx;
+      const includeTerminated = opts.input?.includeTerminated ?? false;
 
       return await prisma.$transaction(async (tx: TransactionClient) => {
         return await tx.instance.findMany({
+          where: includeTerminated ? undefined : defaultInstanceWhere(),
           select: {
             IID: true,
             name: true,

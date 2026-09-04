@@ -195,6 +195,11 @@ const LogoutButton = ({ userID }: LogoutButtonProps) => {
   );
 };
 
+// Mirrors the server-side MIN_PASSWORD_LENGTH policy (apps/server .../utils/
+// password.ts). Kept in sync manually; the server still enforces it — this is
+// only a client-side hint so the user sees the requirement before submitting.
+const MIN_PASSWORD_LENGTH = 15;
+
 interface PasswordUpdateButtonProps {
   userID: string;
   isLoading?: boolean;
@@ -251,6 +256,10 @@ const PasswordUpdateButton = ({
           onSubmit={async (e) => {
             e.preventDefault();
 
+            // Guard client-side too so a too-short password never round-trips
+            // to a BAD_REQUEST; the server still enforces the same minimum.
+            if (newPassword.length < MIN_PASSWORD_LENGTH) return;
+
             await updatePassword({ userID, oldPassword, newPassword });
 
             setOpen(false);
@@ -272,7 +281,15 @@ const PasswordUpdateButton = ({
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
           />
-          <Button>{t("action.update.text")}</Button>
+          <p className="text-muted-foreground text-xs">
+            {t("password.minLength", {
+              defaultValue: `Must be at least ${MIN_PASSWORD_LENGTH} characters.`,
+              count: MIN_PASSWORD_LENGTH,
+            })}
+          </p>
+          <Button disabled={newPassword.length < MIN_PASSWORD_LENGTH}>
+            {t("action.update.text")}
+          </Button>
         </form>
       </DrawerDialog>
     </div>
