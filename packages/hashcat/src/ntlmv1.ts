@@ -10,6 +10,8 @@
  */
 import crypto from "crypto";
 
+import { desEcbEncryptBlock } from "./des";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -480,4 +482,63 @@ export const NTLMV1_HASH_TYPES = [5500, 27000] as const;
 /** Check if a hash type is NTLMv1 and should use the DES conversion pipeline */
 export function isNtlmv1HashType(hashType: number): boolean {
   return (NTLMV1_HASH_TYPES as readonly number[]).includes(hashType);
+}
+
+// ---------------------------------------------------------------------------
+// Verification: does a candidate NT hash reproduce a NetNTLMv1 capture?
+// ---------------------------------------------------------------------------
+
+/**
+ * Verify that a candidate 16-byte NTLM (NT) hash actually reproduces the NT
+ * response of a NetNTLMv1 capture.
+ *
+ * The NT response is CT1‖CT2‖CT3 — three DES-ECB encryptions of the (effective)
+ * server challenge under three keys derived from the NT hash:
+ *   K1 = NT[0:7], K2 = NT[7:14], K3 = NT[14:16] ‖ 0x00*5
+ * where each 7-byte fragment is expanded to an 8-byte parity-adjusted DES key.
+ * ESS is handled transparently: parseNtlmv1 folds the client challenge into
+ * `effectiveChallenge`, and all three blocks encrypt that same challenge (the
+ * exact inverse of ntlmv1ToDes for CT1/CT2 and recoverCt3 for CT3).
+ *
+ * Returns true iff the candidate reproduces the capture's NT response exactly.
+ * This is the anti-poison gate for the rainbow resolve endpoint: a caller —
+ * even an authenticated one — cannot mark a capture FOUND with an NT hash that
+ * does not cryptographically match it. Returns false (never throws) on a
+ * malformed NT hash or an unparseable capture string.
+ *
+ * @param captureHash Full NetNTLMv1 string: user::domain:lm:nt:challenge
+ * @param ntHashHex   Candidate NT hash, 32 hex chars (16 bytes)
+ */
+export function verifyNtlmForNetntlmv1(
+  captureHash: string,
+  ntHashHex: string
+): boolean {
+  if (!/^[0-9a-fA-F]{32}$/.test(ntHashHex)) return false;
+
+  let parsed: ParsedNtlmv1;
+  try {
+    parsed = parseNtlmv1(captureHash);
+  } catch {
+    return false;
+  }
+
+  const challenge = Buffer.from(parsed.effectiveChallenge, "hex");
+  if (challenge.length !== 8) return false;
+
+  const nt = Buffer.from(ntHashHex, "hex");
+  // 16-byte NT hash right-padded with 5 zero bytes → 21 bytes of key material,
+  // split into three 7-byte DES key fragments (K3 = NT[14],NT[15],0,0,0,0,0).
+  const material = Buffer.concat([nt, Buffer.alloc(5)]);
+
+  // Uses the package's self-contained pure-JS DES (not OpenSSL's des-ecb, which
+  // is a disabled legacy cipher on the server's node:20 / OpenSSL 3 runtime).
+  const cts: Buffer[] = [];
+  for (let i = 0; i < 3; i++) {
+    const fragment = material.subarray(i * 7, i * 7 + 7);
+    const desKey = expandDesKey(fragment);
+    cts.push(desEcbEncryptBlock(desKey, challenge));
+  }
+
+  const computed = Buffer.concat(cts).toString("hex").toUpperCase();
+  return computed === parsed.ntResponse.toUpperCase();
 }
