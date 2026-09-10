@@ -1,5 +1,5 @@
 import * as AWS from "aws-sdk";
-import { type ChildProcess, execSync, spawnSync } from "child_process";
+import { type ChildProcess, execSync, spawn, spawnSync } from "child_process";
 import fs from "fs";
 import path from "path";
 import process from "process";
@@ -22,10 +22,11 @@ import {
   writeJobProgress,
   writeJobStatus,
   writeNtlmv1Results,
+  writeRainbowResults,
   writeShuckResults,
 } from "@repo/filesystem/cluster";
 import { getRulePath, getWordlistPath } from "@repo/filesystem/wordlist";
-import { parseHashcatPot } from "@repo/hashcat/data";
+import { HASH_TYPES, parseHashcatPot } from "@repo/hashcat/data";
 import { hashcat } from "@repo/hashcat/exe";
 import {
   DES_BRUTE_FORCE_MASK,
@@ -156,6 +157,141 @@ function postprocessNtlmv1Job(
 
   // Write results file that the cluster sync will read
   writeNtlmv1Results(instanceRoot, instanceID, jobID, resultsMap);
+}
+
+// ---------------------------------------------------------------------------
+// NetNTLMv1 rainbow lookup (ntlmrain + GRTB)
+// ---------------------------------------------------------------------------
+
+// Present only on a rainbow (i3en) box: the directory holding the staged GRTB
+// shards + .gidx (exported by the instance user-data). Its presence together
+// with a 5500 job is what switches the worker from hashcat to ntlmrain.
+const RAINBOW_DATA_ROOT = process.env.RAINBOW_DATA_ROOT;
+// ntlmrain binary (staged to /usr/local/bin by user-data; override for tests).
+const NTLMRAIN_BIN = process.env.RAINBOW_NTLMRAIN_BIN || "ntlmrain";
+
+interface RainbowJobData {
+  /** NDJSON file the wrapper appends `<capture>\t<ntlmrain --json output>` to. */
+  rawResultsFile: string;
+  /** The capture strings fed to ntlmrain (mode 5500 hash lines). */
+  captures: string[];
+}
+
+const rainbowJobData = new Map<string, RainbowJobData>();
+
+/** Any 32-hex-char token in a parsed ntlmrain JSON doc is a candidate NT hash. */
+function collectNtHashes(node: unknown, out: Set<string>): void {
+  if (typeof node === "string") {
+    if (/^[0-9a-f]{32}$/i.test(node)) out.add(node.toLowerCase());
+  } else if (Array.isArray(node)) {
+    for (const v of node) collectNtHashes(v, out);
+  } else if (node && typeof node === "object") {
+    for (const v of Object.values(node)) collectNtHashes(v, out);
+  }
+}
+
+/**
+ * Spawn the ntlmrain rainbow-lookup wrapper for a 5500 job.
+ *
+ * ntlmrain `crack` takes ONE capture at a time, so a small bash wrapper loops
+ * the job's captures and appends each run's `--json` output to an NDJSON file.
+ * It ALWAYS exits 0 — a per-capture no_match is ntlmrain exit 2, which the
+ * worker's poll loop would otherwise read as "aborted by user". Recovered
+ * hashes (if any) are parsed from the NDJSON in postprocessRainbowJob. Returns
+ * the wrapper ChildProcess so the poll loop awaits its exit like a hashcat run.
+ */
+function spawnRainbowJob(
+  jobDir: string,
+  capturesFile: string,
+  rawResultsFile: string,
+  tablesDir: string
+): ChildProcess {
+  // The GRTB set ships exactly one .gidx; the shard base name is that path minus
+  // the `.gidx` suffix (shards are `<base>.NNNN.grtb`). Discover it at runtime so
+  // the (very long, #-bearing) table name is never hard-coded.
+  const gidxName = fs
+    .readdirSync(tablesDir)
+    .find((f) => f.toLowerCase().endsWith(".gidx"));
+  if (!gidxName)
+    throw new Error(`No .gidx index found in RAINBOW_DATA_ROOT (${tablesDir})`);
+  const indexPath = path.join(tablesDir, gidxName);
+  const dataBase = indexPath.slice(0, -".gidx".length);
+  const artifactsDir = path.join(jobDir, "rainbow-artifacts");
+
+  // The wrapper reads captures from a file (they contain ':' and other
+  // shell-hostile chars) and appends NDJSON. `set +e` + explicit `exit 0` so a
+  // single no_match never fails the whole job.
+  const script = `set +e
+ulimit -n 65536 2>/dev/null || true
+: > "$RAINBOW_OUT"
+mkdir -p "$RAINBOW_ART"
+while IFS= read -r cap || [ -n "$cap" ]; do
+  [ -z "$cap" ] && continue
+  j=$("$RAINBOW_BIN" crack --json --quiet --compute cpu --netntlmv1 "$cap" --lookup local --data-base "$RAINBOW_DB" --index "$RAINBOW_IDX" --artifacts-dir "$RAINBOW_ART" 2>/dev/null)
+  printf '%s\\t%s\\n' "$cap" "$j" >> "$RAINBOW_OUT"
+done < "$RAINBOW_CAPTURES"
+exit 0`;
+
+  return spawn("bash", ["-c", script], {
+    cwd: jobDir,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      RAINBOW_BIN: NTLMRAIN_BIN,
+      RAINBOW_IDX: indexPath,
+      RAINBOW_DB: dataBase,
+      RAINBOW_ART: artifactsDir,
+      RAINBOW_OUT: rawResultsFile,
+      RAINBOW_CAPTURES: capturesFile,
+    },
+  });
+}
+
+/**
+ * Parse the ntlmrain NDJSON and write rainbow-results.json mapping each capture
+ * to its recovered NT hash. Any 32-hex token in a capture's JSON doc is taken as
+ * the candidate NT hash — the server independently re-verifies it (anti-poison)
+ * before marking anything FOUND, so a loose parse cannot poison the corpus, only
+ * add a row the server will reject.
+ */
+function postprocessRainbowJob(
+  instanceRoot: string,
+  instanceID: string,
+  jobID: string,
+  data: RainbowJobData
+): void {
+  const resultsMap: Record<string, string> = {};
+  let lines: string[] = [];
+  if (fs.existsSync(data.rawResultsFile)) {
+    lines = fs
+      .readFileSync(data.rawResultsFile, "utf-8")
+      .split("\n")
+      .filter(Boolean);
+  }
+
+  for (const line of lines) {
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    const capture = line.slice(0, tab);
+    const jsonStr = line.slice(tab + 1).trim();
+    if (!jsonStr) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      continue;
+    }
+    const cands = new Set<string>();
+    collectNtHashes(parsed, cands);
+    const nt = [...cands][0];
+    if (nt) resultsMap[capture] = nt;
+  }
+
+  console.log(
+    `[Rainbow] Recovered ${Object.keys(resultsMap).length}/${data.captures.length} NT hash(es) from ${lines.length} lookup(s)`
+  );
+
+  writeRainbowResults(instanceRoot, instanceID, jobID, resultsMap);
 }
 
 // ---------------------------------------------------------------------------
@@ -553,24 +689,33 @@ async function innerMain(): Promise<ExitCase> {
 
         const isMaskAttack = (jobMetadata.attackMode ?? 0) === 3;
         const ntlmv1Mode = isNtlmv1HashType(jobMetadata.hashType);
+        // Rainbow mode: this is a NetNTLMv1 (5500) job AND we are on a box with
+        // the GRTB tables staged. Recover the NT hash via ntlmrain (CPU lookup)
+        // instead of a hashcat DES brute-force. Gated on 5500 only (27000 is the
+        // NT-candidate form ntlmrain does not parse — it falls back to hashcat).
+        const rainbowMode =
+          !!RAINBOW_DATA_ROOT && jobMetadata.hashType === HASH_TYPES.netntlmv1;
 
         // ── Shuck pre-phase: use NT hashes as wordlist in NT-candidate mode ──
         // This runs before the main hashcat job and strips any outer-layer
         // hashes that match known NTLM hashes. Shucked hashes are removed
-        // from the input file so hashcat doesn't re-crack them.
+        // from the input file so hashcat doesn't re-crack them. A rainbow job
+        // runs ntlmrain (no hashcat, no NT wordlist), so skip it there.
         let shuckedTargets: Set<string> | undefined;
-        try {
-          shuckedTargets = runShuckPrePhase(
-            config.instanceRoot,
-            config.instanceID,
-            jobID,
-            jobMetadata.hashType
-          );
-        } catch (e) {
-          console.error(
-            `[Instance ${config.instanceID}] [Job ${jobID}] Shuck pre-phase error (non-fatal):`,
-            e
-          );
+        if (!rainbowMode) {
+          try {
+            shuckedTargets = runShuckPrePhase(
+              config.instanceRoot,
+              config.instanceID,
+              jobID,
+              jobMetadata.hashType
+            );
+          } catch (e) {
+            console.error(
+              `[Instance ${config.instanceID}] [Job ${jobID}] Shuck pre-phase error (non-fatal):`,
+              e
+            );
+          }
         }
 
         // If the shuck phase resolved some hashes, remove them from the input
@@ -610,6 +755,54 @@ async function innerMain(): Promise<ExitCase> {
 
           // Rewrite the hash file with only unresolved hashes
           fs.writeFileSync(hashFilePath, remaining.join("\n") + "\n", "utf-8");
+        }
+
+        // ── Rainbow lookup: recover the NT hash via ntlmrain over the GRTB set ──
+        // Spawns the wrapper as jobProcess and returns; the poll loop's
+        // completion branch (exit 0) runs postprocessRainbowJob next tick.
+        if (rainbowMode) {
+          try {
+            const jobDir = getJobFolderPath(
+              config.instanceRoot,
+              config.instanceID,
+              jobID
+            );
+            const capturesFile = getJobHashPath(
+              config.instanceRoot,
+              config.instanceID,
+              jobID
+            );
+            const captures = fs
+              .readFileSync(capturesFile, "utf-8")
+              .trim()
+              .split("\n")
+              .filter(Boolean);
+            const rawResultsFile = path.join(jobDir, "rainbow-raw.ndjson");
+            console.log(
+              `[Instance ${config.instanceID}] [Job ${jobID}] Rainbow mode — ntlmrain over ${captures.length} capture(s), tables at ${RAINBOW_DATA_ROOT}`
+            );
+            jobProcess = spawnRainbowJob(
+              jobDir,
+              capturesFile,
+              rawResultsFile,
+              RAINBOW_DATA_ROOT!
+            );
+            rainbowJobData.set(jobID, { rawResultsFile, captures });
+          } catch (e) {
+            console.error(
+              `[Instance ${config.instanceID}] [Job ${jobID}] Rainbow spawn failed:`,
+              e
+            );
+            jobMetadata.status = STATUS.Error;
+            await writeJobMetadata(
+              config.instanceRoot,
+              config.instanceID,
+              jobID,
+              jobMetadata
+            );
+            jobID = null;
+          }
+          return;
         }
 
         // ── NTLMv1 pre-processing: convert NTLMv1 → DES pairs ──
@@ -792,6 +985,25 @@ async function innerMain(): Promise<ExitCase> {
               // Don't fail the job — DES results are still in the pot file
             }
             ntlmv1PreprocessData.delete(jobID!);
+          }
+
+          // ── Rainbow post-processing: NDJSON → rainbow-results.json ──
+          const rainbow = rainbowJobData.get(jobID!);
+          if (rainbow) {
+            try {
+              postprocessRainbowJob(
+                config.instanceRoot,
+                config.instanceID,
+                jobID!,
+                rainbow
+              );
+            } catch (e) {
+              console.error(
+                `[Instance ${config.instanceID}] [Job ${jobID}] Rainbow post-processing failed:`,
+                e
+              );
+            }
+            rainbowJobData.delete(jobID!);
           }
         } else if (jobProcess.exitCode === 2) {
           jobMetadata.status = STATUS.Stopped;

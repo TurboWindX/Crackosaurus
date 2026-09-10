@@ -5,9 +5,18 @@ import { z } from "zod";
 
 import { STATUS, type JobProgress } from "@repo/api";
 import { JOB_PROGRESS } from "@repo/api";
+import { DEFAULT_RAINBOW_INSTANCE_TYPE } from "@repo/app-config/instance-types";
+import { HASH_TYPES } from "@repo/hashcat/data";
 
 import { getJobProgressCached } from "../plugins/cluster/plugin";
 import { permissionProcedure, t } from "../plugins/trpc";
+
+// NetNTLMv1 capture (hashcat mode 5500). A 5500 job is NOT GPU brute-forced: its
+// NT hash is recovered by a CPU rainbow lookup over the GRTB table set. Such a
+// job carries no wordlist and is force-pinned onto a storage-optimized rainbow
+// box (the worker branches on hashType at runtime). We special-case it at job
+// creation so the wordlist-mandatory paths below don't drop or reject it.
+const NETNTLMV1_HASH_TYPE = HASH_TYPES.netntlmv1; // 5500
 
 type TransactionClient = Omit<
   PrismaClient,
@@ -127,7 +136,10 @@ export const jobRouter = t.router({
 
         const result = await Promise.allSettled(
           data.map(async (job) => {
-            if (!wordlistIDSet.has(job.wordlistID)) return null;
+            // Rainbow (5500) jobs carry no wordlist — don't drop them for the
+            // missing/invalid wordlist a GPU dictionary job would require.
+            const isRainbow = job.hashType === NETNTLMV1_HASH_TYPE;
+            if (!isRainbow && !wordlistIDSet.has(job.wordlistID)) return null;
 
             const jobProjects = job.projectIDs
               .map((projectID) => projectMap[projectID]!)
@@ -164,13 +176,15 @@ export const jobRouter = t.router({
           ) as [(typeof data)[number], { HID: string }[], string][];
 
         await Promise.all(
-          jobData.map(([{ wordlistID, ruleID }, hashes, JID]) => {
+          jobData.map(([{ wordlistID, ruleID, hashType }, hashes, JID]) => {
+            const isRainbow = hashType === NETNTLMV1_HASH_TYPE;
             if (!instanceType) {
               throw new Error(
                 `instanceType is required but was: ${instanceType}`
               );
             }
-            if (!wordlistID) {
+            // Rainbow jobs have no wordlist; every other job must have one.
+            if (!isRainbow && !wordlistID) {
               throw new Error(`wordlistID is required but was: ${wordlistID}`);
             }
             if (!hashes || hashes.length === 0) {
@@ -181,12 +195,20 @@ export const jobRouter = t.router({
             return tx.job.create({
               data: {
                 JID,
-                wordlistId: wordlistID,
-                ruleId: ruleID && ruleIDSet.has(ruleID) ? ruleID : undefined,
+                // 5500 is cracked by rainbow lookup, not a wordlist attack.
+                wordlistId: isRainbow ? null : wordlistID,
+                ruleId:
+                  !isRainbow && ruleID && ruleIDSet.has(ruleID)
+                    ? ruleID
+                    : undefined,
                 instanceId: null,
                 hashes: { connect: hashes.map(({ HID }) => ({ HID })) },
                 approvalStatus: "PENDING",
-                instanceType: instanceType,
+                // Force a rainbow job onto a storage-optimized box regardless of
+                // the GPU type the operator selected in the Launch dialog.
+                instanceType: isRainbow
+                  ? DEFAULT_RAINBOW_INSTANCE_TYPE
+                  : instanceType,
                 submittedById: currentUserID,
               },
             });
@@ -228,15 +250,12 @@ export const jobRouter = t.router({
       return await prisma.$transaction(async (tx: TransactionClient) => {
         const isMaskAttack = attackMode === 3;
 
-        // Validate wordlist for dictionary attacks
+        // Validate the wordlist. A dictionary attack requires one; mask attacks
+        // and rainbow (5500) jobs do not. A job's hashType is only known after
+        // grouping below, so the hard "missing wordlist" error is deferred into
+        // the per-type loop — but if a wordlist IS supplied we validate it now.
         let resolvedWordlistID: string | undefined = undefined;
-        if (!isMaskAttack) {
-          if (!wordlistID) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: "Dictionary attack requires a wordlist",
-            });
-          }
+        if (wordlistID) {
           const wordlist = await tx.wordlist.findUnique({
             select: { WID: true },
             where: { WID: wordlistID },
@@ -288,19 +307,30 @@ export const jobRouter = t.router({
         }
 
         const jobIDs: string[] = [];
-        for (const [, typeHashes] of hashesByType) {
+        for (const [hashType, typeHashes] of hashesByType) {
+          const isRainbow = hashType === NETNTLMV1_HASH_TYPE;
+          // Non-mask, non-rainbow (dictionary) jobs must have a wordlist.
+          if (!isMaskAttack && !isRainbow && !resolvedWordlistID)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Dictionary attack requires a wordlist",
+            });
           const JID = crypto.randomUUID();
           await tx.job.create({
             data: {
               JID,
-              wordlistId: resolvedWordlistID ?? null,
-              ruleId: resolvedRuleID,
+              // Rainbow jobs ignore wordlist/rule/mask and run a fixed CPU
+              // lookup; force those off and pin the storage-optimized box.
+              wordlistId: isRainbow ? null : resolvedWordlistID ?? null,
+              ruleId: isRainbow ? undefined : resolvedRuleID,
               instanceId: null,
               hashes: { connect: typeHashes.map(({ HID }) => ({ HID })) },
               approvalStatus: "PENDING",
-              instanceType: instanceType,
-              attackMode: attackMode,
-              mask: mask ?? null,
+              instanceType: isRainbow
+                ? DEFAULT_RAINBOW_INSTANCE_TYPE
+                : instanceType,
+              attackMode: isRainbow ? 0 : attackMode,
+              mask: isRainbow ? null : mask ?? null,
               cascadeId: cascadeId ?? null,
               cascadeStepIndex: cascadeStepIndex ?? null,
               submittedById: currentUserID,

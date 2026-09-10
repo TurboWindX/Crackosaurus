@@ -4,6 +4,7 @@ import { STATUS } from "@repo/api";
 import { type AWSClusterConfig } from "@repo/app-config/cluster";
 import { INSTANCE_TYPE_VALUES } from "@repo/app-config/instance-types";
 import { DEFAULT_INSTANCE_TYPE } from "@repo/app-config/instance-types";
+import { RAINBOW_INSTANCE_TYPES } from "@repo/app-config/instance-types";
 import {
   getClusterFolderInstances,
   getInstanceMetadata,
@@ -105,8 +106,13 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
   }
 
   public getTypes(): string[] {
-    // Use canonical list from shared config so UI and server stay in sync
-    return INSTANCE_TYPE_VALUES.concat([DEFAULT_TYPE]);
+    // Use canonical list from shared config so UI and server stay in sync.
+    // RAINBOW_INSTANCE_TYPES are the storage-optimized (i3en) boxes the server
+    // auto-pins onto NetNTLMv1 (5500) rainbow jobs. They are deliberately kept
+    // OUT of the operator-facing GPU dropdown (INSTANCE_TYPE_VALUES), but MUST
+    // be accepted here — createInstanceFolder throws on any type not in
+    // getTypes(), which would reject a pinned rainbow job before it launches.
+    return INSTANCE_TYPE_VALUES.concat([DEFAULT_TYPE, ...RAINBOW_INSTANCE_TYPES]);
   }
 
   /**

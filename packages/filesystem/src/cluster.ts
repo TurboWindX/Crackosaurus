@@ -96,6 +96,7 @@ const STATUS_FILE = "status.json";
 const NTLMV1_RESULTS_FILE = "ntlmv1-results.json";
 const NT_WORDLIST_FILE = "nt-wordlist.txt";
 const SHUCK_RESULTS_FILE = "shuck-results.json";
+const RAINBOW_RESULTS_FILE = "rainbow-results.json";
 
 export const CLUSTER_FILESYSTEM_TYPES = [
   "job_update",
@@ -254,6 +255,7 @@ export async function getClusterFolderStatus(
           // output, so it is still only read once the job is Complete.
           let hashes: Record<string, string> = {};
           let shuckedHashes: string[] = [];
+          let rainbowHashes: string[] = [];
 
           // Check for NTLMv1 results file first (written by the NTLMv1 pipeline)
           const ntlmv1Path = path.join(
@@ -294,6 +296,30 @@ export async function getClusterFolderStatus(
               // Fall through to pot file
             }
           }
+          // Check for rainbow results (NetNTLMv1 → NT hash via GRTB lookup).
+          // Written by the ntlmrain worker before the job flips Complete, so
+          // read on ANY status (same rationale as the shuck/NTLMv1 files). The
+          // value here is a recovered NT hash; the server routes these captures
+          // through the anti-poison verify path (flagged via rainbowHashes).
+          const rainbowPath = path.join(
+            instanceRoot,
+            instanceID,
+            JOBS_FOLDER,
+            jobID,
+            RAINBOW_RESULTS_FILE
+          );
+          if (fs.existsSync(rainbowPath)) {
+            try {
+              const raw = fs.readFileSync(rainbowPath, "utf-8");
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed.results === "object") {
+                hashes = { ...hashes, ...parsed.results };
+                rainbowHashes = Object.keys(parsed.results);
+              }
+            } catch {
+              // Ignore corrupt rainbow results
+            }
+          }
           // The pot file is the GPU crack output — only meaningful once the job
           // has finished, so keep it gated on Complete.
           if (jobMetadata.status === STATUS.Complete) {
@@ -312,6 +338,7 @@ export async function getClusterFolderStatus(
             status: jobMetadata.status,
             hashes,
             shuckedHashes,
+            rainbowHashes,
             progress: await getJobProgress(instanceRoot, instanceID, jobID),
           };
         } catch (e) {
@@ -811,6 +838,32 @@ export function getJobNtWordlistPath(
   return path.resolve(
     path.join(instanceRoot, instanceID, JOBS_FOLDER, jobID, NT_WORDLIST_FILE)
   );
+}
+
+export function getJobRainbowResultsPath(
+  instanceRoot: string,
+  instanceID: string,
+  jobID: string
+): string {
+  return path.resolve(
+    path.join(instanceRoot, instanceID, JOBS_FOLDER, jobID, RAINBOW_RESULTS_FILE)
+  );
+}
+
+/**
+ * Write NetNTLMv1 rainbow-lookup results to the job folder. `results` maps each
+ * capture (the mode-5500 hash string) to its recovered NT hash. The cluster
+ * sync reads this file and routes each capture through the anti-poison verify
+ * path before marking it FOUND (source=RAINBOW).
+ */
+export function writeRainbowResults(
+  instanceRoot: string,
+  instanceID: string,
+  jobID: string,
+  results: Record<string, string>
+): void {
+  const filePath = getJobRainbowResultsPath(instanceRoot, instanceID, jobID);
+  fs.writeFileSync(filePath, JSON.stringify({ results }, null, 2), "utf-8");
 }
 
 export function getJobShuckResultsPath(

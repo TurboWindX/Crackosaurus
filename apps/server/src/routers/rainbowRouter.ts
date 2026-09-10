@@ -2,18 +2,9 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 
 import { STATUS } from "@repo/api";
-import { HASH_TYPES } from "@repo/hashcat/data";
-import { verifyNtlmForNetntlmv1 } from "@repo/hashcat/ntlmv1";
-import { NTLM_HASH_TYPE } from "@repo/hashcat/shuck";
 
+import { NETNTLMV1, resolveNetntlmv1 } from "../lib/rainbow";
 import { serviceProcedure, t } from "../plugins/trpc";
-
-// The rainbow set cracks the NetNTLMv1 challenge-response capture (hashcat mode
-// 5500: user::domain:lm:nt:challenge). Mode 27000 ("NetNTLMv1 (NT)") is the
-// NT-candidate/DES pipeline form, not a parseable capture string, so it is
-// deliberately excluded here — verifyNtlmForNetntlmv1 / parseNtlmv1 expect the
-// 6-field 5500 form.
-const NETNTLMV1 = HASH_TYPES.netntlmv1; // 5500
 
 /**
  * Machine-only endpoints for an external NetNTLMv1 rainbow-lookup runner.
@@ -81,53 +72,23 @@ export const rainbowRouter = t.router({
     .mutation(async (opts) => {
       const { hash } = opts.input;
       const { prisma } = opts.ctx;
-      const ntHash = opts.input.ntHash.toLowerCase();
 
-      if (!verifyNtlmForNetntlmv1(hash, ntHash))
+      // Shared with the in-cluster sync (clusterPlugin). Here a failed verify is
+      // a hard client error — a valid Bearer alone must NOT mark a capture FOUND
+      // with an arbitrary/garbage NT hash.
+      const { verified, updated, ntHash } = await resolveNetntlmv1(
+        prisma,
+        hash,
+        opts.input.ntHash
+      );
+
+      if (!verified)
         throw new TRPCError({
           code: "BAD_REQUEST",
           message: "Recovered NT hash does not match the NetNTLMv1 capture.",
         });
 
-      // Authoritative write — a single updateMany is atomic on its own, so it
-      // needs no wrapping transaction. Marks every still-unresolved matching
-      // capture FOUND across all projects. Idempotent: a replay matches 0 rows.
-      const { count } = await prisma.hash.updateMany({
-        where: {
-          hash,
-          hashType: NETNTLMV1,
-          status: { not: STATUS.Found },
-        },
-        data: {
-          status: STATUS.Found,
-          value: ntHash,
-          source: "RAINBOW",
-          updatedAt: new Date(),
-        },
-      });
-
-      // Best-effort corpus fork, deliberately NOT in a transaction with the
-      // update above. Prisma emits a non-atomic read-then-insert for an
-      // `update: {}` upsert; inside an interactive transaction a unique-violation
-      // race would abort the WHOLE transaction (the JS catch cannot resume it),
-      // silently rolling back the FOUND write. Standalone, a lost race skips only
-      // this denormalized cache row — which submit-time learning and crack
-      // auto-learn also backfill — and never touches the authoritative FOUND
-      // update. `update: {}` preserves any existing plaintext.
-      try {
-        await prisma.knownHash.upsert({
-          where: {
-            hash_hashType: { hash: ntHash, hashType: NTLM_HASH_TYPE },
-          },
-          update: {},
-          create: { hash: ntHash, hashType: NTLM_HASH_TYPE, plaintext: "" },
-        });
-      } catch {
-        // Ignore unique-constraint race — a concurrent submit/crack may have
-        // inserted the same NT hash.
-      }
-
-      return { updated: count, ntHash };
+      return { updated, ntHash };
     }),
 });
 

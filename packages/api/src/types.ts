@@ -44,6 +44,10 @@ export const CLUSTER_STATUS = z.object({
           status: z.enum(STATUSES),
           hashes: z.record(z.string(), z.string()),
           shuckedHashes: z.array(z.string()).optional(),
+          // NetNTLMv1 (5500) captures whose value in `hashes` is a rainbow-
+          // recovered NT hash. The server routes these through the anti-poison
+          // verify + source=RAINBOW path instead of the generic FOUND write.
+          rainbowHashes: z.array(z.string()).optional(),
           progress: JOB_PROGRESS.optional(),
         })
       ),

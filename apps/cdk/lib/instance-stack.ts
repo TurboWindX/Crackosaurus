@@ -131,6 +131,20 @@ export class InstanceStack extends Construct {
 
     this.asset.grantRead(this.instanceRole);
 
+    // Rainbow (NetNTLMv1 / hashcat 5500) instances stage the GRTB table set
+    // from S3 onto local NVMe at boot. Grant read-only access to that one
+    // bucket/prefix. GPU instances never touch it, but the role is shared, so
+    // the grant is harmless there. Scoped to Get/List on the bucket + prefix.
+    this.instanceRole.addToPolicy(
+      new PolicyStatement({
+        actions: ["s3:GetObject", "s3:ListBucket"],
+        resources: [
+          "arn:aws:s3:::rainbow-mvp-975050138772",
+          "arn:aws:s3:::rainbow-mvp-975050138772/mvp/grtb/*",
+        ],
+      })
+    );
+
     const instanceProfile = new InstanceProfile(this, "profile", {
       role: this.instanceRole,
     });
@@ -391,15 +405,83 @@ export class InstanceStack extends Construct {
         echo "Continuing without EFS mount - instance will fail" | tee -a /var/log/userdata.log
     fi
 
-    echo "Continuing with driver installation..." | tee -a /var/log/userdata.log
+    echo "Continuing with driver/table setup..." | tee -a /var/log/userdata.log
 
-    # Install Drivers (after EFS mount verification)
-    dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/amzn2023/x86_64/cuda-amzn2023.repo
-    dnf clean expire-cache
-    dnf update -y
-    dnf install -y kernel-devel kernel-modules-extra
-    dnf module install -y nvidia-driver:latest-dkms
-    dnf install -y cuda-toolkit
+    # Branch GPU-vs-rainbow at runtime on the actual instance type. The Step
+    # Function pins i3en.* for NetNTLMv1 (5500) rainbow jobs; every other type
+    # is a GPU hashcat box. We keep ONE user-data template and switch here so
+    # CDK stays type-agnostic.
+    INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type --header "X-aws-ec2-metadata-token: $TOKEN")
+    echo "Instance type: $INSTANCE_TYPE" | tee -a /var/log/userdata.log
+
+    RAINBOW_MODE=0
+    case "$INSTANCE_TYPE" in
+      i3en.*|i3.*) RAINBOW_MODE=1 ;;
+    esac
+
+    if [ "$RAINBOW_MODE" = "1" ]; then
+        # ── Rainbow box: no GPU. Stage GRTB tables onto local NVMe, install
+        #    ntlmrain, and export RAINBOW_DATA_ROOT so the worker takes the
+        #    CPU rainbow-lookup path instead of hashcat. ──
+        echo "=== Rainbow instance: skipping CUDA, staging GRTB tables ===" | tee -a /var/log/userdata.log
+        dnf install -y nvme-cli unzip
+
+        # Detect the instance-store NVMe (model "Amazon EC2 NVMe Instance
+        # Storage") — distinct from the EBS root volume. Format + mount it as
+        # scratch for the ~3.99 TB table set.
+        # NOTE: this whole string is a States.Format template where a literal
+        # brace pair is a substitution placeholder, so this shell command must
+        # contain NO braces at all. Use grep+sed (not awk) to grab field 1.
+        INSTANCE_STORE=$(nvme list 2>/dev/null | grep 'Instance Storage' | head -n1 | sed 's/[[:space:]].*//')
+        mkdir -p /mnt/rainbow
+        if [ -n "$INSTANCE_STORE" ]; then
+            echo "Instance-store NVMe: $INSTANCE_STORE" | tee -a /var/log/userdata.log
+            mkfs.xfs -f "$INSTANCE_STORE" | tee -a /var/log/userdata.log
+            mount "$INSTANCE_STORE" /mnt/rainbow
+        else
+            echo "WARN: no instance-store NVMe found; staging tables on root disk" | tee -a /var/log/userdata.log
+        fi
+        mkdir -p /mnt/rainbow/tables
+
+        # Tune the AWS CLI S3 transfer for the ~4 TB cold pull. The default
+        # (10 concurrent, non-CRT) tops out near 3 Gbps and takes ~3 hr; the
+        # CRT client with high concurrency saturates the i3en 25 Gbps NIC and
+        # stages in ~20-30 min. Both knobs are set so whichever client the CLI
+        # picks is tuned. NOTE: States.Format template — no literal braces here.
+        aws configure set default.s3.preferred_transfer_client crt
+        aws configure set default.s3.target_bandwidth 25Gb/s
+        aws configure set default.s3.max_concurrent_requests 40
+        aws configure set default.s3.max_queue_size 10000
+
+        # Cold-load GRTB shards + index from S3 (one-time per boot).
+        echo "Staging GRTB tables from S3 (this takes a while)..." | tee -a /var/log/userdata.log
+        aws s3 cp --recursive --only-show-errors s3://rainbow-mvp-975050138772/mvp/grtb/ /mnt/rainbow/tables/ 2>&1 | tail -5 | tee -a /var/log/userdata.log
+        echo "GRTB files staged: $(ls /mnt/rainbow/tables/ | wc -l)" | tee -a /var/log/userdata.log
+
+        # Install ntlmrain (pinned release).
+        curl -fsSL -o /tmp/ntlmrain.zip https://github.com/outflanknl/ntlmrain/releases/download/v0.1.18/ntlmrain-linux-x86_64.zip
+        unzip -o /tmp/ntlmrain.zip -d /usr/local/bin/ | tee -a /var/log/userdata.log
+        chmod a+x /usr/local/bin/ntlmrain
+        rm -f /tmp/ntlmrain.zip
+
+        # Worker runs as uid 1001 — make tables + binary readable (metadata-only chmod).
+        chmod -R a+rX /mnt/rainbow
+
+        # Worker inherits these by sourcing /etc/rainbow.env in its launch line.
+        cat > /etc/rainbow.env <<'RBENV'
+export RAINBOW_DATA_ROOT=/mnt/rainbow/tables
+export RAINBOW_NTLMRAIN_BIN=/usr/local/bin/ntlmrain
+RBENV
+    else
+        # ── GPU box: install NVIDIA driver + CUDA toolkit for hashcat. ──
+        echo "=== GPU instance: installing CUDA drivers ===" | tee -a /var/log/userdata.log
+        dnf config-manager --add-repo https://developer.download.nvidia.com/compute/cuda/repos/amzn2023/x86_64/cuda-amzn2023.repo
+        dnf clean expire-cache
+        dnf update -y
+        dnf install -y kernel-devel kernel-modules-extra
+        dnf module install -y nvidia-driver:latest-dkms
+        dnf install -y cuda-toolkit
+    fi
 
     # Install Node
     curl -fsSL -o- https://rpm.nodesource.com/setup_20.x | bash
@@ -432,8 +514,11 @@ export class InstanceStack extends Construct {
 
     # Run App (output to both console and log file)
     echo "=== Starting Instance Application ==="
-  # Use the generated instance env string which includes RULE_ROOT when present
-  su worker -c '${props.instanceEnvString} node ${props.scriptPath} 2>&1 | tee /tmp/session.log'
+  # Use the generated instance env string which includes RULE_ROOT when present.
+  # Rainbow boxes wrote /etc/rainbow.env (RAINBOW_DATA_ROOT etc); source it so
+  # the worker inherits it and takes the CPU rainbow path. On GPU boxes the file
+  # is absent and the source is a no-op.
+  su worker -c 'source /etc/rainbow.env 2>/dev/null; ${props.instanceEnvString} node ${props.scriptPath} 2>&1 | tee /tmp/session.log'
     echo "=== Instance Application Exited with code: $? ==="
 
     # Stop Instance
