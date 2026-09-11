@@ -87,7 +87,83 @@ Production-ready infrastructure:
 
 #### Network Architecture
 
-![Network Architecture](docs/network-diagram.png)
+```mermaid
+flowchart TB
+    op["👤 Operators<br/>HTTPS"]
+
+    subgraph VPC["VPC · 10.0.0.0/16 · multi-AZ"]
+        subgraph PUB["Public subnets"]
+            igw["Internet Gateway"]
+            nat["NAT Gateway<br/><i>single-AZ, cost — all private egress</i>"]
+            alb["Application Load Balancer<br/>:80 / :443 · alb-sg"]
+        end
+
+        subgraph ECS["Private subnets · ECS Fargate"]
+            server["Server tasks<br/>:8080 · server-sg<br/>API · UI · orchestrator"]
+            cluster["Cluster tasks<br/>:13337 · cluster-sg<br/>job dispatch"]
+        end
+
+        subgraph FLEET["Private subnets · EC2 worker fleet<br/>on-demand · auto-provisioned across AZ a · b · d"]
+            gpu["GPU crackers · hashcat<br/>g5.* (A10G) / g6.*(L4)"]
+            rainbow["Rainbow crackers · ntlmrain<br/>i3en.* CPU + NVMe<br/>NetNTLMv1 (mode 5500)"]
+        end
+
+        subgraph STATE["Private subnets · stateful"]
+            db["Aurora PostgreSQL 15.6<br/>Serverless v2 · :5432 · rds-sg"]
+            efs["EFS · :2049 · efs-sg<br/>/crackodata (uid/gid 1001)<br/>jobs · wordlists · results"]
+        end
+    end
+
+    subgraph AWS["AWS managed services · outside VPC"]
+        sm["🔑 Secrets Manager<br/>DB credentials"]
+        s3["🪣 S3<br/>presigned uploads · multipart<br/>rainbow table set (cold, ~4 TB)"]
+        sfn["🔀 Step Functions<br/>instance lifecycle<br/>multi-AZ capacity failover"]
+        ec2api["⚙️ EC2 API<br/>launch / terminate"]
+        cw["📊 CloudWatch Logs"]
+    end
+
+    %% request path
+    op -->|443| igw --> alb -->|8080| server -->|13337| cluster
+    cluster -->|13337| gpu
+    cluster -->|13337| rainbow
+
+    %% shared state
+    server -->|5432| db
+    gpu -->|5432| db
+    rainbow -->|5432| db
+    server -->|NFS 2049| efs
+    cluster -->|NFS 2049| efs
+    gpu -->|NFS 2049| efs
+    rainbow -->|NFS 2049| efs
+
+    %% egress + external (logical; physically via NAT)
+    nat --> igw
+    server -.->|creds| sm
+    server -.->|presigned URLs| s3
+    rainbow -.->|stage tables| s3
+    server -.->|start / stop jobs| sfn
+    sfn --> ec2api
+    ec2api -.->|launch / terminate| gpu
+    ec2api -.->|launch / terminate| rainbow
+    server -.->|logs| cw
+    op -.->|direct upload · presigned URL| s3
+
+    classDef net fill:#dbeafe,stroke:#2563eb,color:#1e3a8a;
+    classDef ecs fill:#dcfce7,stroke:#16a34a,color:#14532d;
+    classDef ec2 fill:#d1fae5,stroke:#15803d,color:#14532d;
+    classDef data fill:#f3e8ff,stroke:#9333ea,color:#581c87;
+    classDef ext fill:#fce7f3,stroke:#db2777,color:#831843;
+    classDef user fill:#ffffff,stroke:#111827,color:#111827;
+
+    class igw,nat,alb net;
+    class server,cluster ecs;
+    class gpu,rainbow ec2;
+    class db,efs data;
+    class sm,s3,sfn,ec2api,cw ext;
+    class op user;
+```
+
+<sub>Solid = in-VPC data path (port labelled) · dashed = control plane & AWS-service access (egress via the NAT gateway). GPU and rainbow workers are launched on demand by Step Functions and self-terminate when idle.</sub>
 
 #### Quick Start
 
