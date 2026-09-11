@@ -3,6 +3,7 @@ import { type CreateTRPCProxyClient } from "@trpc/client";
 import fp from "fastify-plugin";
 
 import { STATUS } from "@repo/api";
+import { isRainbowInstanceType } from "@repo/app-config/instance-types";
 import type { AppRouter } from "@repo/cluster";
 import { NTLM_HASH_TYPE, isShuckableHashType } from "@repo/hashcat/shuck";
 
@@ -86,10 +87,13 @@ async function orchestrateJob(
   const isExternal = !!job.instanceId;
 
   const isMaskAttack = (job.attackMode ?? 0) === 3;
+  // A rainbow (5500) job runs a CPU table lookup, not a wordlist/mask attack, so
+  // it legitimately has no wordlistId — exempt it from the missing-field guard.
+  const isRainbow = isRainbowInstanceType(job.instanceType);
 
   if (
     (!isExternal && !job.instanceType) ||
-    (!isMaskAttack && !job.wordlistId) ||
+    (!isMaskAttack && !isRainbow && !job.wordlistId) ||
     !job.hashes?.length
   ) {
     console.error(`[Orchestrator] Job ${jobID} is missing required fields:`, {
@@ -300,8 +304,10 @@ async function orchestrateJob(
     const jobHashType = job.hashes[0]?.hashType || 0;
 
     // ── Shucking: gather NTLM hashes as an NT wordlist for shuckable types ──
+    // Rainbow (5500) jobs run ntlmrain, not hashcat, so the NT wordlist is dead
+    // weight for them — skip the gather.
     let ntWordlist: string[] | undefined;
-    if (isShuckableHashType(jobHashType)) {
+    if (!isRainbow && isShuckableHashType(jobHashType)) {
       try {
         const ntHashes = await prisma.knownHash.findMany({
           where: { hashType: NTLM_HASH_TYPE },

@@ -23,6 +23,8 @@ export const BACKEND_ENV = {
   s3BucketArn: "S3_BUCKET_ARN", // Deprecated, use S3_BUCKET_NAME
   s3RoleArn: "S3_ROLE_ARN",
   s3PublicEndpoint: "S3_PUBLIC_ENDPOINT_URL",
+  serviceSecret: "SERVICE_SECRET",
+  clusterSecret: "CLUSTER_SECRET",
   nodeEnv: "NODE_ENV",
 } as const;
 
@@ -51,6 +53,12 @@ export const BACKEND_CONFIG = z.object({
     port: z.number().int().min(0),
   }),
   secret: z.string().min(32),
+  // Optional shared secret for machine-to-machine (service-account) endpoints
+  // such as the NetNTLMv1 rainbow lookup runner (rainbow.* router). Falls back
+  // to CLUSTER_SECRET when unset (see loadBackendConfig) so existing deploys
+  // work without provisioning a new secret; set SERVICE_SECRET to split the two
+  // trust domains. Endpoints fail closed (401) when neither is configured.
+  serviceSecret: z.string().min(16).optional(),
   s3: z.object({
     bucketName: z.string().optional(),
     bucketArn: z.string().optional(), // Deprecated, for backward compatibility
@@ -119,6 +127,9 @@ export function loadBackendConfig(): BackendConfig {
       );
       return ephemeral;
     })(),
+    serviceSecret:
+      process.env[BACKEND_ENV.serviceSecret] ??
+      process.env[BACKEND_ENV.clusterSecret],
     s3: {
       bucketName: process.env[BACKEND_ENV.s3BucketName],
       bucketArn: process.env[BACKEND_ENV.s3BucketArn],

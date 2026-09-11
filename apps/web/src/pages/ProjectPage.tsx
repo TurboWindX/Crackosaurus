@@ -857,18 +857,41 @@ const LaunchButton = ({
   );
   const hasTodoHashes = useMemo(() => todoHashes.length > 0, [todoHashes]);
 
-  // Distinct hash types among the not-yet-cracked hashes — drives the slow-hash
-  // warning shown before the user picks a wordlist/ruleset.
-  const todoHashTypes = useMemo(
+  // Hashes this launch will actually target: the explicit selection if any,
+  // otherwise every not-yet-cracked hash.
+  const targetHashes = useMemo(
+    () =>
+      selectedHashIDs.length > 0
+        ? (hashes ?? []).filter((h: { HID: string }) =>
+            selectedHashIDs.includes(h.HID)
+          )
+        : todoHashes,
+    [hashes, selectedHashIDs, todoHashes]
+  );
+  const targetHashTypes = useMemo(
     () =>
       Array.from(
         new Set(
-          todoHashes.map((h: { hashType?: number | string }) =>
+          targetHashes.map((h: { hashType?: number | string }) =>
             Number(h.hashType)
           )
         )
       ),
-    [todoHashes]
+    [targetHashes]
+  );
+  // NetNTLMv1 (5500) recovers from precomputed rainbow tables on a CPU
+  // instance — the server force-overrides instanceType/wordlist/attackMode for
+  // these hashes, so the GPU + wordlist pickers don't apply. isRainbowOnly =>
+  // every target hash is 5500 (pure rainbow launch); hasRainbow => at least one.
+  const isRainbowOnly = useMemo(
+    () =>
+      targetHashTypes.length > 0 &&
+      targetHashTypes.every((tHash) => tHash === HASH_TYPES.netntlmv1),
+    [targetHashTypes]
+  );
+  const hasRainbow = useMemo(
+    () => targetHashTypes.includes(HASH_TYPES.netntlmv1),
+    [targetHashTypes]
   );
 
   const isValid = useMemo(() => {
@@ -876,7 +899,9 @@ const LaunchButton = ({
     if (launchMode === "cascade") {
       return selectedCascadeID.length > 0;
     }
-    // Single mode
+    // Single mode. NetNTLMv1 rainbow launches need no instance/wordlist/mask —
+    // the server auto-pins the CPU instance — so they're valid once targeted.
+    if (isRainbowOnly) return true;
     if (attackMode === 3) {
       return instanceType.length > 0 && mask.length > 0;
     }
@@ -889,6 +914,7 @@ const LaunchButton = ({
     selectedCascadeID,
     attackMode,
     mask,
+    isRainbowOnly,
   ]);
 
   const { hasPermission } = useAuth();
@@ -1006,6 +1032,19 @@ const LaunchButton = ({
               mask: step0.mask ?? undefined,
               cascadeId: selectedCascade.CID,
               cascadeStepIndex: 0,
+            });
+            void created;
+          } else if (isRainbowOnly) {
+            // NetNTLMv1 rainbow: server auto-pins the CPU instance and ignores
+            // wordlist/mask/attackMode. Submit only the target hashes.
+            const targetHashIDs =
+              selectedHashIDs.length > 0
+                ? selectedHashIDs
+                : todoHashes.map((h: { HID: string }) => h.HID);
+            const created = await requestJobsForHashes({
+              instanceType,
+              hashIDs: targetHashIDs,
+              attackMode: 0,
             });
             void created;
           } else if (selectedHashIDs.length > 0) {
@@ -1173,6 +1212,21 @@ const LaunchButton = ({
               </select>
             </div>
           </>
+        ) : isRainbowOnly ? (
+          <div className="bg-muted grid gap-1 rounded-md p-3 text-sm">
+            <p className="font-medium">🌈 NetNTLMv1 Rainbow Crack</p>
+            <p className="text-muted-foreground text-xs">
+              No GPU instance or wordlist required. These hashes are recovered
+              from precomputed rainbow tables on a CPU instance that is selected
+              automatically. Submit for approval — an admin approves, then the
+              rainbow instance runs on its own.
+            </p>
+            <p className="text-muted-foreground text-xs">
+              Only captures using the fixed server challenge{" "}
+              <code className="font-mono">1122334455667788</code> are
+              recoverable.
+            </p>
+          </div>
         ) : (
           <>
             {/* Attack mode selector */}
@@ -1225,7 +1279,15 @@ const LaunchButton = ({
                   </p>
                 )}
             </div>
-            <SlowHashWarning hashTypes={todoHashTypes} />
+            {hasRainbow && (
+              <p className="text-muted-foreground bg-muted rounded-md p-2 text-xs">
+                🌈 Some target hashes are NetNTLMv1 (5500) — those are cracked
+                with rainbow tables on an auto-selected CPU instance, ignoring
+                the GPU instance and wordlist chosen here. The settings above
+                apply only to the other hash types.
+              </p>
+            )}
+            <SlowHashWarning hashTypes={targetHashTypes} />
             {attackMode === 3 ? (
               <MaskInput value={mask} onChange={setMask} />
             ) : (

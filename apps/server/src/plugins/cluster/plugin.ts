@@ -7,6 +7,7 @@ import { ClusterStatus, STATUS } from "@repo/api";
 import type { JobProgress, Status } from "@repo/api";
 import type { AppRouter } from "@repo/cluster";
 
+import { resolveNetntlmv1 } from "../../lib/rainbow";
 import { trpc } from "./trpc";
 
 type ClusterTRPC = CreateTRPCProxyClient<AppRouter>;
@@ -142,6 +143,13 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
   } catch {
     return;
   }
+
+  // NetNTLMv1 (5500) captures whose value is a rainbow-recovered NT hash,
+  // collected during the sync and resolved AFTER the transaction commits. Each
+  // resolution runs its own atomic updateMany + a best-effort KnownHash fork; an
+  // upsert race inside this interactive transaction would abort the whole sync
+  // (see lib/rainbow — the JS catch cannot resume an aborted tx).
+  const rainbowResolutions: Array<{ capture: string; nt: string }> = [];
 
   try {
     await prisma.$transaction(async (tx: TransactionClient) => {
@@ -353,6 +361,11 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
 
                   // Build lookup of shucked hashes for source tagging
                   const shuckedHashSet = new Set(jobStatus.shuckedHashes ?? []);
+                  // Rainbow-recovered NetNTLMv1 captures — resolved after the tx
+                  // via the anti-poison verify + source=RAINBOW path, NOT the
+                  // generic FOUND write below (which would mislabel source and
+                  // skip the crypto check + KnownHash fork).
+                  const rainbowHashSet = new Set(jobStatus.rainbowHashes ?? []);
 
                   const hashSearch: Record<string, (typeof jobDB)["hashes"]> =
                     {};
@@ -371,6 +384,13 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
 
                         // Unsupported external hashes.
                         if (hashDBs === undefined) return;
+
+                        // Rainbow captures: defer to the post-tx anti-poison
+                        // path. `plain` is the recovered NT hash, not plaintext.
+                        if (rainbowHashSet.has(hash)) {
+                          rainbowResolutions.push({ capture: hash, nt: plain });
+                          return;
+                        }
 
                         let didCrack = false;
                         let hashType: number | null = null;
@@ -439,6 +459,34 @@ async function updateStatus(prisma: PrismaClient, cluster: ClusterTRPC) {
     });
   } catch {
     // ignore error
+  }
+
+  // Resolve rainbow captures OUTSIDE the sync transaction. Dedup by capture —
+  // the same capture can surface on multiple instances/jobs in one pass, and
+  // resolveNetntlmv1 is idempotent (a replay flips 0 rows).
+  if (rainbowResolutions.length > 0) {
+    const unique = new Map(
+      rainbowResolutions.map((r) => [r.capture, r.nt] as const)
+    );
+    for (const [capture, nt] of unique) {
+      try {
+        const { verified, updated } = await resolveNetntlmv1(
+          prisma,
+          capture,
+          nt
+        );
+        if (!verified)
+          console.error(
+            `[Sync] Rainbow NT hash failed anti-poison verify — skipping (capture=${capture})`
+          );
+        else if (updated > 0)
+          console.log(
+            `[Sync] Rainbow-resolved ${updated} capture row(s) FOUND (source=RAINBOW)`
+          );
+      } catch (e) {
+        console.error(`[Sync] Rainbow resolve failed (capture=${capture}):`, e);
+      }
+    }
   }
 }
 
