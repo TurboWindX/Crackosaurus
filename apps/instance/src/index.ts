@@ -227,7 +227,13 @@ ulimit -n 65536 2>/dev/null || true
 mkdir -p "$RAINBOW_ART"
 while IFS= read -r cap || [ -n "$cap" ]; do
   [ -z "$cap" ] && continue
-  j=$("$RAINBOW_BIN" crack --json --quiet --compute cpu --netntlmv1 "$cap" --lookup local --data-base "$RAINBOW_DB" --index "$RAINBOW_IDX" --artifacts-dir "$RAINBOW_ART" 2>/dev/null)
+  # ntlmrain --json emits ONE pretty-printed (multi-line) JSON object; flatten it
+  # to a single physical line so the '<capture>\\t<json>\\n' NDJSON contract holds
+  # (postprocessRainbowJob splits on \\n then the first \\t). serde escapes any
+  # in-string newline as literal \\n, so every real CR/LF here is structural
+  # pretty-print whitespace and safe to delete; leftover indent spaces stay valid
+  # JSON. jq is NOT installed on the rainbow box (AL2023) — tr (coreutils) is.
+  j=$("$RAINBOW_BIN" crack --json --quiet --compute cpu --netntlmv1 "$cap" --lookup local --data-base "$RAINBOW_DB" --index "$RAINBOW_IDX" --artifacts-dir "$RAINBOW_ART" 2>/dev/null | tr -d '\\r\\n')
   printf '%s\\t%s\\n' "$cap" "$j" >> "$RAINBOW_OUT"
 done < "$RAINBOW_CAPTURES"
 exit 0`;
