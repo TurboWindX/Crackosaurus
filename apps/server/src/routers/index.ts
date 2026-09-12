@@ -12,6 +12,7 @@ import { jobRouter } from "./jobRouter";
 import { projectRouter } from "./projectRouter";
 import { rainbowRouter } from "./rainbowRouter";
 import { ruleRouter } from "./ruleRouter";
+import { settingsRouter } from "./settingsRouter";
 import { userRouter } from "./userRouter";
 import { wordlistRouter } from "./wordlistRouter";
 
@@ -80,6 +81,7 @@ export const appRouter = t.router({
   // Machine-only (service-account Bearer) — NetNTLMv1 rainbow lookup runner.
   rainbow: rainbowRouter,
   rule: ruleRouter,
+  settings: settingsRouter,
   user: userRouter,
   wordlist: wordlistRouter,
   job: jobRouter,

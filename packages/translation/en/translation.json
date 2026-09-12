@@ -175,6 +175,14 @@
       "title": "Setup",
       "header": "Enter information to begin the platform",
       "button": "Setup"
+    },
+    "settings": {
+      "title": "Settings",
+      "maxLife": {
+        "title": "Max instance life",
+        "description": "Automatically terminate an instance once it has run this many hours. Only idle instances are terminated — a box that is still running a job is left alone until the job finishes. Set to 0 to disable.",
+        "unit": "hours"
+      }
     }
   },
   "status": {

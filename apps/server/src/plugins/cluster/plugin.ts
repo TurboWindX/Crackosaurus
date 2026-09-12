@@ -8,6 +8,7 @@ import type { JobProgress, Status } from "@repo/api";
 import type { AppRouter } from "@repo/cluster";
 
 import { resolveNetntlmv1 } from "../../lib/rainbow";
+import { getMaxInstanceLifeHours } from "../../lib/settings";
 import { trpc } from "./trpc";
 
 type ClusterTRPC = CreateTRPCProxyClient<AppRouter>;
@@ -118,6 +119,15 @@ export const clusterPlugin = fp<ClusterPluginConfig>(
             await reapDeadInstances(server.prisma, trpc);
           } catch (e) {
             console.error("[Reaper] reapDeadInstances failed:", e);
+          }
+          // Terminate boxes that have outlived the admin-configured max instance
+          // life (idle only — never an actively-cracking box). Disabled unless an
+          // admin sets a positive MAX_INSTANCE_LIFE via the settings page.
+          // Best-effort — a failure must not block cascade advancement.
+          try {
+            await reapExpiredInstances(server.prisma, trpc);
+          } catch (e) {
+            console.error("[MaxLife] reapExpiredInstances failed:", e);
           }
           // After sync, check if any cascade jobs just completed
           await advanceCascades(server.prisma);
@@ -600,6 +610,125 @@ async function reapDeadInstances(prisma: PrismaClient, cluster: ClusterTRPC) {
     });
   } catch (e) {
     console.error("[Reaper] Failed to mark dead instances stopped:", e);
+  }
+}
+
+/**
+ * Terminate instances that have outlived the admin-configured max instance life.
+ *
+ * This is the ONLY reaper path that terminates EC2 (the dead-box reaper above
+ * deliberately never does). It exists as a cost backstop: a box whose own
+ * idle-shutdown failed to fire (worker crashed, VM still billing) would
+ * otherwise run until someone notices. To make that safe, it is deliberately
+ * conservative on every axis:
+ *
+ *   • DISABLED by default. getMaxInstanceLifeHours returns 0 until a root admin
+ *     saves a positive value, and 0 short-circuits this whole function. Shipping
+ *     the feature terminates nothing until an operator opts in.
+ *   • DB-scoped. It only ever considers rows in THIS deployment's Instance table,
+ *     so a coworker running a SEPARATE Crackosaurus deployment (own DB / own EFS)
+ *     is untouchable even though their boxes carry the same ManagedBy tag.
+ *   • LIVE-confirmed. It only acts on tags the cluster reports as a live EC2 box
+ *     we own (liveInstanceIDs); null (unknown) → do nothing, never a guess-kill.
+ *   • IDLE-only. A box with ANY non-terminal job is spared even past its TTL, so
+ *     a coworker's long-running crack is never guillotined mid-flight. This
+ *     reaps only boxes that are both old AND doing no work.
+ *   • Guarded terminate. Deletion goes through the cluster deleteInstance path
+ *     (per-box EC2 id resolved from EFS metadata, IAM conditioned on
+ *     ManagedBy=Crackosaurus + Type=GPU), never a raw TerminateInstances.
+ */
+async function reapExpiredInstances(
+  prisma: PrismaClient,
+  cluster: ClusterTRPC
+) {
+  const maxHours = await getMaxInstanceLifeHours(prisma);
+  if (maxHours <= 0) return; // feature disabled
+
+  // Only ever terminate a box the cluster confirms is a live EC2 instance we
+  // own. null = the cluster cannot tell (non-cloud, or a transient API error) →
+  // do nothing, exactly like the dead-box reaper.
+  let live: string[] | null;
+  try {
+    live = await cluster.instance.liveInstanceIDs.query();
+  } catch (e) {
+    console.error("[MaxLife] liveInstanceIDs query failed:", e);
+    return;
+  }
+  if (live === null) return;
+  const liveSet = new Set(live);
+
+  // Candidates: non-terminal instances created longer ago than the TTL. Keyed on
+  // createdAt (birth), NOT updatedAt — this is a wall-clock lifetime cap, not an
+  // inactivity timer.
+  const cutoff = new Date(Date.now() - maxHours * 60 * 60 * 1000);
+  const candidates = await prisma.instance.findMany({
+    select: {
+      IID: true,
+      tag: true,
+      jobs: { select: { JID: true, status: true } },
+    },
+    where: {
+      status: { in: [...REAPABLE_STATUSES] },
+      createdAt: { lt: cutoff },
+    },
+  });
+
+  // Keep only boxes that are (a) a live EC2 instance we own, and (b) doing no
+  // work. (a) leaves no-live-box zombies to the dead-box reaper; (b) protects an
+  // actively-cracking box from being killed just for being old.
+  const expired = candidates.filter((inst) => {
+    if (!liveSet.has(inst.tag)) return false;
+    const hasLiveJob = inst.jobs.some(
+      (j: { status: string }) =>
+        !JOB_TERMINAL_STATUSES.includes(j.status as Status)
+    );
+    return !hasLiveJob;
+  });
+  if (expired.length === 0) return;
+
+  console.warn(
+    `[MaxLife] ${expired.length} idle instance(s) exceeded the ${maxHours}h max life — terminating: ${expired
+      .map((e: { tag: string }) => e.tag)
+      .join(", ")}`
+  );
+
+  // Terminate one at a time through the guarded cluster delete path, then mark
+  // the row STOPPED. Terminate BEFORE the DB write: if the terminate fails we
+  // skip the STOPPED write so the box is retried next cycle rather than showing
+  // dead in the UI while it is still billing.
+  for (const inst of expired) {
+    let terminated: boolean[];
+    try {
+      terminated = await cluster.instance.deleteMany.mutate({
+        instanceIDs: [inst.tag],
+      });
+    } catch (e) {
+      console.error(`[MaxLife] terminate failed for ${inst.tag}:`, e);
+      continue;
+    }
+    if (terminated[0] !== true) {
+      console.warn(
+        `[MaxLife] terminate for ${inst.tag} reported no success — leaving status unchanged for retry`
+      );
+      continue;
+    }
+
+    try {
+      // updateMany + terminal guard so a concurrent replica that already wrote a
+      // terminal status wins (0 rows) instead of being clobbered.
+      await prisma.instance.updateMany({
+        where: {
+          IID: inst.IID,
+          status: { notIn: [...INSTANCE_TERMINAL_STATUSES] },
+        },
+        data: { status: STATUS.Stopped, updatedAt: new Date() },
+      });
+    } catch (e) {
+      console.error(
+        `[MaxLife] failed to mark ${inst.tag} STOPPED after terminate:`,
+        e
+      );
+    }
   }
 }
 

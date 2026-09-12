@@ -168,3 +168,14 @@ model CascadeStep {
 
   @@unique([cascadeId, order])
 }
+
+// Cluster-wide runtime settings edited by a root admin from the settings page.
+// A generic key/value store (String values parsed per key) rather than a column
+// per setting so new operational toggles — e.g. a future Spot-fleet flag — can
+// be added without a migration. Read by the server reaper each poll cycle; the
+// only current key is `maxInstanceLifeHours` (see apps/server/src/lib/settings.ts).
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt
+}

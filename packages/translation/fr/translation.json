@@ -100,6 +100,14 @@
       "title": "Configuration",
       "header": "Renseignez les informations pour démarrer la plateforme",
       "button": "Configurer"
+    },
+    "settings": {
+      "title": "Paramètres",
+      "maxLife": {
+        "title": "Durée de vie maximale des instances",
+        "description": "Termine automatiquement une instance après ce nombre d'heures d'exécution. Seules les instances inactives sont terminées — une machine qui exécute encore une tâche est laissée intacte jusqu'à la fin de la tâche. Mettez 0 pour désactiver.",
+        "unit": "heures"
+      }
     }
   },
   "status": {

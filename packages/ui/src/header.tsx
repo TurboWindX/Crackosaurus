@@ -4,6 +4,7 @@ import {
   FolderIcon,
   LinkIcon,
   ListIcon,
+  SettingsIcon,
   UserIcon,
   UsersIcon,
 } from "lucide-react";
@@ -78,6 +79,12 @@ const LINKS: readonly HeaderLinkProps[] = [
     path: "/users",
     icon: <UsersIcon />,
     permission: "users:get",
+  },
+  {
+    label: "page.settings.title",
+    path: "/settings",
+    icon: <SettingsIcon />,
+    permission: "root",
   },
 ] as const;
 
