@@ -224,6 +224,14 @@ Recommended for running locally.
 
 **Dependencies:** [Docker](https://www.docker.com/) · [Docker Compose](https://docs.docker.com/compose/) · [CUDA](https://developer.nvidia.com/cuda-toolkit) (for local GPU cracking)
 
+First, provide the local secrets. The cluster refuses to start without `CLUSTER_SECRET` (security hardening), so copy the template — Docker Compose auto-loads `.env`:
+
+```
+cp .env.example .env
+```
+
+`.env` is gitignored; the checked-in `.env.example` holds placeholder dev values you can edit. Then build and start the stack:
+
 ```
 sudo docker-compose build
 sudo docker-compose up

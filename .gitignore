@@ -46,6 +46,8 @@ node_modules/
 localstack_data/
 .env.*
 .env*
+# Keep the committed local-dev secrets template (values are placeholders).
+!.env.example
 .vscode/
 
 # CDK context (contains account-specific AZ lookups)
