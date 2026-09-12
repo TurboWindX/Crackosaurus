@@ -326,7 +326,26 @@ export async function getClusterFolderStatus(
             const potPath = getJobOutputPath(instanceRoot, instanceID, jobID);
             if (fs.existsSync(potPath)) {
               try {
-                const potHashes = readHashcatPot(potPath);
+                // Pass the job's submitted hashes so readHashcatPot can attribute
+                // each pot row to its exact target hash. Without this, a recovered
+                // plaintext containing a colon (e.g. "foo:bar") would be truncated
+                // at the last colon.
+                let knownHashes: string[] | undefined;
+                try {
+                  const hashPath = getJobHashPath(
+                    instanceRoot,
+                    instanceID,
+                    jobID
+                  );
+                  knownHashes = fs
+                    .readFileSync(hashPath, "utf-8")
+                    .split("\n")
+                    .map((h) => h.trim())
+                    .filter(Boolean);
+                } catch {
+                  // No/unreadable hashes file — fall back to last-colon parsing.
+                }
+                const potHashes = readHashcatPot(potPath, knownHashes);
                 hashes = { ...hashes, ...potHashes };
               } catch {
                 // Ignore corrupt pot files

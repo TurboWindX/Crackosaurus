@@ -195,10 +195,19 @@ function collectNtHashes(node: unknown, out: Set<string>): void {
  *
  * ntlmrain `crack` takes ONE capture at a time, so a small bash wrapper loops
  * the job's captures and appends each run's `--json` output to an NDJSON file.
- * It ALWAYS exits 0 — a per-capture no_match is ntlmrain exit 2, which the
- * worker's poll loop would otherwise read as "aborted by user". Recovered
- * hashes (if any) are parsed from the NDJSON in postprocessRainbowJob. Returns
- * the wrapper ChildProcess so the poll loop awaits its exit like a hashcat run.
+ *
+ * Exit-code contract (consumed by the poll loop like a hashcat run):
+ *   - A per-capture ntlmrain exit of 0 (recovered) or 2 (no_match) is expected
+ *     and NOT a failure — the wrapper does not let either abort the loop or the
+ *     job (2 would otherwise be read as hashcat's "aborted by user").
+ *   - Any OTHER ntlmrain exit (binary missing, bad tables, OOM, signal) is a
+ *     hard error: the wrapper logs the rc + capture to stderr and finally
+ *     exits 3, so the job surfaces as ERROR instead of a silent
+ *     Complete-with-zero-results. PIPESTATUS[0] is used to read ntlmrain's own
+ *     code past the `| tr` pipe. Whatever NDJSON was produced before the error
+ *     is still parsed by postprocessRainbowJob (partial recoveries survive).
+ *
+ * Returns the wrapper ChildProcess so the poll loop awaits its exit.
  */
 function spawnRainbowJob(
   jobDir: string,
@@ -219,9 +228,11 @@ function spawnRainbowJob(
   const artifactsDir = path.join(jobDir, "rainbow-artifacts");
 
   // The wrapper reads captures from a file (they contain ':' and other
-  // shell-hostile chars) and appends NDJSON. `set +e` + explicit `exit 0` so a
-  // single no_match never fails the whole job.
+  // shell-hostile chars) and appends NDJSON. `set +e` so a per-capture no_match
+  // (ntlmrain exit 2) never aborts the loop; a genuine ntlmrain failure
+  // (rc not in {0,2}) sets had_error and the wrapper finally exits 3.
   const script = `set +e
+had_error=0
 ulimit -n 65536 2>/dev/null || true
 : > "$RAINBOW_OUT"
 mkdir -p "$RAINBOW_ART"
@@ -233,9 +244,20 @@ while IFS= read -r cap || [ -n "$cap" ]; do
   # in-string newline as literal \\n, so every real CR/LF here is structural
   # pretty-print whitespace and safe to delete; leftover indent spaces stay valid
   # JSON. jq is NOT installed on the rainbow box (AL2023) — tr (coreutils) is.
-  j=$("$RAINBOW_BIN" crack --json --quiet --compute cpu --netntlmv1 "$cap" --lookup local --data-base "$RAINBOW_DB" --index "$RAINBOW_IDX" --artifacts-dir "$RAINBOW_ART" 2>/dev/null | tr -d '\\r\\n')
+  # exit "\${PIPESTATUS[0]}" inside the substitution surfaces ntlmrain's own exit
+  # code (not tr's) as the subshell status, which we read from $? below.
+  j=$("$RAINBOW_BIN" crack --json --quiet --compute cpu --netntlmv1 "$cap" --lookup local --data-base "$RAINBOW_DB" --index "$RAINBOW_IDX" --artifacts-dir "$RAINBOW_ART" 2>/dev/null | tr -d '\\r\\n'; exit "\${PIPESTATUS[0]}")
+  rc=$?
+  case "$rc" in
+    0|2) ;;
+    *)
+      had_error=1
+      printf 'ntlmrain hard failure rc=%s for capture: %s\\n' "$rc" "$cap" >&2
+      ;;
+  esac
   printf '%s\\t%s\\n' "$cap" "$j" >> "$RAINBOW_OUT"
 done < "$RAINBOW_CAPTURES"
+if [ "$had_error" -ne 0 ]; then exit 3; fi
 exit 0`;
 
   return spawn("bash", ["-c", script], {
@@ -1024,6 +1046,28 @@ async function innerMain(): Promise<ExitCase> {
           console.error(
             `[Instance ${config.instanceID}] [Job ${jobID}] Command: "${jobProcess.spawnargs.join(" ")}"`
           );
+
+          // A rainbow wrapper exits non-zero (3) on a hard ntlmrain failure. The
+          // job is correctly ERROR, but any captures recovered before the error
+          // were still written to the NDJSON — salvage them so partial results
+          // aren't lost (rainbow-results.json syncs on any status).
+          const rainbow = rainbowJobData.get(jobID!);
+          if (rainbow) {
+            try {
+              postprocessRainbowJob(
+                config.instanceRoot,
+                config.instanceID,
+                jobID!,
+                rainbow
+              );
+            } catch (e) {
+              console.error(
+                `[Instance ${config.instanceID}] [Job ${jobID}] Rainbow salvage post-processing failed:`,
+                e
+              );
+            }
+            rainbowJobData.delete(jobID!);
+          }
         }
 
         console.log(

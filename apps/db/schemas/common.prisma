@@ -13,6 +13,13 @@ model User {
   // whose step is <= this value, so a code cannot be replayed within its ~90s
   // validity window (RFC 6238 §5.2). Null until the first code is accepted.
   totpLastStep  Int?
+  // Brute-force throttle. `failedLoginAttempts` counts consecutive failed
+  // password/second-factor attempts; on reaching the threshold the account is
+  // locked until `lockedUntil`. Both reset to 0/null on a fully successful
+  // login. A locked account returns the same generic error as a wrong password
+  // so lockout state cannot be used to enumerate usernames.
+  failedLoginAttempts Int      @default(0)
+  lockedUntil         DateTime?
   recoveryCodes UserRecoveryCode[]
   projects      Project[]
   submittedJobs Job[]     @relation("JobSubmittedBy")

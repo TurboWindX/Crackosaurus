@@ -127,14 +127,57 @@ export function isSlowHashType(mode: number): boolean {
   return SLOW_HASH_RANGES.some(([lo, hi]) => mode >= lo && mode <= hi);
 }
 
-export function parseHashcatPot(data: string): Record<string, string> {
+/**
+ * Parse a hashcat output/pot file (`<hash>:<plain>` per line) into a
+ * `hash → plain` map.
+ *
+ * The naive "split on the last colon" rule is ambiguous when BOTH sides can
+ * contain colons: it keeps colon-bearing hash keys intact (NTLMv1
+ * "user::domain:lm:nt:challenge", DES "ct:challenge"), but it silently
+ * TRUNCATES any recovered plaintext that itself contains a colon (a password
+ * like "foo:bar" would parse to key "hash:foo", value "bar").
+ *
+ * When the caller knows the exact target hashes (as the result-sync path does —
+ * they are the job's submitted hashes), pass them as `knownHashes`. Each pot
+ * row is then attributed to the longest known hash it is prefixed by
+ * ("<hash>:<plain>"), so the plaintext — colons and all — is preserved exactly.
+ * Rows that match no known hash fall back to the last-colon heuristic.
+ *
+ * Callers that do NOT pass `knownHashes` (the NTLMv1 DES and shuck pre-phases,
+ * whose plaintexts are colon-free hex) keep the original last-colon behaviour.
+ */
+export function parseHashcatPot(
+  data: string,
+  knownHashes?: Iterable<string>
+): Record<string, string> {
+  const known = knownHashes ? Array.from(knownHashes) : null;
+
   return Object.fromEntries(
     data
       .split("\n")
       .filter((row) => row.trim().length > 0)
       .map((row) => {
+        if (known) {
+          // Attribute the row to the longest known target hash it is prefixed
+          // by ("<hash>:..."), so a colon in the plaintext can never split the
+          // key. Longest-match guards the (theoretical) case where one hash is
+          // a prefix of another.
+          let best: string | null = null;
+          for (const h of known) {
+            if (
+              h.length > 0 &&
+              row.startsWith(`${h}:`) &&
+              (best === null || h.length > best.length)
+            ) {
+              best = h;
+            }
+          }
+          if (best !== null) return [best, row.slice(best.length + 1)];
+          // No known hash matched — fall through to the last-colon heuristic.
+        }
+
         // Split on the LAST colon so hash formats containing colons
-        // (e.g. NTLMv1 "user::domain:lm:nt:challenge", DES "ct:salt")
+        // (e.g. NTLMv1 "user::domain:lm:nt:challenge", DES "ct:challenge")
         // are kept intact as the key.
         const lastColon = row.lastIndexOf(":");
         if (lastColon === -1) return [row, ""];

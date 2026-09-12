@@ -49,7 +49,11 @@ export function hashcat({
     "--potfile-disable",
     "--status",
     "--status-timer=10",
-    "--machine-readable",
+    // Structured per-interval status as a single JSON object per line. Gives us
+    // the per-device speed array (summed for true multi-GPU throughput), an
+    // absolute estimated_stop for the ETA, and the restore_point — none of which
+    // the old positional --machine-readable format exposed reliably.
+    "--status-json",
   ];
 
   // Custom charset definitions must come before the mask/input args
@@ -110,16 +114,23 @@ export function hashcat({
     });
   }
 
-  // Capture stdout for status updates (machine-readable STATUS lines)
+  // Capture stdout for status updates (--status-json objects, one per line).
+  // A single status object can be split across stdout chunks, so buffer and
+  // only process complete newline-terminated lines; the trailing partial line
+  // is carried into the next chunk.
   if (process.stdout) {
     process.stdout.setEncoding("utf8");
+    let stdoutBuffer = "";
     process.stdout.on("data", (data) => {
       const output = data.toString();
       console.log("[Hashcat] STDOUT:", output.trim());
-      // Parse each line for machine-readable status
-      for (const line of output.split("\n")) {
+      stdoutBuffer += output;
+      let newlineIdx: number;
+      while ((newlineIdx = stdoutBuffer.indexOf("\n")) >= 0) {
+        const line = stdoutBuffer.slice(0, newlineIdx);
+        stdoutBuffer = stdoutBuffer.slice(newlineIdx + 1);
         const trimmed = line.trim();
-        if (trimmed.startsWith("STATUS")) {
+        if (trimmed.startsWith("{")) {
           const parsed = parseHashcatStatus(trimmed);
           if (parsed && onStatus) {
             onStatus(parsed);
@@ -161,8 +172,14 @@ export function hashcat({
   return process;
 }
 
-export function readHashcatPot(path: string): Record<string, string> {
+export function readHashcatPot(
+  path: string,
+  knownHashes?: Iterable<string>
+): Record<string, string> {
   if (!fs.existsSync(path)) return {};
 
-  return parseHashcatPot(fs.readFileSync(path, { encoding: "utf-8" }));
+  return parseHashcatPot(
+    fs.readFileSync(path, { encoding: "utf-8" }),
+    knownHashes
+  );
 }
