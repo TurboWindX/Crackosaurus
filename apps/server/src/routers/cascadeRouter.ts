@@ -47,8 +47,11 @@ const cascadeOutputSchema = z.object({
 });
 
 export const cascadeRouter = t.router({
-  /** Create a new cascade template with steps */
-  create: permissionProcedure(["instances:jobs:add"])
+  /** Create a new cascade template with steps.
+   * Cascades are global, unowned templates, so any authenticated user may
+   * create/list/read/update them (see `auth` gate). Deletion stays gated on
+   * `instances:jobs:add` since it is destructive on a shared resource. */
+  create: permissionProcedure(["auth"])
     .input(
       z.object({
         name: z.string().min(1).max(255),
@@ -108,7 +111,7 @@ export const cascadeRouter = t.router({
     }),
 
   /** Get a single cascade by ID */
-  get: permissionProcedure(["instances:jobs:add"])
+  get: permissionProcedure(["auth"])
     .input(z.object({ cascadeID: z.string() }))
     .output(cascadeOutputSchema)
     .query(async (opts) => {
@@ -150,7 +153,7 @@ export const cascadeRouter = t.router({
     }),
 
   /** List all cascades */
-  getMany: permissionProcedure(["instances:jobs:add"])
+  getMany: permissionProcedure(["auth"])
     .output(
       z.array(
         z.object({
@@ -235,7 +238,7 @@ export const cascadeRouter = t.router({
     }),
 
   /** Update a cascade's steps (replace all) */
-  update: permissionProcedure(["instances:jobs:add"])
+  update: permissionProcedure(["auth"])
     .input(
       z.object({
         cascadeID: z.string(),
@@ -272,6 +275,23 @@ export const cascadeRouter = t.router({
             throw new TRPCError({
               code: "BAD_REQUEST",
               message: `Step orders must be sequential starting from 0`,
+            });
+          }
+        }
+
+        // Validate each step (mirror create): dictionary attacks need a
+        // wordlist, mask attacks need a mask.
+        for (const step of sorted) {
+          if ((step.attackMode ?? 0) === 0 && !step.wordlistId) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Step ${step.order}: dictionary attack requires a wordlistId`,
+            });
+          }
+          if (step.attackMode === 3 && !step.mask) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Step ${step.order}: mask attack requires a mask`,
             });
           }
         }
