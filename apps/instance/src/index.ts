@@ -977,7 +977,10 @@ async function innerMain(): Promise<ExitCase> {
             });
           },
         });
-      } else if (jobProcess && jobProcess.exitCode !== null) {
+      } else if (
+        jobProcess &&
+        (jobProcess.exitCode !== null || jobProcess.signalCode !== null)
+      ) {
         const jobMetadata = await getJobMetadata(
           config.instanceRoot,
           config.instanceID,
@@ -1040,8 +1043,16 @@ async function innerMain(): Promise<ExitCase> {
           );
         } else {
           jobMetadata.status = STATUS.Error;
+          // exitCode is null when the process was killed by a signal (OOM /
+          // SIGKILL / SIGSEGV — common on GPU boxes). Report the signal so the
+          // cause isn't logged as "exit code null", and still mark the job
+          // Error + reset below so the instance doesn't wedge on a dead process.
+          const how =
+            jobProcess.exitCode !== null
+              ? `exit code ${jobProcess.exitCode}`
+              : `signal ${jobProcess.signalCode}`;
           console.error(
-            `[Instance ${config.instanceID}] [Job ${jobID}] Hashcat failed with exit code ${jobProcess.exitCode}`
+            `[Instance ${config.instanceID}] [Job ${jobID}] Hashcat failed with ${how}`
           );
           console.error(
             `[Instance ${config.instanceID}] [Job ${jobID}] Command: "${jobProcess.spawnargs.join(" ")}"`
