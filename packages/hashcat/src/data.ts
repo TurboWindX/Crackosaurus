@@ -11,6 +11,9 @@ export const HASH_TYPES = {
   netntlmv2: 5600,
   des: 14000,
   netntlmv1_nt: 27000,
+  // ConfigMgr (SCCM) CryptDeriveKey media-variable AES-128 key. Custom hashcat
+  // module (MWR-CyberSec, mode 19850) compiled into the GPU-box hashcat build.
+  sccm_aes128: 19850,
   plaintext: 99999,
 } as const;
 
