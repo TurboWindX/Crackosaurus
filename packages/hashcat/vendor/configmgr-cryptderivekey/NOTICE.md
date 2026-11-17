@@ -46,6 +46,21 @@ Revert them only if ever building against ≤ 6.2.5.
   definitions ... Old template?") if any field is left unassigned. Setting them
   to `MODULE_DEFAULT` = the module opts out of both, same as every stock
   fast-hash module — no behaviour change.
+- `opencl_code/m19850_a{0,1,3}-pure.cl` include form: `#include "inc_X"` →
+  `#include M2S(INCLUDE_PATH/inc_X)`. 6.2.6 compiles kernels with a two-step
+  clCompileProgram and resolves includes via the injected `INCLUDE_PATH`
+  macro; the old plain-quoted includes fail to resolve ("'inc_vendor.h' file
+  not found") so the kernel never builds.
+- `opencl_code/m19850_a{0,1,3}-pure.cl` renamed kernel constants to their
+  6.2.6 names: `gid_max`→`GID_CNT`, `il_cnt`→`IL_CNT`,
+  `DIGESTS_OFFSET`→`DIGESTS_OFFSET_HOST` (defined in inc_types.h). Without this
+  the kernel fails to compile ("use of undeclared identifier").
+
+  IMPORTANT: these two `.cl` patches are required for mode 19850 to RUN. The
+  kernels JIT-compile on the device at crack time, not during the module .so
+  build, so a missing patch isn't caught by building the image or by
+  `--example-hashes` — only by an actual `-m 19850` crack. Verified locally:
+  self-test passes and the ST_HASH cracks to `Password1` on hashcat 6.2.6.
 
 ## Updating
 
