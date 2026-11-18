@@ -38,6 +38,7 @@ import {
 import { SHUCK_POT_FILE, getShuckMode } from "@repo/hashcat/shuck";
 
 import config from "./config";
+import { classifyHashcatCompletion } from "./outcome";
 
 // Log environment variables for debugging
 console.log(`[DEBUG] INSTANCE_ID env var: ${process.env.INSTANCE_ID}`);
@@ -981,23 +982,31 @@ async function innerMain(): Promise<ExitCase> {
         });
       } else if (
         jobProcess &&
-        (jobProcess.exitCode !== null || jobProcess.signalCode !== null)
+        classifyHashcatCompletion(
+          jobProcess.exitCode,
+          jobProcess.signalCode
+        ) !== null
       ) {
+        // A finished hashcat process — exited (exitCode set) OR killed by a
+        // signal (exitCode null, signalCode set; OOM/SIGKILL on GPU boxes). Both
+        // must free the job slot, so the gate is the completion classifier, not
+        // `exitCode !== null` (which missed signals and wedged the instance).
+        const completion = classifyHashcatCompletion(
+          jobProcess.exitCode,
+          jobProcess.signalCode
+        )!;
+
         const jobMetadata = await getJobMetadata(
           config.instanceRoot,
           config.instanceID,
           jobID
         );
 
-        // Hashcat exit codes:
-        // 0 = All hashes cracked
-        // 1 = Exhausted (completed but not all hashes cracked) - treat as success
-        // 2 = Aborted by user
-        // -1 or other = Error (failed to run)
-        if (jobProcess.exitCode === 0 || jobProcess.exitCode === 1) {
-          jobMetadata.status = STATUS.Complete;
+        jobMetadata.status = completion.status;
+
+        if (completion.status === STATUS.Complete) {
           console.log(
-            `[Instance ${config.instanceID}] [Job ${jobID}] Completed with exit code ${jobProcess.exitCode}`
+            `[Instance ${config.instanceID}] [Job ${jobID}] Completed (${completion.description})`
           );
 
           // ── NTLMv1 post-processing: DES keys → NTLM hashes ──
@@ -1038,23 +1047,9 @@ async function innerMain(): Promise<ExitCase> {
             }
             rainbowJobData.delete(jobID!);
           }
-        } else if (jobProcess.exitCode === 2) {
-          jobMetadata.status = STATUS.Stopped;
-          console.log(
-            `[Instance ${config.instanceID}] [Job ${jobID}] Aborted by user (exit code 2)`
-          );
-        } else {
-          jobMetadata.status = STATUS.Error;
-          // exitCode is null when the process was killed by a signal (OOM /
-          // SIGKILL / SIGSEGV — common on GPU boxes). Report the signal so the
-          // cause isn't logged as "exit code null", and still mark the job
-          // Error + reset below so the instance doesn't wedge on a dead process.
-          const how =
-            jobProcess.exitCode !== null
-              ? `exit code ${jobProcess.exitCode}`
-              : `signal ${jobProcess.signalCode}`;
+        } else if (completion.status === STATUS.Error) {
           console.error(
-            `[Instance ${config.instanceID}] [Job ${jobID}] Hashcat failed with ${how}`
+            `[Instance ${config.instanceID}] [Job ${jobID}] ${completion.description}`
           );
           console.error(
             `[Instance ${config.instanceID}] [Job ${jobID}] Command: "${jobProcess.spawnargs.join(" ")}"`
@@ -1081,10 +1076,14 @@ async function innerMain(): Promise<ExitCase> {
             }
             rainbowJobData.delete(jobID!);
           }
+        } else {
+          console.log(
+            `[Instance ${config.instanceID}] [Job ${jobID}] ${completion.description}`
+          );
         }
 
         console.log(
-          `[Instance ${config.instanceID}] [Job ${jobID}] Exit with code ${jobProcess.exitCode}`
+          `[Instance ${config.instanceID}] [Job ${jobID}] Finished with status ${completion.status}`
         );
 
         await writeJobMetadata(
