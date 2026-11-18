@@ -11,6 +11,9 @@
     "./web": "./web.ts"
   },
   "license": "MIT",
+  "scripts": {
+    "test": "jest"
+  },
   "dependencies": {
     "zod": "^3.23.8"
   },

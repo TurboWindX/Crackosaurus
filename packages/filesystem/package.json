@@ -2,6 +2,9 @@
   "name": "@repo/filesystem",
   "version": "0.0.1",
   "license": "MIT",
+  "scripts": {
+    "test": "jest"
+  },
   "exports": {
     "./cluster": "./src/cluster.ts",
     "./wordlist": "./src/wordlist.ts"
