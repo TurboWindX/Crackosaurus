@@ -23,6 +23,10 @@
     "check": {
       "dependsOn": ["^check"]
     },
+    "test": {
+      "cache": false,
+      "passThroughEnv": ["CI"]
+    },
     "format": {
       "dependsOn": ["^format"],
       "cache": false
