@@ -53,3 +53,20 @@ export function shouldUseOptimized(
   if (attackMode !== 3 || mask === undefined || mask === "") return false;
   return maskCandidateLength(mask) <= OPTIMIZED_MASK_MAX_LEN;
 }
+
+/**
+ * Hashcat modes whose kernels must run at vector width 1.
+ *
+ * The ConfigMgr CryptDeriveKey module (19850) ships a mask (-a 3) kernel that
+ * declares SIMD but only ever processes lane 0 of the vector hash, so it is
+ * correct only at VECT_SIZE=1. On a backend that picks a wider vector it fails
+ * to compile (vector->scalar assignment) or would silently skip VECT_SIZE-1
+ * candidates per iteration. Forcing the width keeps it correct everywhere; on
+ * the GPU backend the width is typically already 1, so it costs nothing there.
+ */
+export const SCALAR_VECTOR_WIDTH_MODES: ReadonlySet<number> =
+  new Set<number>([19850]);
+
+export function requiresScalarVectorWidth(hashType: number): boolean {
+  return SCALAR_VECTOR_WIDTH_MODES.has(hashType);
+}

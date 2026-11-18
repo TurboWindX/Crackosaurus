@@ -3,6 +3,16 @@
  * License.....: MIT
  */
 
+// NOTE (Crackosaurus): this kernel declares SIMD (NEW_SIMD_CODE / u32x) but only
+// processes lane 0 of the vector hash — `aes_key[i] = sha1_hmac_ctx_vec.ipad.h[i]`
+// takes lane 0 and runs a single scalar AES. It is therefore only correct and
+// compilable at VECT_SIZE=1. On a device that picks a wider vector it fails to
+// compile (vector->scalar assignment) or would silently skip VECT_SIZE-1
+// candidates per iteration. We force VECT_SIZE=1 for mode 19850 at launch
+// (--backend-vector-width 1; see packages/hashcat/src/exe.ts) so this runs
+// correctly on any backend. A proper SIMD fix would loop over lanes doing a
+// scalar AES per lane and compare with COMPARE_M_SIMD.
+
 #define NEW_SIMD_CODE
 
 #ifdef KERNEL_STATIC

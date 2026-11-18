@@ -5,6 +5,7 @@ import { parseHashcatPot } from "./data";
 import {
   maskCandidateLength,
   OPTIMIZED_MASK_MAX_LEN,
+  requiresScalarVectorWidth,
   shouldUseOptimized,
 } from "./optimized";
 import { type HashcatStatus, parseHashcatStatus } from "./status";
@@ -74,6 +75,18 @@ export function hashcat({
   } else {
     console.log(
       "[Hashcat] Pure kernels (no -O): full candidate-length coverage, no silent truncation"
+    );
+  }
+
+  // Some custom-module kernels declare SIMD but only process lane 0, so they are
+  // only correct at VECT_SIZE=1 and either fail to compile or SILENTLY skip
+  // candidates on a backend that picks a wider vector (e.g. the mode-19850
+  // ConfigMgr mask kernel). Pin the vector width to 1 for those modes. On the
+  // GPU backend this is typically already 1, so it is effectively free there.
+  if (requiresScalarVectorWidth(hashType)) {
+    args.push("--backend-vector-width", "1");
+    console.log(
+      `[Hashcat] Forcing --backend-vector-width 1 for mode ${hashType} (scalar-only kernel)`
     );
   }
 

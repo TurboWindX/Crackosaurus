@@ -1,6 +1,7 @@
 import {
   maskCandidateLength,
   OPTIMIZED_MASK_MAX_LEN,
+  requiresScalarVectorWidth,
   shouldUseOptimized,
 } from "../src/optimized";
 
@@ -53,5 +54,15 @@ describe("shouldUseOptimized (default pure; -O only when it cannot truncate)", (
   it("is false for a3 with no/empty mask", () => {
     expect(shouldUseOptimized(3, undefined)).toBe(false);
     expect(shouldUseOptimized(3, "")).toBe(false);
+  });
+});
+
+describe("requiresScalarVectorWidth (scalar-only kernels, e.g. ConfigMgr 19850)", () => {
+  it("is true for mode 19850", () => {
+    expect(requiresScalarVectorWidth(19850)).toBe(true);
+  });
+  it("is false for ordinary modes", () => {
+    expect(requiresScalarVectorWidth(1000)).toBe(false);
+    expect(requiresScalarVectorWidth(0)).toBe(false);
   });
 });

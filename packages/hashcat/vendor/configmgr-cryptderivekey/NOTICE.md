@@ -56,6 +56,19 @@ Revert them only if ever building against ≤ 6.2.5.
   `DIGESTS_OFFSET`→`DIGESTS_OFFSET_HOST` (defined in inc_types.h). Without this
   the kernel fails to compile ("use of undeclared identifier").
 
+- a3 (mask) kernel runs at vector width 1 only. `m19850_a3-pure.cl` declares
+  SIMD (`NEW_SIMD_CODE`, `u32x`) but only processes lane 0 of the vector hash
+  (`aes_key[i] = sha1_hmac_ctx_vec.ipad.h[i]` takes lane 0 + one scalar AES), so
+  it is correct only at `VECT_SIZE=1`. On a backend that picks a wider vector it
+  fails to compile (vector->scalar assignment) or would silently skip
+  VECT_SIZE-1 candidates per iteration. The kernel is left as-is (a comment
+  marks the constraint); instead the launcher forces `--backend-vector-width 1`
+  for mode 19850 (`SCALAR_VECTOR_WIDTH_MODES` in packages/hashcat/src/optimized.ts,
+  applied in exe.ts). CUDA GPUs typically use width 1 already, so this is free
+  there. A proper upstream fix would loop over lanes (scalar AES per lane,
+  `COMPARE_M_SIMD`). Verified: a0/a1/a3 all compile and crack at width 1 on a
+  wide-SIMD (AVX512 PoCL) backend.
+
   IMPORTANT: these two `.cl` patches are required for mode 19850 to RUN. The
   kernels JIT-compile on the device at crack time, not during the module .so
   build, so a missing patch isn't caught by building the image or by
