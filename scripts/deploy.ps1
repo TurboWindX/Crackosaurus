@@ -6,7 +6,12 @@ param(
     [string]$Environment = "dev"
 )
 
-$ErrorActionPreference = "Stop"
+# PowerShell 5.1 promotes native-command stderr output to a terminating error
+# when ErrorActionPreference is Stop — and docker/cdk write progress to stderr
+# even on success, which would kill every build/push/deploy call. This script
+# guards every native call with an explicit `if ($LASTEXITCODE -ne 0)` check,
+# so keep EAP at Continue and let those checks do the gating.
+$ErrorActionPreference = "Continue"
 
 Write-Host "=== Crackosaurus Deployment ===" -ForegroundColor Cyan
 Write-Host "Environment: $Environment" -ForegroundColor Yellow
@@ -56,7 +61,13 @@ $REGISTRY = "$AccountId.dkr.ecr.$Region.amazonaws.com"
 
 # Login to ECR
 Write-Host "`nLogging into ECR..." -ForegroundColor Yellow
-aws ecr get-login-password --region $Region | docker login --username AWS --password-stdin $REGISTRY
+# NOTE: PowerShell 5.1's object pipeline decodes stdout as strings (per the
+# current console codepage) and re-encodes when piping between native
+# executables — which mangles a long base64 ECR token and docker then rejects
+# the login with "400 Bad Request". Hand the pipe to cmd.exe, which has a byte
+# pipeline, so the token passes through untouched.
+cmd.exe /c "aws ecr get-login-password --region $Region | docker login --username AWS --password-stdin $REGISTRY"
+if ($LASTEXITCODE -ne 0) { Write-Host "  [X] ECR login failed (exit $LASTEXITCODE)" -ForegroundColor Red; exit 1 }
 
 # Create repos if missing
 Write-Host "`nCreating ECR repositories if missing..." -ForegroundColor Yellow
