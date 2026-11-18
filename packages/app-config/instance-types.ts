@@ -31,12 +31,52 @@ export const INSTANCE_TYPES = [
     value: "g6.12xlarge",
     label: "g6.12xlarge (4x NVIDIA L4, 48 vCPU, 192GB RAM)",
   },
+  {
+    // "Turbo" tier: 8x L4 (~2x the 12xlarge's hashrate) for urgent large
+    // cracks. Costs strictly more per hash than the 12xlarge and 8-GPU boxes
+    // are harder to place, so it is an explicit opt-in, never the default. Only
+    // g6 reaches all three ca-central-1 AZs (incl. 1d), so it is the turbo pick
+    // over g5.48xlarge. See gpu-instance-economics memory for the live numbers.
+    value: "g6.48xlarge",
+    label: "g6.48xlarge (8x NVIDIA L4, 192 vCPU, 768GB RAM)",
+  },
 ];
 
 export const INSTANCE_TYPE_VALUES = INSTANCE_TYPES.map((t) => t.value);
 
 // Canonical default instance type. Keep this in sync with UI recommendation.
 export const DEFAULT_INSTANCE_TYPE = "g6.12xlarge";
+
+// ── Capacity fallback ladders ────────────────────────────────────────────
+// When an auto-provisioned launch fails for CAPACITY in every AZ, the cluster
+// reconciler advances the instance to the next type in its ladder and retries,
+// instead of hammering the same region-dry type until it errors. Members of a
+// ladder are interchangeable for a job: same GPU COUNT and comparable per-GPU
+// throughput/VRAM, so a job pinned to any member runs correctly on any other.
+// The reaper/worker never see a mismatch because the reconciler rewrites BOTH
+// the instance's type and every staged job's instanceType together (EFS).
+// Order = preference: best value/availability first.
+//
+// Only the 4x-GPU default class has a ladder today — that's where capacity pain
+// lives. g5.12xlarge is offered only in ca-central-1 AZs a/b (not d); in the
+// rare case BOTH are capacity-dry and the launch reaches the d subnet it fails
+// there with an unsupported-type error that classifies terminal. Accepted: the
+// real cause is a genuine region-wide 4x-GPU shortage anyway. Rainbow (i3en)
+// and single-GPU / turbo (48xl) types have no ladder → they never fall back by
+// type (AZ fallback in the state machine still applies).
+export const CAPACITY_FALLBACK_LADDERS: readonly (readonly string[])[] = [
+  ["g6.12xlarge", "g5.12xlarge"], // 4x GPU default class
+];
+
+// Next capacity-fallback type after `type`, or null if `type` is in no ladder
+// or is already the last (most-available) member. Pure lookup.
+export function nextCapacityFallbackType(type: string): string | null {
+  for (const ladder of CAPACITY_FALLBACK_LADDERS) {
+    const i = ladder.indexOf(type);
+    if (i >= 0 && i + 1 < ladder.length) return ladder[i + 1]!;
+  }
+  return null;
+}
 
 // ── NetNTLMv1 rainbow-table cracking (hashcat mode 5500) ──────────────────
 // A 5500 capture is not GPU brute-forced; the NT hash is recovered by a CPU

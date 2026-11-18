@@ -13,6 +13,13 @@ model User {
   // whose step is <= this value, so a code cannot be replayed within its ~90s
   // validity window (RFC 6238 §5.2). Null until the first code is accepted.
   totpLastStep  Int?
+  // Brute-force throttle. `failedLoginAttempts` counts consecutive failed
+  // password/second-factor attempts; on reaching the threshold the account is
+  // locked until `lockedUntil`. Both reset to 0/null on a fully successful
+  // login. A locked account returns the same generic error as a wrong password
+  // so lockout state cannot be used to enumerate usernames.
+  failedLoginAttempts Int      @default(0)
+  lockedUntil         DateTime?
   recoveryCodes UserRecoveryCode[]
   projects      Project[]
   submittedJobs Job[]     @relation("JobSubmittedBy")
@@ -160,4 +167,15 @@ model CascadeStep {
   updatedAt    DateTime @default(now()) @updatedAt
 
   @@unique([cascadeId, order])
+}
+
+// Cluster-wide runtime settings edited by a root admin from the settings page.
+// A generic key/value store (String values parsed per key) rather than a column
+// per setting so new operational toggles — e.g. a future Spot-fleet flag — can
+// be added without a migration. Read by the server reaper each poll cycle; the
+// only current key is `maxInstanceLifeHours` (see apps/server/src/lib/settings.ts).
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt
 }

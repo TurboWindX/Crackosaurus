@@ -5,10 +5,15 @@ import { type AWSClusterConfig } from "@repo/app-config/cluster";
 import { INSTANCE_TYPE_VALUES } from "@repo/app-config/instance-types";
 import { DEFAULT_INSTANCE_TYPE } from "@repo/app-config/instance-types";
 import { RAINBOW_INSTANCE_TYPES } from "@repo/app-config/instance-types";
+import { nextCapacityFallbackType } from "@repo/app-config/instance-types";
 import {
   getClusterFolderInstances,
+  getInstanceFolderJobs,
   getInstanceMetadata,
+  getJobMetadata,
   writeInstanceMetadata,
+  writeJobMetadata,
+  type InstanceMetadata,
 } from "@repo/filesystem/cluster";
 
 import { FileSystemCluster } from "./filesystem";
@@ -613,6 +618,61 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
   }
 
   /**
+   * Advance an instance to the next type in its capacity-fallback ladder,
+   * mutating `metadata.type` IN PLACE (the caller persists it) and rewriting
+   * every staged job's instanceType to match, so the worker's exact
+   * instance/job type check still passes after the swap. No-op when the current
+   * type has no further ladder member (or no ladder at all — e.g. rainbow or
+   * turbo types). Best-effort per job: a single unreadable job folder is logged
+   * and skipped so it can't block the swap for the rest.
+   */
+  private async advanceCapacityFallbackType(
+    instanceID: string,
+    metadata: InstanceMetadata
+  ): Promise<void> {
+    const next = nextCapacityFallbackType(metadata.type);
+    if (!next) return;
+
+    const prev = metadata.type;
+    metadata.type = next; // persisted by the caller's writeInstanceMetadata
+
+    try {
+      const jobIDs = await getInstanceFolderJobs(
+        this.config.instanceRoot,
+        instanceID
+      );
+      for (const jobID of jobIDs) {
+        try {
+          const job = await getJobMetadata(
+            this.config.instanceRoot,
+            instanceID,
+            jobID
+          );
+          if (job.instanceType && job.instanceType !== next) {
+            await writeJobMetadata(this.config.instanceRoot, instanceID, jobID, {
+              ...job,
+              instanceType: next,
+            });
+          }
+        } catch (e) {
+          console.warn(
+            `[AWS Cluster] Capacity fallback: failed to retype job ${jobID} on ${instanceID}:`,
+            e
+          );
+        }
+      }
+      console.log(
+        `[AWS Cluster] Capacity fallback: ${instanceID} ${prev} → ${next}`
+      );
+    } catch (e) {
+      console.warn(
+        `[AWS Cluster] Capacity fallback: failed to list jobs for ${instanceID}:`,
+        e
+      );
+    }
+  }
+
+  /**
    * Poll in-flight instance launches and reconcile stuck/failed ones.
    *
    * The EC2 box is provisioned by an async Step Functions execution whose ARN
@@ -711,6 +771,15 @@ export class AwsCluster extends FileSystemCluster<AWSClusterConfig> {
           const verdict = this.classifyLaunchError(desc.error, desc.cause);
           const attempts = metadata.launchAttempts ?? 0;
           if (verdict === "park" && attempts < AwsCluster.MAX_LAUNCH_ATTEMPTS) {
+            // Capacity failure across every AZ. Before parking, advance this
+            // instance to the next interchangeable type in its fallback ladder
+            // (e.g. g6.12xlarge → g5.12xlarge) so a region-wide shortage of the
+            // primary type fails over to an equivalent one instead of retrying
+            // the same dry type. Mutates metadata.type in place (persisted by
+            // the write below) and rewrites every staged job's instanceType so
+            // the worker's instance/job type check still matches. No-op once the
+            // ladder is exhausted (or for types with no ladder).
+            await this.advanceCapacityFallbackType(instanceID, metadata);
             metadata.status = STATUS.Pending;
             metadata.executionArn = undefined;
             metadata.launchStartedAt = undefined;

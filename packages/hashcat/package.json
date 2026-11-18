@@ -7,6 +7,16 @@
     "./data": "./src/data.ts",
     "./ntlmv1": "./src/ntlmv1.ts",
     "./shuck": "./src/shuck.ts",
-    "./identify": "./src/identify.ts"
+    "./identify": "./src/identify.ts",
+    "./optimized": "./src/optimized.ts"
+  },
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.4"
   }
 }

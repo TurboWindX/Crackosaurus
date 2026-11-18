@@ -42,6 +42,15 @@ const DUMMY_PASSWORD_HASH = bcrypt.hashSync(
   12
 );
 
+// Online brute-force throttle. After MAX_FAILED_LOGIN_ATTEMPTS consecutive
+// failed password/second-factor attempts, an account is locked for
+// LOCKOUT_DURATION_MS. The counter resets on any fully successful login. The
+// window is deliberately short and the rejection generic so the lockout slows
+// credential stuffing / TOTP guessing without becoming a durable
+// denial-of-service that a third party could hold against a targeted user.
+const MAX_FAILED_LOGIN_ATTEMPTS = 8;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
 export const authRouter = t.router({
   get: permissionProcedure(["auth"])
     .output(
@@ -96,6 +105,7 @@ export const authRouter = t.router({
           password: true,
           mfaEnabled: true,
           totpSecret: true,
+          lockedUntil: true,
         },
         where: {
           username: username,
@@ -109,8 +119,38 @@ export const authRouter = t.router({
         throw new TRPCError({ code: "BAD_REQUEST" });
       }
 
-      if (!(await checkPassword(password, user.password)))
+      // Record a failed attempt and lock the account once the threshold is hit.
+      // Two writes (increment, then conditionally lock) — a concurrent-flood
+      // overshoot only locks marginally sooner, which is acceptable.
+      const registerFailedAttempt = async (): Promise<void> => {
+        const updated = await prisma.user.update({
+          where: { ID: user.ID },
+          data: { failedLoginAttempts: { increment: 1 } },
+          select: { failedLoginAttempts: true },
+        });
+        if (updated.failedLoginAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+          await prisma.user.update({
+            where: { ID: user.ID },
+            data: {
+              lockedUntil: new Date(Date.now() + LOCKOUT_DURATION_MS),
+              failedLoginAttempts: 0,
+            },
+          });
+        }
+      };
+
+      // If the account is currently locked, reject with the SAME generic error
+      // (and an equal-time decoy compare) as a wrong password — never a distinct
+      // "locked" response, which would leak that the username exists.
+      if (user.lockedUntil !== null && user.lockedUntil.getTime() > Date.now()) {
+        await checkPassword(password, DUMMY_PASSWORD_HASH);
         throw new TRPCError({ code: "BAD_REQUEST" });
+      }
+
+      if (!(await checkPassword(password, user.password))) {
+        await registerFailedAttempt();
+        throw new TRPCError({ code: "BAD_REQUEST" });
+      }
 
       // Second factor. A user with MFA enabled must present a valid TOTP or
       // recovery code before a session is established. The password is already
@@ -180,8 +220,20 @@ export const authRouter = t.router({
           }
         }
 
-        if (!mfaOk) throw new TRPCError({ code: "BAD_REQUEST" });
+        // A wrong second factor is a failed attempt too — count it toward the
+        // lockout so TOTP/recovery-code guessing is throttled like passwords.
+        if (!mfaOk) {
+          await registerFailedAttempt();
+          throw new TRPCError({ code: "BAD_REQUEST" });
+        }
       }
+
+      // Fully authenticated — clear any accumulated failure count / lock.
+      // updateMany avoids throwing if the row changed concurrently.
+      await prisma.user.updateMany({
+        where: { ID: user.ID },
+        data: { failedLoginAttempts: 0, lockedUntil: null },
+      });
 
       await request.session.regenerate();
 

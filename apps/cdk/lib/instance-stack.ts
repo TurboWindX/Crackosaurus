@@ -375,9 +375,48 @@ export class InstanceStack extends Construct {
     return `#!/bin/bash
 
     # Instance Info
-    TOKEN=$(curl -s --request PUT "http://169.254.169.254/latest/api/token" --header "X-aws-ec2-metadata-token-ttl-seconds: 3600")
-    EC2_INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id --header "X-aws-ec2-metadata-token: $TOKEN")
+    # IMDSv2 can be briefly unavailable at boot; retry so EC2_INSTANCE_ID is
+    # never silently empty (an empty id makes terminate-instances a no-op and
+    # strands a billable box).
+    EC2_INSTANCE_ID=""
+    for i in 1 2 3 4 5; do
+      TOKEN=$(curl -s --request PUT "http://169.254.169.254/latest/api/token" --header "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+      EC2_INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id --header "X-aws-ec2-metadata-token: $TOKEN")
+      [ -n "$EC2_INSTANCE_ID" ] && break
+      sleep 3
+    done
     AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region --header "X-aws-ec2-metadata-token: $TOKEN")
+
+    # ── Cost safety ────────────────────────────────────────────────────────
+    # A GPU/i3en box costs money every second it runs. Terminating it used to
+    # be a single unguarded line at the very end of this script, so any failure
+    # (empty instance id, throttled API, a hung worker that never returns, the
+    # EFS-mount-failed path) left the box billing indefinitely with no backstop
+    # (the server-side reaper is opt-in). Make termination robust and
+    # unconditional instead.
+    terminate_self() {
+      if [ -n "$EC2_INSTANCE_ID" ]; then
+        for i in 1 2 3; do
+          aws ec2 terminate-instances --region "$AWS_REGION" --instance-ids "$EC2_INSTANCE_ID" && return 0
+          sleep 5
+        done
+      fi
+      # API unreachable or id unknown: at least stop compute billing. (If the
+      # launch sets InstanceInitiatedShutdownBehavior=terminate this also
+      # terminates; otherwise it stops — EBS-only cost beats a running GPU.)
+      shutdown -h now || poweroff -f
+    }
+    # Fire on ANY script exit (normal end, error, early return from a failed
+    # mount/driver install) — not just the happy path.
+    trap terminate_self EXIT
+
+    # Dead-man backstop for the one case trap can't cover: the worker wedging
+    # (hung CUDA / half-mounted EFS I/O) so the script blocks forever and never
+    # exits. A detached timer force-terminates after a generous wall-clock cap.
+    # Tune DEADMAN_SECONDS (the admin "max instance life" reaper is the finer,
+    # job-aware control); a legit crack longer than this would be cut short.
+    DEADMAN_SECONDS=172800
+    ( sleep $DEADMAN_SECONDS; echo "=== dead-man cap reached, terminating ===" | tee -a /var/log/userdata.log; terminate_self ) &
 
     # Install minimal packages needed for EFS mount
     echo "=== Installing EFS utilities ===" | tee -a /var/log/userdata.log
@@ -521,8 +560,9 @@ RBENV
   su worker -c 'source /etc/rainbow.env 2>/dev/null; ${props.instanceEnvString} node ${props.scriptPath} 2>&1 | tee /tmp/session.log'
     echo "=== Instance Application Exited with code: $? ==="
 
-    # Stop Instance
-    aws ec2 terminate-instances --instance-ids $EC2_INSTANCE_ID
+    # Stop Instance — robust termination (retry + shutdown fallback) runs via
+    # the EXIT trap set at the top; call it explicitly too as belt-and-braces.
+    terminate_self
     `;
   }
 }

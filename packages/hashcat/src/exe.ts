@@ -2,6 +2,12 @@ import childProcess from "child_process";
 import fs from "fs";
 
 import { parseHashcatPot } from "./data";
+import {
+  maskCandidateLength,
+  OPTIMIZED_MASK_MAX_LEN,
+  requiresScalarVectorWidth,
+  shouldUseOptimized,
+} from "./optimized";
 import { type HashcatStatus, parseHashcatStatus } from "./status";
 
 interface HashcatConfig {
@@ -45,12 +51,44 @@ export function hashcat({
     attackMode.toString(),
     "-m",
     hashType.toString(),
-    "-O",
     "--potfile-disable",
     "--status",
     "--status-timer=10",
-    "--machine-readable",
+    // Structured per-interval status as a single JSON object per line. Gives us
+    // the per-device speed array (summed for true multi-GPU throughput), an
+    // absolute estimated_stop for the ETA, and the restore_point — none of which
+    // the old positional --machine-readable format exposed reliably.
+    "--status-json",
   ];
+
+  // Optimized kernels (-O) are ~2x faster but cap candidate length and SILENTLY
+  // drop anything longer (see ./optimized). Default to pure kernels so we never
+  // miss a hit; enable -O only when it provably cannot truncate — a mask attack
+  // whose candidate length is within the conservative cap.
+  if (shouldUseOptimized(attackMode, mask)) {
+    args.push("-O");
+    console.log(
+      `[Hashcat] Optimized kernels (-O) enabled: mask length ${maskCandidateLength(
+        mask!
+      )} <= ${OPTIMIZED_MASK_MAX_LEN}, lossless`
+    );
+  } else {
+    console.log(
+      "[Hashcat] Pure kernels (no -O): full candidate-length coverage, no silent truncation"
+    );
+  }
+
+  // Some custom-module kernels declare SIMD but only process lane 0, so they are
+  // only correct at VECT_SIZE=1 and either fail to compile or SILENTLY skip
+  // candidates on a backend that picks a wider vector (e.g. the mode-19850
+  // ConfigMgr mask kernel). Pin the vector width to 1 for those modes. On the
+  // GPU backend this is typically already 1, so it is effectively free there.
+  if (requiresScalarVectorWidth(hashType)) {
+    args.push("--backend-vector-width", "1");
+    console.log(
+      `[Hashcat] Forcing --backend-vector-width 1 for mode ${hashType} (scalar-only kernel)`
+    );
+  }
 
   // Custom charset definitions must come before the mask/input args
   if (hexCharset) args.push("--hex-charset");
@@ -110,16 +148,23 @@ export function hashcat({
     });
   }
 
-  // Capture stdout for status updates (machine-readable STATUS lines)
+  // Capture stdout for status updates (--status-json objects, one per line).
+  // A single status object can be split across stdout chunks, so buffer and
+  // only process complete newline-terminated lines; the trailing partial line
+  // is carried into the next chunk.
   if (process.stdout) {
     process.stdout.setEncoding("utf8");
+    let stdoutBuffer = "";
     process.stdout.on("data", (data) => {
       const output = data.toString();
       console.log("[Hashcat] STDOUT:", output.trim());
-      // Parse each line for machine-readable status
-      for (const line of output.split("\n")) {
+      stdoutBuffer += output;
+      let newlineIdx: number;
+      while ((newlineIdx = stdoutBuffer.indexOf("\n")) >= 0) {
+        const line = stdoutBuffer.slice(0, newlineIdx);
+        stdoutBuffer = stdoutBuffer.slice(newlineIdx + 1);
         const trimmed = line.trim();
-        if (trimmed.startsWith("STATUS")) {
+        if (trimmed.startsWith("{")) {
           const parsed = parseHashcatStatus(trimmed);
           if (parsed && onStatus) {
             onStatus(parsed);
@@ -161,8 +206,14 @@ export function hashcat({
   return process;
 }
 
-export function readHashcatPot(path: string): Record<string, string> {
+export function readHashcatPot(
+  path: string,
+  knownHashes?: Iterable<string>
+): Record<string, string> {
   if (!fs.existsSync(path)) return {};
 
-  return parseHashcatPot(fs.readFileSync(path, { encoding: "utf-8" }));
+  return parseHashcatPot(
+    fs.readFileSync(path, { encoding: "utf-8" }),
+    knownHashes
+  );
 }

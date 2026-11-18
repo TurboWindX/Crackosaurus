@@ -290,9 +290,29 @@ export function contractDesKey(desKey8: Buffer): Buffer {
  * Convert a cracked DES key (hex string, 16 chars = 8 bytes) into a 7-byte
  * NTLM hash fragment (hex string, 14 chars).
  */
-export function desKeyToNtlmFragment(desKeyHex: string): string {
-  const desKey = Buffer.from(desKeyHex, "hex");
+export function desKeyToNtlmFragment(desKeyValue: string): string {
+  const desKey = potPlaintextToDesKey(desKeyValue);
   return contractDesKey(desKey).toString("hex");
+}
+
+/**
+ * Decode a hashcat pot "plaintext" for a cracked mode-14000 DES key into the
+ * raw 8 key bytes.
+ *
+ * hashcat writes a cracked plaintext literally when every byte is printable,
+ * but as `$HEX[....]` when any byte is not. DES keys here come from
+ * DES_FULL_CHARSET (odd-parity bytes, overwhelmingly non-printable), so in
+ * practice the pot value is ALWAYS `$HEX[16-hex]`. The previous code did
+ * `Buffer.from(value, "hex")` directly, which on a `$HEX[..]` string stops at
+ * the leading `$` and returns a 0-length Buffer — contractDesKey then throws
+ * and the (swallowed) error made the whole NTLMv1→NT pipeline silently recover
+ * zero hashes. Unwrap `$HEX[..]` to its inner hex; fall back to treating a
+ * literal (printable) plaintext as raw bytes.
+ */
+function potPlaintextToDesKey(value: string): Buffer {
+  const hex = /^\$HEX\[([0-9a-fA-F]*)\]$/.exec(value);
+  if (hex) return Buffer.from(hex[1]!, "hex");
+  return Buffer.from(value, "latin1");
 }
 
 // ---------------------------------------------------------------------------

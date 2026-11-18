@@ -5,7 +5,28 @@ import { z } from "zod";
 
 import { STATUS, type JobProgress } from "@repo/api";
 import { JOB_PROGRESS } from "@repo/api";
-import { DEFAULT_RAINBOW_INSTANCE_TYPE } from "@repo/app-config/instance-types";
+import {
+  DEFAULT_INSTANCE_TYPE,
+  DEFAULT_RAINBOW_INSTANCE_TYPE,
+  INSTANCE_TYPE_VALUES,
+  RAINBOW_INSTANCE_TYPES,
+} from "@repo/app-config/instance-types";
+
+// Allowlist for a client-submitted instanceType. Mirrors the cluster's
+// getTypes() (operator GPU dropdown + default + auto-pinned rainbow boxes), so
+// every legitimately submittable type validates while an arbitrary/oversized
+// EC2 type is rejected at the tRPC boundary instead of being stored on the job
+// and provisioned verbatim after approval (cost blowup / capacity abuse).
+const SUBMITTABLE_INSTANCE_TYPES: readonly string[] = [
+  ...INSTANCE_TYPE_VALUES,
+  DEFAULT_INSTANCE_TYPE,
+  ...RAINBOW_INSTANCE_TYPES,
+];
+const instanceTypeSchema = z
+  .string()
+  .refine((v) => SUBMITTABLE_INSTANCE_TYPES.includes(v), {
+    message: "Unsupported instanceType",
+  });
 import { HASH_TYPES } from "@repo/hashcat/data";
 
 import { getJobProgressCached } from "../plugins/cluster/plugin";
@@ -64,7 +85,7 @@ export const jobRouter = t.router({
   requestJobs: permissionProcedure(["instances:jobs:add"])
     .input(
       z.object({
-        instanceType: z.string(),
+        instanceType: instanceTypeSchema,
         data: z
           .object({
             wordlistID: z.string(),
@@ -223,7 +244,7 @@ export const jobRouter = t.router({
   requestJobsForHashes: permissionProcedure(["instances:jobs:add"])
     .input(
       z.object({
-        instanceType: z.string(),
+        instanceType: instanceTypeSchema,
         wordlistID: z.string().optional(),
         ruleID: z.string().optional(),
         hashIDs: z.string().array().min(1),

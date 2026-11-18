@@ -27,6 +27,15 @@ interface PrefixRule {
 }
 
 const PREFIX_RULES: PrefixRule[] = [
+  // ConfigMgr (SCCM) CryptDeriveKey media-variable file, AES-128 (mode 19850).
+  // Custom module (MWR-CyberSec). Hash is produced by PXEThief; fixed-length
+  // (93 chars) with the "$sccm$aes128$" signature, so this is unambiguous.
+  {
+    test: (h) => h.startsWith("$sccm$aes128$"),
+    mode: 19850,
+    name: "ConfigMgr CryptDeriveKey media variable, AES-128",
+  },
+
   // bcrypt
   { test: (h) => /^\$2[aby]?\$\d+\$/.test(h), mode: 3200, name: "bcrypt" },
 

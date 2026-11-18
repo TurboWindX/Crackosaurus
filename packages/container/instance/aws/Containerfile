@@ -27,13 +27,34 @@ RUN NODE_ENV=production turbo run build --filter=@repo/instance
 
 FROM base AS build
 
-RUN apk add 7zip wget zip
+# We compile hashcat from source instead of using the prebuilt release .7z:
+# the ConfigMgr CryptDeriveKey module (mode 19850) is a custom module that must
+# be compiled INTO hashcat (modules/module_19850.so). A prebuilt binary cannot
+# load it. build-base = gcc/make/musl-dev; linux-headers for the musl build.
+RUN apk add --no-cache git build-base linux-headers zip
 
 ARG HASHCAT_VERSION=6.2.6
 
-RUN wget https://github.com/hashcat/hashcat/releases/download/v${HASHCAT_VERSION}/hashcat-${HASHCAT_VERSION}.7z
-RUN 7z x hashcat-${HASHCAT_VERSION}.7z
-RUN mv hashcat-${HASHCAT_VERSION} hashcat
+# --recursive pulls hashcat's deps (OpenCL-Headers, LZMA-SDK, xxHash, zlib),
+# which are git submodules and are NOT in the GitHub source tarball.
+RUN git clone --depth 1 --branch v${HASHCAT_VERSION} --recursive \
+      https://github.com/hashcat/hashcat.git hashcat
+
+# Vendored ConfigMgr CryptDeriveKey module (MWR-CyberSec, MIT). The Makefile
+# globs src/modules/module_*.c, so dropping the module here is enough; the
+# a0/a1/a3 kernels stay as source in OpenCL/ and are JIT-compiled at runtime.
+COPY packages/hashcat/vendor/configmgr-cryptderivekey/module_code/module_19850.c    hashcat/src/modules/
+COPY packages/hashcat/vendor/configmgr-cryptderivekey/opencl_code/m19850_a0-pure.cl hashcat/OpenCL/
+COPY packages/hashcat/vendor/configmgr-cryptderivekey/opencl_code/m19850_a1-pure.cl hashcat/OpenCL/
+COPY packages/hashcat/vendor/configmgr-cryptderivekey/opencl_code/m19850_a3-pure.cl hashcat/OpenCL/
+
+# Build, then normalise the binary name to hashcat.bin (what the release .7z
+# shipped and what the EC2 user-data expects at /app/hashcat/hashcat.bin), and
+# strip source/build/vcs bloat so package.zip stays close to the release size.
+RUN cd hashcat \
+ && make -j"$(nproc)" \
+ && cp hashcat hashcat.bin \
+ && rm -rf .git src deps obj tools docs example0.* example.dict
 
 COPY --from=installer /app/apps/instance/dist .
 
