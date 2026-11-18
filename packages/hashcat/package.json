@@ -8,7 +8,8 @@
     "./ntlmv1": "./src/ntlmv1.ts",
     "./shuck": "./src/shuck.ts",
     "./identify": "./src/identify.ts",
-    "./optimized": "./src/optimized.ts"
+    "./optimized": "./src/optimized.ts",
+    "./sccm": "./src/sccm.ts"
   },
   "scripts": {
     "test": "jest",
