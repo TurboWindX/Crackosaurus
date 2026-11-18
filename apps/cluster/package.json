@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "npm run build && npm run dev:watch",
     "dev:watch": "concurrently \"rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild --watch\" \"nodemon -w dist/index.js dist/index.js\"",
+    "test": "jest",
     "build": "rollup --config rollup.config.ts --configPlugin rollup-plugin-esbuild",
     "start": "npm run build && CLUSTER_TYPE=node node dist/index.js"
   },
