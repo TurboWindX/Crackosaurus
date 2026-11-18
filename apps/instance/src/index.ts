@@ -368,7 +368,9 @@ function runShuckPrePhase(
     "0", // dictionary attack
     "-m",
     ntMode.toString(), // NT-candidate mode
-    "-O", // optimized kernels
+    // No -O: this is a dictionary pass whose NT-hash candidates can be 32 chars
+    // (> the optimized ~31 cap), which -O would silently skip. Pure kernels
+    // guarantee the shuck never drops a candidate; the pass is tiny anyway.
     "--potfile-disable",
     "-o",
     shuckPotPath, // output pot

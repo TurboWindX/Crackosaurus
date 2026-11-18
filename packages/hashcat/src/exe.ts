@@ -2,6 +2,11 @@ import childProcess from "child_process";
 import fs from "fs";
 
 import { parseHashcatPot } from "./data";
+import {
+  maskCandidateLength,
+  OPTIMIZED_MASK_MAX_LEN,
+  shouldUseOptimized,
+} from "./optimized";
 import { type HashcatStatus, parseHashcatStatus } from "./status";
 
 interface HashcatConfig {
@@ -45,7 +50,6 @@ export function hashcat({
     attackMode.toString(),
     "-m",
     hashType.toString(),
-    "-O",
     "--potfile-disable",
     "--status",
     "--status-timer=10",
@@ -55,6 +59,23 @@ export function hashcat({
     // the old positional --machine-readable format exposed reliably.
     "--status-json",
   ];
+
+  // Optimized kernels (-O) are ~2x faster but cap candidate length and SILENTLY
+  // drop anything longer (see ./optimized). Default to pure kernels so we never
+  // miss a hit; enable -O only when it provably cannot truncate — a mask attack
+  // whose candidate length is within the conservative cap.
+  if (shouldUseOptimized(attackMode, mask)) {
+    args.push("-O");
+    console.log(
+      `[Hashcat] Optimized kernels (-O) enabled: mask length ${maskCandidateLength(
+        mask!
+      )} <= ${OPTIMIZED_MASK_MAX_LEN}, lossless`
+    );
+  } else {
+    console.log(
+      "[Hashcat] Pure kernels (no -O): full candidate-length coverage, no silent truncation"
+    );
+  }
 
   // Custom charset definitions must come before the mask/input args
   if (hexCharset) args.push("--hex-charset");
